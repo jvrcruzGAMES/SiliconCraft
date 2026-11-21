@@ -28,6 +28,7 @@ public class ModMessages {
         registrar.playToServer(CompileProgramPacket.TYPE, CompileProgramPacket.STREAM_CODEC, ModMessages::handleCompileProgram);
         registrar.playToServer(RequestProgramsPacket.TYPE, RequestProgramsPacket.STREAM_CODEC, ModMessages::handleRequestPrograms);
         registrar.playToClient(SyncProgramsPacket.TYPE, SyncProgramsPacket.STREAM_CODEC, ModMessages::handleSyncPrograms);
+        registrar.playToClient(SyncTerminalPacket.TYPE, SyncTerminalPacket.STREAM_CODEC, ModMessages::handleSyncTerminal);
     }
 
     private static void handleArchitectureWriter(ArchitectureWriterPacket packet, IPayloadContext context) {
@@ -149,6 +150,18 @@ public class ModMessages {
                     } else if (packet.action() == 2) {
                         compBe.stepCpu();
                     }
+                }
+            }
+        });
+    }
+
+    private static void handleSyncTerminal(SyncTerminalPacket packet, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            Player player = context.player();
+            if (player != null && player.level() != null && player.level().isLoaded(packet.pos())) {
+                BlockEntity be = player.level().getBlockEntity(packet.pos());
+                if (be instanceof ComputerBlockEntity compBe) {
+                    compBe.getCpu().setTerminalOutput(packet.lines());
                 }
             }
         });

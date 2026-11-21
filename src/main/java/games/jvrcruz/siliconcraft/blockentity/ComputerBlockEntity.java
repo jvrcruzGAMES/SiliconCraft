@@ -4,6 +4,7 @@ import games.jvrcruz.siliconcraft.block.ComputerBlock;
 import games.jvrcruz.siliconcraft.data.SocData;
 import games.jvrcruz.siliconcraft.init.ModBlockEntities;
 import games.jvrcruz.siliconcraft.menu.ComputerMenu;
+import games.jvrcruz.siliconcraft.network.SyncTerminalPacket;
 import games.jvrcruz.siliconcraft.vm.VirtualCpu;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -15,23 +16,28 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerData;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 
 public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
     private SocData socData = SocData.EMPTY;
     private final VirtualCpu cpu = new VirtualCpu();
+    private List<String> lastSyncedOutput = Collections.emptyList();
 
     // Container data for syncing CPU registers:
     // 0: state (0=OFF, 1=RUNNING, 2=PAUSED, 3=HALTED, 4=ERROR)
@@ -108,13 +114,31 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
         setChanged();
     }
 
+    public void syncTerminal(Level level, BlockPos pos, BlockState state) {
+        if (level == null || level.isClientSide) return;
+        List<String> currentOutput = cpu.getTerminalOutput();
+        if (!currentOutput.equals(lastSyncedOutput)) {
+            lastSyncedOutput = new ArrayList<>(currentOutput);
+            setChanged();
+            level.sendBlockUpdated(pos, state, state, 2);
+            if (level instanceof ServerLevel serverLevel) {
+                PacketDistributor.sendToPlayersTrackingChunk(
+                        serverLevel,
+                        new ChunkPos(pos),
+                        new SyncTerminalPacket(pos, currentOutput)
+                );
+            }
+        }
+    }
+
     public void togglePower() {
         if (socData == null || socData.instructions().isEmpty()) {
             cpu.powerOff();
-            cpu.getTerminalOutput().clear();
-            cpu.getTerminalOutput().add("[SYSTEM ERROR]");
-            cpu.getTerminalOutput().add("No bootable SoC architecture installed!");
+            cpu.setTerminalOutput(List.of("[SYSTEM ERROR]", "No bootable SoC architecture installed!"));
             setChanged();
+            if (level != null) {
+                syncTerminal(level, worldPosition, getBlockState());
+            }
             return;
         }
 
@@ -125,6 +149,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
             if (getBlockState().getValue(ComputerBlock.POWERED) != isRunning) {
                 level.setBlock(worldPosition, getBlockState().setValue(ComputerBlock.POWERED, isRunning), 3);
             }
+            syncTerminal(level, worldPosition, getBlockState());
         }
         setChanged();
     }
@@ -132,11 +157,17 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
     public void resetCpu() {
         cpu.reset();
         setChanged();
+        if (level != null) {
+            syncTerminal(level, worldPosition, getBlockState());
+        }
     }
 
     public void stepCpu() {
         cpu.step();
         setChanged();
+        if (level != null) {
+            syncTerminal(level, worldPosition, getBlockState());
+        }
     }
 
     public void tick(Level level, BlockPos pos, BlockState state) {
@@ -151,6 +182,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
                 level.setBlock(pos, state.setValue(ComputerBlock.POWERED, false), 3);
             }
         }
+        syncTerminal(level, pos, state);
     }
 
     @Override
@@ -199,11 +231,13 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
         }
 
         if (tag.contains("TerminalOutput")) {
-            cpu.getTerminalOutput().clear();
+            List<String> lines = new ArrayList<>();
             ListTag terminalTag = tag.getList("TerminalOutput", Tag.TAG_STRING);
             for (int i = 0; i < terminalTag.size(); i++) {
-                cpu.getTerminalOutput().add(terminalTag.getString(i));
+                lines.add(terminalTag.getString(i));
             }
+            cpu.setTerminalOutput(lines);
+            lastSyncedOutput = new ArrayList<>(lines);
         }
     }
 
@@ -218,6 +252,19 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
     @Override
     public Packet<ClientGamePacketListener> getUpdatePacket() {
         return ClientboundBlockEntityDataPacket.create(this);
+    }
+
+    @Override
+    public void onDataPacket(net.minecraft.network.Connection net, ClientboundBlockEntityDataPacket pkt, HolderLookup.Provider lookupProvider) {
+        CompoundTag tag = pkt.getTag();
+        if (tag != null) {
+            handleUpdateTag(tag, lookupProvider);
+        }
+    }
+
+    @Override
+    public void handleUpdateTag(CompoundTag tag, HolderLookup.Provider lookupProvider) {
+        loadAdditional(tag, lookupProvider);
     }
 
     @Override

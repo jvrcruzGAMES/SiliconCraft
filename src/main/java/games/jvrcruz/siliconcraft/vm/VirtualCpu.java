@@ -739,6 +739,15 @@ public class VirtualCpu {
         return terminalOutput;
     }
 
+    public void setTerminalOutput(List<String> lines) {
+        this.terminalOutput.clear();
+        if (lines != null) {
+            this.terminalOutput.addAll(lines);
+        }
+        this.lineBuffer.setLength(0);
+        this.utf8ByteBuf.reset();
+    }
+
     public Set<String> getSupportedInstructions() { return supportedInstructions; }
     public List<String> getProgram() { return program; }
     public int[] getRam() { return ram; }
