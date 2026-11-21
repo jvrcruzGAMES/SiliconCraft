@@ -147,28 +147,153 @@ if score >= 100 {
 
 ---
 
-## 6. Full Example Program
+## 6. BIOS & System Functions
+
+Since you implement your own BIOS in `.n` (or assembly), `.n` provides built-in system tools:
+
+### Screen Control: `cls()`
+Clears the CRT terminal screen:
+```text
+cls()
+println "=== BIOS v1.0 ==="
+```
+
+### Time: `time.now()`
+Returns the current Minecraft world time in ticks:
+```text
+var start = time.now()
+println start
+```
+
+### Delay: `sleep(seconds)` and `sleep_ticks(ticks)`
+Pauses CPU execution for the specified duration:
+```text
+println "Starting POST..."
+sleep(1)            // Sleep 1 second (20 Minecraft ticks)
+println "Checking memory..."
+sleep(0.5)          // Sleep 10 ticks
+sleep_ticks(5)      // Sleep raw 5 Minecraft ticks
+```
+
+### Random Numbers: `rand(max)`
+Generates a random integer in the range `[0, max - 1]`:
+```text
+var dice = rand(6) + 1
+println dice
+```
+
+---
+
+## 7. Functions (`fn`)
+
+You can define and call subroutines and functions:
 
 ```text
-const TITLE = "★ SiliconCraft Terminal ★"
-println TITLE
-
-var server = {
-    host = "127.0.0.1",
-    port = 8080,
-    online = true
+fn boot() {
+    cls()
+    println "SiliconCraft BIOS Initialized"
+    println "Time: " + time.now()
 }
 
-println server.host
-println server.port
-println server.online
+fn add(x, y) {
+    return x + y
+}
 
-var metrics = { 45, 60, 80 }
-println metrics[0]
-metrics[0] = 50
-println metrics[0]
+boot()
+var sum = add(10, 25)
+println sum             // 35
+```
 
-server.online = false
-println server.online
+---
+
+## 8. Arithmetic & Math Operations
+
+All standard arithmetic operators are supported with operator precedence:
+- `+` (Addition), `-` (Subtraction)
+- `*` (Multiplication)
+- `/` (Integer division)
+- `%` (Modulo / remainder)
+- Compound assignments: `+=`, `-=`, `*=`, `/=`, `%=`
+
+```text
+var a = 20
+var b = 6
+println a * b           // 120
+println a / b           // 3
+println a % b           // 2
+
+a += 10                 // 30
+a *= 2                  // 60
+```
+
+---
+
+## 9. Full Architecture Instruction Set (ISA)
+
+When writing an **Architecture Writeup** at the Architecture Writer, the following hardware instructions are available:
+
+| Opcode | Description |
+|---|---|
+| `NOP` | No operation |
+| `HLT` | Halts CPU execution |
+| `MOV <dest>, <src>` | Move value or register |
+| `PUSH <src>` | Push onto data stack |
+| `POP <dest>` | Pop from data stack |
+| `ADD <dest>, <src>` | Addition |
+| `SUB <dest>, <src>` | Subtraction |
+| `MUL <dest>, <src>` | Multiplication |
+| `DIV <dest>, <src>` | Integer division |
+| `MOD <dest>, <src>` | Modulo / remainder |
+| `INC <reg/mem>` | Increment by 1 |
+| `DEC <reg/mem>` | Decrement by 1 |
+| `CMP <reg>, <val>` | Compare (sets Z and S flags) |
+| `AND <dest>, <src>` | Bitwise AND |
+| `OR <dest>, <src>` | Bitwise OR |
+| `XOR <dest>, <src>` | Bitwise XOR |
+| `NOT <dest>` | Bitwise NOT |
+| `SHL <dest>, <count>` | Bitwise Shift Left |
+| `SHR <dest>, <count>` | Bitwise Shift Right |
+| `JMP <target>` | Unconditional jump |
+| `JZ <target>` | Jump if Zero (`Z == 1`) |
+| `JNZ <target>` | Jump if Not Zero (`Z == 0`) |
+| `JS <target>` | Jump if Sign / Negative (`S == 1`) |
+| `JNS <target>` | Jump if Not Sign / Positive (`S == 0`) |
+| `JL <target>` | Jump if Less (`S == 1 && Z == 0`) |
+| `JLE <target>` | Jump if Less or Equal (`S == 1 || Z == 1`) |
+| `JG <target>` | Jump if Greater (`S == 0 && Z == 0`) |
+| `JGE <target>` | Jump if Greater or Equal (`S == 0`) |
+| `CALL <target>` | Call subroutine (pushes return address) |
+| `RET` | Return from subroutine |
+| `OUT <val>[, mode]` | Output to CRT terminal |
+| `OUTC <char/byte>` | Output character byte (ASCII / UTF-8) |
+| `CLS` | Clear CRT terminal display |
+| `SLEEP <ticks>` | Pause execution for Minecraft ticks |
+| `TIME <dest>` | Store Minecraft game time in ticks |
+| `RAND <dest>, <max>` | Generate random integer `[0, max - 1]` |
+
+---
+
+## 10. Full BIOS Example Program
+
+```text
+cls()
+println "=== JTech Computers ==="
+println "BIOS v1.0 Release"
+println "Boot tick: " + time.now()
+println ""
+
+sleep(1)
+println "Testing CPU instructions..."
+
+var points = 0
+while points < 5 {
+    print "Point: "
+    println points
+    points++
+}
+
+println "All diagnostics passed!"
+sleep(0.5)
+println "System Ready."
 halt
 ```

@@ -4,7 +4,14 @@ import java.util.*;
 
 public class InstructionValidator {
     public static final List<String> ALL_INSTRUCTIONS = List.of(
-            "NOP", "MOV", "ADD", "SUB", "INC", "DEC", "CMP", "JMP", "JZ", "JNZ", "OUT", "OUTC", "HLT"
+            // Flow & Control
+            "NOP", "HLT", "JMP", "JZ", "JNZ", "JS", "JNS", "JL", "JLE", "JG", "JGE", "CALL", "RET",
+            // Data movement & Stack
+            "MOV", "PUSH", "POP",
+            // Arithmetic & Logic
+            "ADD", "SUB", "MUL", "DIV", "MOD", "INC", "DEC", "CMP", "AND", "OR", "XOR", "NOT", "SHL", "SHR",
+            // I/O & System / BIOS
+            "OUT", "OUTC", "CLS", "SLEEP", "TIME", "RAND"
     );
     public static final Set<String> ALL_INSTRUCTIONS_SET = new HashSet<>(ALL_INSTRUCTIONS);
 

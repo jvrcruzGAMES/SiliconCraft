@@ -91,6 +91,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
 
     public void installSoc(SocData data) {
         this.socData = data;
+        this.cpu.setTimeSupplier(() -> level != null ? level.getGameTime() : 0L);
         this.cpu.configure(
                 new HashSet<>(data.instructions()),
                 data.ramCapacity(),
@@ -117,6 +118,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
             return;
         }
 
+        this.cpu.setTimeSupplier(() -> level != null ? level.getGameTime() : 0L);
         cpu.togglePower();
         if (level != null) {
             boolean isRunning = (cpu.getState() == VirtualCpu.State.RUNNING);
@@ -138,6 +140,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
     }
 
     public void tick(Level level, BlockPos pos, BlockState state) {
+        this.cpu.setTimeSupplier(level::getGameTime);
         if (cpu.getState() == VirtualCpu.State.RUNNING) {
             cpu.tick(10);
             if (!state.getValue(ComputerBlock.POWERED)) {

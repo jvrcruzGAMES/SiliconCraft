@@ -248,4 +248,106 @@ public class CompilerAndValidatorTest {
         assertTrue(output.contains("Player: Alex | Score: 100"),
                 "Output should contain 'Player: Alex | Score: 100' on a single line: " + output);
     }
+
+    @Test
+    public void testUserLoopPointsSnippet() {
+        List<String> nSource = List.of(
+                "println \"JTech Computers\"",
+                "println \"Booting\"",
+                "println \"\"",
+                "var points = 0",
+                "while points < 5 {",
+                "    println points",
+                "    points++",
+                "}",
+                "halt"
+        );
+
+        NCompiler.CompileResult result = NCompiler.compile(nSource);
+        assertTrue(result.success(), "User snippet should compile: " + result.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "CMP", "JGE", "JL", "JMP", "INC", "OUT", "OUTC", "HLT");
+        cpu.configure(isa, 256, result.assembly(), false, 0);
+        cpu.powerOn();
+        cpu.tick(200);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        List<String> output = cpu.getTerminalOutput();
+        assertTrue(output.contains("JTech Computers"));
+        assertTrue(output.contains("Booting"));
+        assertTrue(output.contains("0"));
+        assertTrue(output.contains("1"));
+        assertTrue(output.contains("4"));
+        assertFalse(output.contains("5")); // points < 5 loop terminates before 5
+    }
+
+    @Test
+    public void testSleepAndTimeAndCls() {
+        List<String> nSource = List.of(
+                "println \"Old Line\"",
+                "cls()",
+                "var t = time.now()",
+                "sleep(1)",
+                "println \"Awake\"",
+                "halt"
+        );
+
+        NCompiler.CompileResult result = NCompiler.compile(nSource);
+        assertTrue(result.success(), "Sleep and time code should compile: " + result.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        cpu.setTimeSupplier(() -> 12345L);
+        Set<String> isa = Set.of("MOV", "OUT", "OUTC", "CLS", "TIME", "SLEEP", "HLT");
+        cpu.configure(isa, 256, result.assembly(), false, 0);
+        cpu.powerOn();
+
+        // 1 tick = 10 CPU cycles. Program reaches sleep(1) which sets sleepTicksRemaining = 20
+        cpu.tick(10);
+        assertEquals(20, cpu.getSleepTicksRemaining(), "Should have 20 sleep ticks remaining for 1 second");
+
+        // Tick 20 times to exhaust sleep
+        for (int i = 0; i < 20; i++) {
+            cpu.tick(10);
+        }
+        assertEquals(0, cpu.getSleepTicksRemaining());
+
+        // Now tick to finish program
+        cpu.tick(10);
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        List<String> output = cpu.getTerminalOutput();
+        assertFalse(output.contains("Old Line"), "CLS should have cleared 'Old Line'");
+        assertTrue(output.contains("Awake"));
+    }
+
+    @Test
+    public void testFunctionsAndMath() {
+        List<String> nSource = List.of(
+                "fn calc() {",
+                "    var a = 20",
+                "    var b = 4",
+                "    var mul = a * b",
+                "    var div = a / b",
+                "    var mod = a % 6",
+                "    return mul + div + mod",
+                "}",
+                "var ans = calc()",
+                "println ans",
+                "halt"
+        );
+
+        NCompiler.CompileResult result = NCompiler.compile(nSource);
+        assertTrue(result.success(), "Functions and math should compile: " + result.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "ADD", "MUL", "DIV", "MOD", "CALL", "RET", "JMP", "OUT", "OUTC", "HLT");
+        cpu.configure(isa, 256, result.assembly(), false, 0);
+        cpu.powerOn();
+        cpu.tick(200);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        List<String> output = cpu.getTerminalOutput();
+        // 20 * 4 = 80; 20 / 4 = 5; 20 % 6 = 2; sum = 80 + 5 + 2 = 87
+        assertTrue(output.contains("87"), "Output should contain 87: " + output);
+    }
 }

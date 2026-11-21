@@ -52,6 +52,7 @@ public class NCompiler {
 
         Deque<LoopContext> loopStack = new ArrayDeque<>();
         Deque<IfContext> ifStack = new ArrayDeque<>();
+        Deque<FuncContext> funcStack = new ArrayDeque<>();
 
         assembly.add("; === Compiled from SiliconCraft .n source ===");
 
@@ -63,7 +64,14 @@ public class NCompiler {
             try {
                 // Closing brace
                 if (line.equals("}")) {
-                    if (!ifStack.isEmpty() && (loopStack.isEmpty() || ifStack.peek().blockDepth >= loopStack.peek().blockDepth)) {
+                    if (!funcStack.isEmpty() && (loopStack.isEmpty() || funcStack.peek().blockDepth >= loopStack.peek().blockDepth)
+                            && (ifStack.isEmpty() || funcStack.peek().blockDepth >= ifStack.peek().blockDepth)) {
+                        FuncContext ctx = funcStack.pop();
+                        if (assembly.isEmpty() || !assembly.get(assembly.size() - 1).equals("RET")) {
+                            assembly.add("RET");
+                        }
+                        assembly.add(ctx.endLabel + ":");
+                    } else if (!ifStack.isEmpty() && (loopStack.isEmpty() || ifStack.peek().blockDepth >= loopStack.peek().blockDepth)) {
                         IfContext ctx = ifStack.pop();
                         assembly.add(ctx.endLabel + ":");
                     } else if (!loopStack.isEmpty()) {
@@ -81,7 +89,7 @@ public class NCompiler {
                     line.startsWith("printChar ") || line.startsWith("printChar(") ||
                     line.startsWith("println_char ") || line.startsWith("println_char(") ||
                     line.startsWith("printlnChar ") || line.startsWith("printlnChar(")) {
-                    errors.add("Line " + lineNum + ": 'print_char' has been removed. Use 'println' instead.");
+                    errors.add("Line " + lineNum + ": 'print_char' has been removed. Use 'print' or 'println' instead.");
                     continue;
                 }
 
@@ -101,6 +109,62 @@ public class NCompiler {
                 // Nop
                 if (line.equalsIgnoreCase("nop")) {
                     assembly.add("NOP");
+                    continue;
+                }
+
+                // Clear screen (CLS)
+                if (line.equalsIgnoreCase("cls") || line.equalsIgnoreCase("cls()") ||
+                    line.equalsIgnoreCase("clear") || line.equalsIgnoreCase("clear()")) {
+                    assembly.add("CLS");
+                    continue;
+                }
+
+                // Sleep statements: sleep(seconds) -> seconds * 20 Minecraft ticks
+                if (line.startsWith("sleep(") || line.startsWith("sleep ")) {
+                    String arg = extractParenthesesOrRest(line);
+                    try {
+                        double sec = Double.parseDouble(arg);
+                        int ticks = (int) Math.round(sec * 20.0);
+                        assembly.add("SLEEP " + Math.max(1, ticks));
+                    } catch (NumberFormatException e) {
+                        String loc = resolveLocation(arg, varMap, tableMap, assembly);
+                        assembly.add("MOV A, " + loc);
+                        assembly.add("MUL A, 20");
+                        assembly.add("SLEEP A");
+                    }
+                    continue;
+                }
+
+                // Sleep raw ticks: sleep_ticks(ticks)
+                if (line.startsWith("sleep_ticks(") || line.startsWith("sleep_ticks ") ||
+                    line.startsWith("sleepTicks(") || line.startsWith("sleepTicks ")) {
+                    String arg = extractParenthesesOrRest(line);
+                    String loc = resolveLocation(arg, varMap, tableMap, assembly);
+                    assembly.add("SLEEP " + loc);
+                    continue;
+                }
+
+                // Return statement: return or return expr
+                if (line.equals("return") || line.startsWith("return ")) {
+                    String retExpr = line.length() > 6 ? line.substring(6).trim() : "";
+                    if (!retExpr.isEmpty()) {
+                        compileAssignment("A", retExpr, varMap, tableMap, assembly);
+                    }
+                    assembly.add("RET");
+                    continue;
+                }
+
+                // Function declaration: fn name(...) { or function name(...) {
+                if ((line.startsWith("fn ") || line.startsWith("function ")) && line.endsWith("{")) {
+                    int startIdx = line.startsWith("fn ") ? 3 : 9;
+                    int openParen = line.indexOf('(');
+                    String funcName = (openParen != -1 ? line.substring(startIdx, openParen) : line.substring(startIdx, line.length() - 1)).trim();
+                    int funcId = labelCounter++;
+                    String endLabel = "_func_end_" + funcId;
+
+                    assembly.add("JMP " + endLabel);
+                    assembly.add(funcName + ":");
+                    funcStack.push(new FuncContext(funcName, endLabel, loopStack.size() + ifStack.size() + funcStack.size()));
                     continue;
                 }
 
@@ -127,7 +191,7 @@ public class NCompiler {
 
                     assembly.add(startLabel + ":");
                     compileCondition(condStr, endLabel, false, varMap, tableMap, assembly);
-                    loopStack.push(new LoopContext(startLabel, endLabel, loopStack.size() + ifStack.size()));
+                    loopStack.push(new LoopContext(startLabel, endLabel, loopStack.size() + ifStack.size() + funcStack.size()));
                     continue;
                 }
 
@@ -138,8 +202,18 @@ public class NCompiler {
                     String endLabel = "_if_end_" + ifId;
 
                     compileCondition(condStr, endLabel, false, varMap, tableMap, assembly);
-                    ifStack.push(new IfContext(endLabel, loopStack.size() + ifStack.size()));
+                    ifStack.push(new IfContext(endLabel, loopStack.size() + ifStack.size() + funcStack.size()));
                     continue;
+                }
+
+                // Standalone function call: myFunc()
+                if (line.endsWith(")") && line.contains("(") && !line.startsWith("print") && !line.startsWith("sleep")
+                        && !line.startsWith("cls") && !line.startsWith("clear")) {
+                    String callName = line.substring(0, line.indexOf('(')).trim();
+                    if (!callName.isEmpty() && !callName.contains(" ") && !callName.contains(".")) {
+                        assembly.add("CALL " + callName);
+                        continue;
+                    }
                 }
 
                 // Increment: x++
@@ -195,10 +269,13 @@ public class NCompiler {
                     String target = line.substring(0, eqIndex).trim();
                     String expr = line.substring(eqIndex + 1).trim();
 
-                    // Check for += or -=
+                    // Check for +=, -=, *=, /=, %=
                     boolean isPlusEq = target.endsWith("+");
                     boolean isMinusEq = target.endsWith("-");
-                    if (isPlusEq || isMinusEq) {
+                    boolean isMulEq = target.endsWith("*");
+                    boolean isDivEq = target.endsWith("/");
+                    boolean isModEq = target.endsWith("%");
+                    if (isPlusEq || isMinusEq || isMulEq || isDivEq || isModEq) {
                         target = target.substring(0, target.length() - 1).trim();
                     }
 
@@ -268,6 +345,12 @@ public class NCompiler {
                         compileAdd(targetLoc, expr, varMap, tableMap, assembly);
                     } else if (isMinusEq) {
                         compileSub(targetLoc, expr, varMap, tableMap, assembly);
+                    } else if (isMulEq) {
+                        compileBinaryOp(targetLoc, targetLoc, expr, "MUL", varMap, tableMap, assembly);
+                    } else if (isDivEq) {
+                        compileBinaryOp(targetLoc, targetLoc, expr, "DIV", varMap, tableMap, assembly);
+                    } else if (isModEq) {
+                        compileBinaryOp(targetLoc, targetLoc, expr, "MOD", varMap, tableMap, assembly);
                     } else {
                         compileAssignment(targetLoc, expr, varMap, tableMap, assembly);
                     }
@@ -393,6 +476,14 @@ public class NCompiler {
         if (token.startsWith("'") && token.endsWith("'") && token.length() >= 2) {
             int charVal = VirtualCpu.parseCharLiteral(token.substring(1, token.length() - 1));
             return String.valueOf(charVal);
+        }
+
+        // Minecraft game time in ticks
+        if (token.equalsIgnoreCase("time.now()") || token.equalsIgnoreCase("time.now")) {
+            if (assembly != null) {
+                assembly.add("TIME A");
+            }
+            return "A";
         }
 
         // Boolean literal: true / false
@@ -606,18 +697,67 @@ public class NCompiler {
                                           Map<String, TableInfo> tableMap, List<String> assembly) {
         expr = expr.trim();
 
-        // Check for binary + or -
-        int plusIdx = expr.indexOf('+');
-        int minusIdx = expr.indexOf('-');
+        // Check for binary operations: +, -, *, /, % (respecting precedence: + and - lower than *, /, %)
+        int addSubIdx = -1;
+        String addSubOp = null;
+        for (int i = expr.length() - 1; i > 0; i--) {
+            char c = expr.charAt(i);
+            if (c == '+' || c == '-') {
+                addSubIdx = i;
+                addSubOp = (c == '+') ? "ADD" : "SUB";
+                break;
+            }
+        }
 
-        if (plusIdx > 0 && !expr.startsWith("+")) {
-            String left = expr.substring(0, plusIdx).trim();
-            String right = expr.substring(plusIdx + 1).trim();
-            compileBinaryOp(targetLoc, left, right, "ADD", varMap, tableMap, assembly);
-        } else if (minusIdx > 0 && !expr.startsWith("-")) {
-            String left = expr.substring(0, minusIdx).trim();
-            String right = expr.substring(minusIdx + 1).trim();
-            compileBinaryOp(targetLoc, left, right, "SUB", varMap, tableMap, assembly);
+        if (addSubIdx > 0) {
+            String left = expr.substring(0, addSubIdx).trim();
+            String right = expr.substring(addSubIdx + 1).trim();
+            compileAssignment(targetLoc, left, varMap, tableMap, assembly);
+            String rightLoc = resolveLocation(right, varMap, tableMap, assembly);
+            if (targetLoc.startsWith("[") && rightLoc.startsWith("[")) {
+                assembly.add("MOV A, " + rightLoc);
+                assembly.add(addSubOp + " " + targetLoc + ", A");
+            } else {
+                assembly.add(addSubOp + " " + targetLoc + ", " + rightLoc);
+            }
+            return;
+        }
+
+        int mulDivIdx = -1;
+        String mulDivOp = null;
+        for (int i = expr.length() - 1; i > 0; i--) {
+            char c = expr.charAt(i);
+            if (c == '*' || c == '/' || c == '%') {
+                mulDivIdx = i;
+                mulDivOp = (c == '*') ? "MUL" : (c == '/' ? "DIV" : "MOD");
+                break;
+            }
+        }
+
+        if (mulDivIdx > 0) {
+            String left = expr.substring(0, mulDivIdx).trim();
+            String right = expr.substring(mulDivIdx + 1).trim();
+            compileAssignment(targetLoc, left, varMap, tableMap, assembly);
+            String rightLoc = resolveLocation(right, varMap, tableMap, assembly);
+            if (targetLoc.startsWith("[") && rightLoc.startsWith("[")) {
+                assembly.add("MOV A, " + rightLoc);
+                assembly.add(mulDivOp + " " + targetLoc + ", A");
+            } else {
+                assembly.add(mulDivOp + " " + targetLoc + ", " + rightLoc);
+            }
+            return;
+        }
+
+        if (expr.startsWith("rand(") && expr.endsWith(")")) {
+            String inner = expr.substring(5, expr.length() - 1).trim();
+            String maxLoc = resolveLocation(inner, varMap, tableMap, assembly);
+            assembly.add("RAND " + targetLoc + ", " + maxLoc);
+        } else if (expr.endsWith(")") && expr.contains("(") && !expr.startsWith("{") && !expr.equalsIgnoreCase("time.now()")) {
+            String funcName = expr.substring(0, expr.indexOf('(')).trim();
+            assembly.add("CALL " + funcName);
+            if (!targetLoc.equalsIgnoreCase("A")) {
+                assembly.add("MOV " + targetLoc + ", A");
+            }
         } else {
             String srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
             if (targetLoc.startsWith("[") && srcLoc.startsWith("[")) {
@@ -728,8 +868,32 @@ public class NCompiler {
             return;
         }
 
-        // 4. Arithmetic expression: a + b, x - 1, etc.
-        if (!arg.startsWith("\"") && !arg.startsWith("'") && (arg.contains("+") || arg.contains("-"))) {
+        // time.now()
+        if (arg.equalsIgnoreCase("time.now()") || arg.equalsIgnoreCase("time.now")) {
+            assembly.add("TIME A");
+            if (isPrintln) {
+                assembly.add("OUT A");
+            } else {
+                assembly.add("OUT A, 0");
+            }
+            return;
+        }
+
+        // rand(max)
+        if (arg.startsWith("rand(") && arg.endsWith(")")) {
+            String inner = arg.substring(5, arg.length() - 1).trim();
+            String maxLoc = resolveLocation(inner, varMap, tableMap, assembly);
+            assembly.add("RAND A, " + maxLoc);
+            if (isPrintln) {
+                assembly.add("OUT A");
+            } else {
+                assembly.add("OUT A, 0");
+            }
+            return;
+        }
+
+        // 4. Arithmetic expression: a + b, x - 1, a * b, a / b, a % b
+        if (!arg.startsWith("\"") && !arg.startsWith("'") && (arg.contains("+") || arg.contains("-") || arg.contains("*") || arg.contains("/") || arg.contains("%"))) {
             compileAssignment("A", arg, varMap, tableMap, assembly);
             if (isPrintln) {
                 assembly.add("OUT A");
@@ -954,8 +1118,10 @@ public class NCompiler {
         switch (op) {
             case "==" -> assembly.add(jumpOnTrue ? ("JZ " + branchLabel) : ("JNZ " + branchLabel));
             case "!=" -> assembly.add(jumpOnTrue ? ("JNZ " + branchLabel) : ("JZ " + branchLabel));
-            case ">", ">=" -> assembly.add(jumpOnTrue ? ("JNZ " + branchLabel) : ("JZ " + branchLabel));
-            case "<", "<=" -> assembly.add(jumpOnTrue ? ("JZ " + branchLabel) : ("JNZ " + branchLabel));
+            case ">"  -> assembly.add(jumpOnTrue ? ("JG " + branchLabel) : ("JLE " + branchLabel));
+            case ">=" -> assembly.add(jumpOnTrue ? ("JGE " + branchLabel) : ("JL " + branchLabel));
+            case "<"  -> assembly.add(jumpOnTrue ? ("JL " + branchLabel) : ("JGE " + branchLabel));
+            case "<=" -> assembly.add(jumpOnTrue ? ("JLE " + branchLabel) : ("JG " + branchLabel));
         }
     }
 
@@ -984,4 +1150,5 @@ public class NCompiler {
 
     private record LoopContext(String startLabel, String endLabel, int blockDepth) {}
     private record IfContext(String endLabel, int blockDepth) {}
+    private record FuncContext(String name, String endLabel, int blockDepth) {}
 }

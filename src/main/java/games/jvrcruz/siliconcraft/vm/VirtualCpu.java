@@ -7,6 +7,7 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.function.LongSupplier;
 
 public class VirtualCpu {
     public enum State {
@@ -34,6 +35,11 @@ public class VirtualCpu {
     private final List<String> terminalOutput = new ArrayList<>();
     private final StringBuilder lineBuffer = new StringBuilder();
     private final ByteArrayOutputStream utf8ByteBuf = new ByteArrayOutputStream();
+    private final Deque<Integer> callStack = new ArrayDeque<>();
+    private final Deque<Integer> dataStack = new ArrayDeque<>();
+    private int sleepTicksRemaining = 0;
+    private LongSupplier timeSupplier = System::currentTimeMillis;
+    private final Random random = new Random();
     private int[] ram = new int[256];
 
     public VirtualCpu() {}
@@ -63,6 +69,18 @@ public class VirtualCpu {
         }
     }
 
+    public void setTimeSupplier(LongSupplier supplier) {
+        this.timeSupplier = supplier != null ? supplier : System::currentTimeMillis;
+    }
+
+    public int getSleepTicksRemaining() {
+        return sleepTicksRemaining;
+    }
+
+    public void setSleepTicksRemaining(int ticks) {
+        this.sleepTicksRemaining = ticks;
+    }
+
     public void reset() {
         this.pc = 0;
         this.regA = 0;
@@ -73,6 +91,9 @@ public class VirtualCpu {
         this.flagS = false;
         this.cycles = 0;
         this.errorMessage = "";
+        this.callStack.clear();
+        this.dataStack.clear();
+        this.sleepTicksRemaining = 0;
         Arrays.fill(ram, 0);
         this.terminalOutput.clear();
         this.lineBuffer.setLength(0);
@@ -85,10 +106,6 @@ public class VirtualCpu {
     public void powerOn() {
         reset();
         this.state = State.RUNNING;
-        terminalOutput.add("[SILICON-OS BIOS v1.0]");
-        terminalOutput.add("ISA: " + supportedInstructions.size() + " opcodes");
-        terminalOutput.add("RAM: " + ram.length + " Bytes OK");
-        terminalOutput.add("Booting CPU...");
     }
 
     public void powerOff() {
@@ -116,10 +133,17 @@ public class VirtualCpu {
         if (state != State.RUNNING) {
             return;
         }
+        if (sleepTicksRemaining > 0) {
+            sleepTicksRemaining--;
+            return;
+        }
         int count = 0;
         while (state == State.RUNNING && count < maxCycles) {
             executeNextInstruction();
             count++;
+            if (sleepTicksRemaining > 0) {
+                break;
+            }
         }
     }
 
@@ -163,14 +187,37 @@ public class VirtualCpu {
                 case "MOV" -> execMov(args);
                 case "ADD" -> execAdd(args);
                 case "SUB" -> execSub(args);
+                case "MUL" -> execMul(args);
+                case "DIV" -> execDiv(args);
+                case "MOD" -> execMod(args);
                 case "INC" -> execInc(args);
                 case "DEC" -> execDec(args);
                 case "CMP" -> execCmp(args);
+                case "AND" -> execAnd(args);
+                case "OR" -> execOr(args);
+                case "XOR" -> execXor(args);
+                case "NOT" -> execNot(args);
+                case "SHL" -> execShl(args);
+                case "SHR" -> execShr(args);
                 case "JMP" -> execJmp(args, true);
                 case "JZ" -> execJmp(args, flagZ);
                 case "JNZ" -> execJmp(args, !flagZ);
+                case "JS" -> execJmp(args, flagS);
+                case "JNS" -> execJmp(args, !flagS);
+                case "JL" -> execJmp(args, flagS && !flagZ);
+                case "JLE" -> execJmp(args, flagS || flagZ);
+                case "JG" -> execJmp(args, !flagS && !flagZ);
+                case "JGE" -> execJmp(args, !flagS);
+                case "CALL" -> execCall(args);
+                case "RET" -> execRet();
+                case "PUSH" -> execPush(args);
+                case "POP" -> execPop(args);
                 case "OUT" -> execOut(args);
                 case "OUTC" -> execOutc(args);
+                case "CLS" -> execCls();
+                case "SLEEP" -> execSleep(args);
+                case "TIME" -> execTime(args);
+                case "RAND" -> execRand(args);
                 case "HLT" -> {
                     state = State.HALTED;
                     flushLineBuffer();
@@ -226,6 +273,104 @@ public class VirtualCpu {
         updateFlags(result);
     }
 
+    private void execMul(String args) {
+        String[] parts = args.split(",", 2);
+        if (parts.length != 2) throw new IllegalArgumentException("MUL requires dest, src");
+        String dest = parts[0].trim();
+        int current = resolveValue(dest);
+        int factor = resolveValue(parts[1].trim());
+        int result = current * factor;
+        setDestination(dest, result);
+        updateFlags(result);
+    }
+
+    private void execDiv(String args) {
+        String[] parts = args.split(",", 2);
+        if (parts.length != 2) throw new IllegalArgumentException("DIV requires dest, src");
+        String dest = parts[0].trim();
+        int current = resolveValue(dest);
+        int divisor = resolveValue(parts[1].trim());
+        if (divisor == 0) throw new ArithmeticException("Division by zero");
+        int result = current / divisor;
+        setDestination(dest, result);
+        updateFlags(result);
+    }
+
+    private void execMod(String args) {
+        String[] parts = args.split(",", 2);
+        if (parts.length != 2) throw new IllegalArgumentException("MOD requires dest, src");
+        String dest = parts[0].trim();
+        int current = resolveValue(dest);
+        int divisor = resolveValue(parts[1].trim());
+        if (divisor == 0) throw new ArithmeticException("Modulo by zero");
+        int result = current % divisor;
+        setDestination(dest, result);
+        updateFlags(result);
+    }
+
+    private void execAnd(String args) {
+        String[] parts = args.split(",", 2);
+        if (parts.length != 2) throw new IllegalArgumentException("AND requires dest, src");
+        String dest = parts[0].trim();
+        int current = resolveValue(dest);
+        int val = resolveValue(parts[1].trim());
+        int result = current & val;
+        setDestination(dest, result);
+        updateFlags(result);
+    }
+
+    private void execOr(String args) {
+        String[] parts = args.split(",", 2);
+        if (parts.length != 2) throw new IllegalArgumentException("OR requires dest, src");
+        String dest = parts[0].trim();
+        int current = resolveValue(dest);
+        int val = resolveValue(parts[1].trim());
+        int result = current | val;
+        setDestination(dest, result);
+        updateFlags(result);
+    }
+
+    private void execXor(String args) {
+        String[] parts = args.split(",", 2);
+        if (parts.length != 2) throw new IllegalArgumentException("XOR requires dest, src");
+        String dest = parts[0].trim();
+        int current = resolveValue(dest);
+        int val = resolveValue(parts[1].trim());
+        int result = current ^ val;
+        setDestination(dest, result);
+        updateFlags(result);
+    }
+
+    private void execNot(String arg) {
+        String dest = arg.trim();
+        int current = resolveValue(dest);
+        int result = ~current;
+        setDestination(dest, result);
+        updateFlags(result);
+    }
+
+    private void execShl(String args) {
+        String[] parts = args.split(",", 2);
+        if (parts.length != 2) throw new IllegalArgumentException("SHL requires dest, count");
+        String dest = parts[0].trim();
+        int current = resolveValue(dest);
+        int count = resolveValue(parts[1].trim());
+        int result = current << count;
+        setDestination(dest, result);
+        updateFlags(result);
+    }
+
+    private void execShr(String args) {
+        String[] parts = args.split(",", 2);
+        if (parts.length != 2) throw new IllegalArgumentException("SHR requires dest, count");
+        String dest = parts[0].trim();
+        int current = resolveValue(dest);
+        int count = resolveValue(parts[1].trim());
+        int result = current >> count;
+        setDestination(dest, result);
+        updateFlags(result);
+    }
+
     private void execInc(String arg) {
         String reg = arg.trim();
         int current = resolveValue(reg);
@@ -265,6 +410,70 @@ public class VirtualCpu {
                 throw new IllegalArgumentException("Label not found: " + target);
             }
         }
+    }
+
+    private void execCall(String target) {
+        target = target.trim();
+        String lower = target.toLowerCase(Locale.ROOT);
+        int destPc;
+        if (labels.containsKey(lower)) {
+            destPc = labels.get(lower);
+        } else {
+            try {
+                destPc = Integer.parseInt(target);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Label not found for CALL: " + target);
+            }
+        }
+        callStack.push(pc);
+        pc = destPc;
+    }
+
+    private void execRet() {
+        if (callStack.isEmpty()) {
+            throw new IllegalStateException("RET without CALL: Call stack underflow");
+        }
+        pc = callStack.pop();
+    }
+
+    private void execPush(String arg) {
+        int val = resolveValue(arg.trim());
+        dataStack.push(val);
+    }
+
+    private void execPop(String dest) {
+        if (dataStack.isEmpty()) {
+            throw new IllegalStateException("POP on empty stack: Data stack underflow");
+        }
+        int val = dataStack.pop();
+        setDestination(dest.trim(), val);
+    }
+
+    private void execCls() {
+        terminalOutput.clear();
+        lineBuffer.setLength(0);
+        utf8ByteBuf.reset();
+    }
+
+    private void execSleep(String arg) {
+        int ticks = resolveValue(arg.trim());
+        if (ticks > 0) {
+            this.sleepTicksRemaining = ticks;
+        }
+    }
+
+    private void execTime(String dest) {
+        long t = timeSupplier != null ? timeSupplier.getAsLong() : 0L;
+        setDestination(dest.trim(), (int) (t & 0x7FFFFFFF));
+    }
+
+    private void execRand(String args) {
+        String[] parts = args.split(",", 2);
+        if (parts.length != 2) throw new IllegalArgumentException("RAND requires dest, max");
+        String dest = parts[0].trim();
+        int max = resolveValue(parts[1].trim());
+        int val = (max > 0) ? random.nextInt(max) : 0;
+        setDestination(dest, val);
     }
 
     private void execOut(String args) {
