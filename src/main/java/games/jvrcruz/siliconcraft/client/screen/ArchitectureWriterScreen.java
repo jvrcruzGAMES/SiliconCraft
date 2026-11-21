@@ -25,6 +25,7 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
     private final List<String> selectedInstructions = new ArrayList<>(List.of("NOP", "MOV", "HLT", "OUT", "OUTC"));
 
     private EditBox nameInput;
+    private Button selectButton;
 
     // List bounds inside GUI
     private static final int LIST_X = 56;
@@ -41,6 +42,13 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
         super(menu, playerInventory, title);
     }
 
+    private void updateSelectButton() {
+        if (selectButton != null) {
+            boolean allSelected = selectedInstructions.size() == allInstructions.size();
+            selectButton.setMessage(Component.literal(allSelected ? "Select None" : "Select All"));
+        }
+    }
+
     @Override
     protected void init() {
         super.init();
@@ -51,6 +59,22 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
         nameInput.setMaxLength(20);
         nameInput.setValue("RISC-1");
         this.addRenderableWidget(nameInput);
+
+        // Select All / None button
+        boolean allSelected = selectedInstructions.size() == allInstructions.size();
+        selectButton = Button.builder(
+                Component.literal(allSelected ? "Select None" : "Select All"),
+                b -> {
+                    if (selectedInstructions.size() == allInstructions.size()) {
+                        selectedInstructions.clear();
+                    } else {
+                        selectedInstructions.clear();
+                        selectedInstructions.addAll(allInstructions);
+                    }
+                    updateSelectButton();
+                }
+        ).bounds(this.leftPos + 8, this.topPos + 67, 60, 14).build();
+        this.addRenderableWidget(selectButton);
 
         // Write button
         this.addRenderableWidget(Button.builder(Component.literal("Write Architecture"), b -> {
@@ -63,7 +87,7 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
                         new ArrayList<>(selectedInstructions)
                 ));
             }
-        }).bounds(this.leftPos + 56, this.topPos + 67, 112, 14).build());
+        }).bounds(this.leftPos + 70, this.topPos + 67, 98, 14).build());
     }
 
     private int getMaxScroll() {
@@ -93,6 +117,12 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button == 1 && selectButton != null && selectButton.isMouseOver(mouseX, mouseY)) {
+            selectedInstructions.clear();
+            updateSelectButton();
+            return true;
+        }
+
         if (button == 0 && isMouseOverList(mouseX, mouseY)) {
             int absX = this.leftPos + LIST_X;
             int absY = this.topPos + LIST_Y;
@@ -114,6 +144,7 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
                 } else {
                     selectedInstructions.add(opcode);
                 }
+                updateSelectButton();
                 return true;
             }
         }
@@ -200,5 +231,9 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
         super.render(guiGraphics, mouseX, mouseY, partialTick);
         this.renderTooltip(guiGraphics, mouseX, mouseY);
         renderSlotEmptyTooltip(guiGraphics, mouseX, mouseY);
+
+        if (selectButton != null && selectButton.isMouseOver(mouseX, mouseY)) {
+            guiGraphics.renderTooltip(this.font, Component.literal("Toggle all/none instructions (Right-click: Select None)"), mouseX, mouseY);
+        }
     }
 }
