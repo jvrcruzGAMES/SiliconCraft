@@ -1,0 +1,20 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "siliconcraft:block/computer_case",
+      "y": 0
+    },
+    "facing=east": {
+      "model": "siliconcraft:block/computer_case",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "siliconcraft:block/computer_case",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "siliconcraft:block/computer_case",
+      "y": 270
+    }
+  }
+}

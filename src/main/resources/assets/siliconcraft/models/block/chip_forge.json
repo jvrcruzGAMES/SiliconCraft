@@ -1,0 +1,9 @@
+{
+  "parent": "minecraft:block/orientable_with_bottom",
+  "textures": {
+    "top": "siliconcraft:block/chip_forge_top",
+    "bottom": "siliconcraft:block/chip_forge_bottom",
+    "front": "siliconcraft:block/chip_forge_front",
+    "side": "siliconcraft:block/chip_forge_side"
+  }
+}

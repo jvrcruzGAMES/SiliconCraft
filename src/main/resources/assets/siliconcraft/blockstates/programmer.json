@@ -1,0 +1,20 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "siliconcraft:block/programmer",
+      "y": 0
+    },
+    "facing=east": {
+      "model": "siliconcraft:block/programmer",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "siliconcraft:block/programmer",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "siliconcraft:block/programmer",
+      "y": 270
+    }
+  }
+}

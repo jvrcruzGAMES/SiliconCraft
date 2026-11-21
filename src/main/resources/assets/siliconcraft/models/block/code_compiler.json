@@ -1,0 +1,9 @@
+{
+  "parent": "minecraft:block/orientable_with_bottom",
+  "textures": {
+    "top": "siliconcraft:block/code_compiler_top",
+    "bottom": "siliconcraft:block/code_compiler_bottom",
+    "front": "siliconcraft:block/code_compiler_front",
+    "side": "siliconcraft:block/code_compiler_side"
+  }
+}

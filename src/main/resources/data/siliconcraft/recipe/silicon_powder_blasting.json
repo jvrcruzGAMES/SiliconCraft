@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:blasting",
+  "ingredient": {
+    "item": "siliconcraft:silicon_ore"
+  },
+  "result": {
+    "id": "siliconcraft:silicon_powder",
+    "count": 1
+  },
+  "experience": 0.7,
+  "cookingtime": 100
+}

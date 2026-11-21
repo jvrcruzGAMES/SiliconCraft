@@ -1,0 +1,20 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "siliconcraft:block/soc_manufacturer",
+      "y": 0
+    },
+    "facing=east": {
+      "model": "siliconcraft:block/soc_manufacturer",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "siliconcraft:block/soc_manufacturer",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "siliconcraft:block/soc_manufacturer",
+      "y": 270
+    }
+  }
+}

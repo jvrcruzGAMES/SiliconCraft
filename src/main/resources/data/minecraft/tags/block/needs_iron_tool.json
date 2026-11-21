@@ -1,0 +1,14 @@
+{
+  "replace": false,
+  "values": [
+    "siliconcraft:silicon_ore",
+    "siliconcraft:chip_forge",
+    "siliconcraft:memory_forge",
+    "siliconcraft:programmer",
+    "siliconcraft:soc_manufacturer",
+    "siliconcraft:computer_case",
+    "siliconcraft:computer",
+    "siliconcraft:assembly_writer",
+    "siliconcraft:code_compiler"
+  ]
+}

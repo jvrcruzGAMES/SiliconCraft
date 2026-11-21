@@ -1,0 +1,9 @@
+{
+  "parent": "minecraft:block/orientable_with_bottom",
+  "textures": {
+    "top": "siliconcraft:block/architecture_writer_top",
+    "bottom": "siliconcraft:block/architecture_writer_bottom",
+    "front": "siliconcraft:block/architecture_writer_front",
+    "side": "siliconcraft:block/architecture_writer_side"
+  }
+}

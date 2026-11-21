@@ -1,0 +1,24 @@
+package games.jvrcruz.siliconcraft.init;
+
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
+
+public class ModCapabilities {
+    public static void registerCapabilities(RegisterCapabilitiesEvent event) {
+        // Chip Forge
+        event.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, ModBlockEntities.CHIP_FORGE.get(), (be, side) -> be.getEnergyStorage());
+        event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.CHIP_FORGE.get(), (be, side) -> be.getItemHandler());
+
+        // Memory Forge
+        event.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, ModBlockEntities.MEMORY_FORGE.get(), (be, side) -> be.getEnergyStorage());
+        event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.MEMORY_FORGE.get(), (be, side) -> be.getItemHandler());
+
+        // Programmer
+        event.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, ModBlockEntities.PROGRAMMER.get(), (be, side) -> be.getEnergyStorage());
+        event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.PROGRAMMER.get(), (be, side) -> be.getItemHandler());
+
+        // SoC Manufacturer
+        event.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, ModBlockEntities.SOC_MANUFACTURER.get(), (be, side) -> be.getEnergyStorage());
+        event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.SOC_MANUFACTURER.get(), (be, side) -> be.getItemHandler());
+    }
+}

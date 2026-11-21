@@ -1,0 +1,20 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "siliconcraft:block/code_compiler",
+      "y": 0
+    },
+    "facing=east": {
+      "model": "siliconcraft:block/code_compiler",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "siliconcraft:block/code_compiler",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "siliconcraft:block/code_compiler",
+      "y": 270
+    }
+  }
+}
