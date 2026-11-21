@@ -85,22 +85,33 @@ println player.isAlive     // false
 
 ---
 
-## 4. Unified Print Statement: `println`
+## 4. Output Functions: `print` and `println`
 
-The only print instruction in `.n` is **`println`** (the legacy `print_char` has been removed). `println` automatically converts whatever type is passed into a string (character array) and outputs it followed by a newline:
+The `.n` language provides two output functions: **`print`** and **`println`** (the legacy `print_char` has been removed). Both functions automatically convert whatever argument type is passed into a string (character array):
 
-- **Strings**: Prints characters sequentially from memory until the null terminator (`0`), then appends newline (`\n`).
-- **Characters**: Prints character glyph, followed by newline.
-- **Booleans**: Evaluates and outputs `"true"` or `"false"`.
-- **Numbers / Integers**: Evaluates and outputs the numerical value as a decimal string.
-- **Table Fields**: Evaluates the field and converts its type to string (e.g. `println user.name` prints `"Steve"`, `println user.isAlive` prints `"true"`).
+- **`print <expr>`**: Appends the string representation of `<expr>` directly to the **current line** on the terminal screen without a trailing newline.
+- **`println <expr>`**: Appends the string representation of `<expr>` and advances to the **next line** (appends `\n`). Calling `println()` or `println` with no argument outputs an empty line.
 
+### Supported Types
+Both `print` and `println` handle all types seamlessly:
+- **Strings**: Streams characters sequentially until the null terminator (`0`).
+- **Characters**: Emits the glyph (ASCII or UTF-8).
+- **Booleans**: Converts to `"true"` or `"false"`.
+- **Numbers / Integers**: Converts the numerical value into its decimal digit string.
+- **Table Fields**: Evaluates the table element and converts it to string according to its inferred type.
+
+### Example: Combining `print` and `println`
 ```text
-println "Starting system..."
-println true
-println '★'
-println 42
-println player.name
+var user = { name = "Steve", level = 50 }
+
+print "User: "
+print user.name
+print " (Level "
+print user.level
+println ")"
+
+// Displays on the CRT terminal:
+// User: Steve (Level 50)
 ```
 
 ---

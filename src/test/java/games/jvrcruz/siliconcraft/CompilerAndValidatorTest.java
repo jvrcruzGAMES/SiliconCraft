@@ -189,4 +189,63 @@ public class CompilerAndValidatorTest {
         assertEquals(65, VirtualCpu.parseCharLiteral("A"));
         assertEquals(0x2605, VirtualCpu.parseCharLiteral("★"));
     }
+
+    @Test
+    public void testPrintOnCurrentLine() {
+        List<String> nSource = List.of(
+                "print \"Hello \"",
+                "println \"World\"",
+                "var x = 42",
+                "print \"Value: \"",
+                "print x",
+                "println \"!\"",
+                "var flag = true",
+                "print \"Flag is \"",
+                "println flag",
+                "halt"
+        );
+
+        NCompiler.CompileResult result = NCompiler.compile(nSource);
+        assertTrue(result.success(), "Compilation should succeed: " + result.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "CMP", "JZ", "JNZ", "JMP", "OUT", "OUTC", "HLT");
+        cpu.configure(isa, 256, result.assembly(), false, 0);
+        cpu.powerOn();
+        cpu.tick(300);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        List<String> output = cpu.getTerminalOutput();
+
+        assertTrue(output.contains("Hello World"), "Output should contain 'Hello World' on one line: " + output);
+        assertTrue(output.contains("Value: 42!"), "Output should contain 'Value: 42!' on one line: " + output);
+        assertTrue(output.contains("Flag is true"), "Output should contain 'Flag is true' on one line: " + output);
+    }
+
+    @Test
+    public void testPrintWithTablesAndStrings() {
+        List<String> nSource = List.of(
+                "var user = { name = \"Alex\", score = 100 }",
+                "print \"Player: \"",
+                "print user.name",
+                "print \" | Score: \"",
+                "println user.score",
+                "halt"
+        );
+
+        NCompiler.CompileResult result = NCompiler.compile(nSource);
+        assertTrue(result.success(), "Compilation should succeed: " + result.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "ADD", "CMP", "JZ", "JNZ", "JMP", "INC", "OUT", "OUTC", "HLT");
+        cpu.configure(isa, 256, result.assembly(), false, 0);
+        cpu.powerOn();
+        cpu.tick(300);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        List<String> output = cpu.getTerminalOutput();
+
+        assertTrue(output.contains("Player: Alex | Score: 100"),
+                "Output should contain 'Player: Alex | Score: 100' on a single line: " + output);
+    }
 }

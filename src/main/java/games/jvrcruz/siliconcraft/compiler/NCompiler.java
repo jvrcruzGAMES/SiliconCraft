@@ -104,18 +104,17 @@ public class NCompiler {
                     continue;
                 }
 
-                // Print statement: ONLY println is supported
-                if (line.startsWith("println ") || line.startsWith("println(")) {
+                // Println statement: prints converted expression followed by newline
+                if (line.startsWith("println ") || line.startsWith("println(") || line.equals("println") || line.equals("println()")) {
                     String arg = extractParenthesesOrRest(line);
-                    compilePrintln(arg, labelCounter++, varMap, typeMap, tableMap, assembly);
+                    compilePrint(arg, true, labelCounter++, varMap, typeMap, tableMap, assembly);
                     continue;
                 }
 
-                // Disallow standalone "print " (direct them to println)
-                if (line.startsWith("print ") || line.startsWith("print(")) {
-                    // For convenience and user-friendliness, route to println as the unified print instruction
+                // Print statement: prints converted expression to current line (no newline)
+                if (line.startsWith("print ") || line.startsWith("print(") || line.equals("print") || line.equals("print()")) {
                     String arg = extractParenthesesOrRest(line);
-                    compilePrintln(arg, labelCounter++, varMap, typeMap, tableMap, assembly);
+                    compilePrint(arg, false, labelCounter++, varMap, typeMap, tableMap, assembly);
                     continue;
                 }
 
@@ -680,35 +679,67 @@ public class NCompiler {
         }
     }
 
-    // Unified println converting all types to string / char array output
-    private static void compilePrintln(String arg, int id, Map<String, String> varMap,
-                                       Map<String, Type> typeMap, Map<String, TableInfo> tableMap, List<String> assembly) {
+    // Unified print / println converting all types to string / char array output
+    private static void compilePrint(String arg, boolean isPrintln, int id, Map<String, String> varMap,
+                                     Map<String, Type> typeMap, Map<String, TableInfo> tableMap, List<String> assembly) {
         arg = arg.trim();
 
-        // 1. String literal: println "hello"
-        if (arg.startsWith("\"") && arg.endsWith("\"")) {
-            assembly.add("OUT " + arg);
+        if (arg.isEmpty()) {
+            if (isPrintln) {
+                assembly.add("OUTC 10");
+            }
             return;
         }
 
-        // 2. Char literal: println 'A'
+        // 1. String literal: "hello"
+        if (arg.startsWith("\"") && arg.endsWith("\"")) {
+            if (isPrintln) {
+                assembly.add("OUT " + arg);
+            } else {
+                assembly.add("OUT " + arg + ", 0");
+            }
+            return;
+        }
+
+        // 2. Char literal: 'A'
         if (arg.startsWith("'") && arg.endsWith("'")) {
             assembly.add("OUTC " + arg);
-            assembly.add("OUTC 10");
+            if (isPrintln) {
+                assembly.add("OUTC 10");
+            }
             return;
         }
 
-        // 3. Boolean literal: println true / false
+        // 3. Boolean literal: true / false
         if (arg.equalsIgnoreCase("true")) {
-            assembly.add("OUT \"true\"");
+            if (isPrintln) {
+                assembly.add("OUT \"true\"");
+            } else {
+                assembly.add("OUT \"true\", 0");
+            }
             return;
         }
         if (arg.equalsIgnoreCase("false")) {
-            assembly.add("OUT \"false\"");
+            if (isPrintln) {
+                assembly.add("OUT \"false\"");
+            } else {
+                assembly.add("OUT \"false\", 0");
+            }
             return;
         }
 
-        // 4. Table field access: println user.name or println user["age"]
+        // 4. Arithmetic expression: a + b, x - 1, etc.
+        if (!arg.startsWith("\"") && !arg.startsWith("'") && (arg.contains("+") || arg.contains("-"))) {
+            compileAssignment("A", arg, varMap, tableMap, assembly);
+            if (isPrintln) {
+                assembly.add("OUT A");
+            } else {
+                assembly.add("OUT A, 0");
+            }
+            return;
+        }
+
+        // 5. Table field access: user.name or user["age"] or nums[0] or nums[i]
         if (arg.contains(".") || (arg.contains("[") && arg.endsWith("]"))) {
             String tblName;
             String fieldKey;
@@ -733,59 +764,79 @@ public class NCompiler {
                     int addr = table.baseAddr + f.offset;
 
                     if (f.type == Type.STRING) {
-                        emitPrintStringFromPointer("[" + addr + "]", id, assembly);
+                        emitPrintStringFromPointer("[" + addr + "]", id, isPrintln, assembly);
                         return;
                     } else if (f.type == Type.BOOLEAN) {
-                        emitPrintBoolean("[" + addr + "]", id, assembly);
+                        emitPrintBoolean("[" + addr + "]", id, isPrintln, assembly);
                         return;
                     } else if (f.type == Type.CHAR) {
                         assembly.add("OUTC [" + addr + "]");
-                        assembly.add("OUTC 10");
+                        if (isPrintln) {
+                            assembly.add("OUTC 10");
+                        }
                         return;
                     } else {
-                        assembly.add("OUT [" + addr + "]");
+                        if (isPrintln) {
+                            assembly.add("OUT [" + addr + "]");
+                        } else {
+                            assembly.add("OUT [" + addr + "], 0");
+                        }
                         return;
                     }
                 } else {
                     // Constant integer offset or variable offset
                     try {
                         int idx = Integer.parseInt(fieldKey);
-                        assembly.add("OUT [" + (table.baseAddr + idx) + "]");
+                        if (isPrintln) {
+                            assembly.add("OUT [" + (table.baseAddr + idx) + "]");
+                        } else {
+                            assembly.add("OUT [" + (table.baseAddr + idx) + "], 0");
+                        }
                         return;
                     } catch (NumberFormatException ignored) {
                         // Dynamic index: tbl[i]
                         String idxLoc = resolveLocation(fieldKey, varMap, tableMap, assembly);
                         assembly.add("MOV B, " + table.baseAddr);
                         assembly.add("ADD B, " + idxLoc);
-                        assembly.add("OUT [B]");
+                        if (isPrintln) {
+                            assembly.add("OUT [B]");
+                        } else {
+                            assembly.add("OUT [B], 0");
+                        }
                         return;
                     }
                 }
             }
         }
 
-        // 5. Variable print by Type
+        // 6. Variable print by Type
         String lowerArg = arg.toLowerCase(Locale.ROOT);
         Type t = typeMap.getOrDefault(lowerArg, Type.INT);
 
         if (t == Type.STRING) {
             String baseAddr = varMap.get(lowerArg);
-            emitPrintStringDirect(baseAddr, id, assembly);
+            emitPrintStringDirect(baseAddr, id, isPrintln, assembly);
         } else if (t == Type.BOOLEAN) {
             String loc = resolveLocation(arg, varMap, tableMap, assembly);
-            emitPrintBoolean(loc, id, assembly);
+            emitPrintBoolean(loc, id, isPrintln, assembly);
         } else if (t == Type.CHAR) {
             String loc = resolveLocation(arg, varMap, tableMap, assembly);
             assembly.add("OUTC " + loc);
-            assembly.add("OUTC 10");
+            if (isPrintln) {
+                assembly.add("OUTC 10");
+            }
         } else {
             // Integer, register, or general value
             String loc = resolveLocation(arg, varMap, tableMap, assembly);
-            assembly.add("OUT " + loc);
+            if (isPrintln) {
+                assembly.add("OUT " + loc);
+            } else {
+                assembly.add("OUT " + loc + ", 0");
+            }
         }
     }
 
-    private static void emitPrintStringDirect(String baseAddr, int id, List<String> assembly) {
+    private static void emitPrintStringDirect(String baseAddr, int id, boolean isPrintln, List<String> assembly) {
         String loopLabel = "_print_str_" + id;
         String endLabel = "_print_str_end_" + id;
 
@@ -798,10 +849,12 @@ public class NCompiler {
         assembly.add("INC B");
         assembly.add("JMP " + loopLabel);
         assembly.add(endLabel + ":");
-        assembly.add("OUTC 10");
+        if (isPrintln) {
+            assembly.add("OUTC 10");
+        }
     }
 
-    private static void emitPrintStringFromPointer(String ptrLoc, int id, List<String> assembly) {
+    private static void emitPrintStringFromPointer(String ptrLoc, int id, boolean isPrintln, List<String> assembly) {
         String loopLabel = "_print_str_ptr_" + id;
         String endLabel = "_print_str_ptr_end_" + id;
 
@@ -814,20 +867,30 @@ public class NCompiler {
         assembly.add("INC B");
         assembly.add("JMP " + loopLabel);
         assembly.add(endLabel + ":");
-        assembly.add("OUTC 10");
+        if (isPrintln) {
+            assembly.add("OUTC 10");
+        }
     }
 
-    private static void emitPrintBoolean(String loc, int id, List<String> assembly) {
+    private static void emitPrintBoolean(String loc, int id, boolean isPrintln, List<String> assembly) {
         String falseLabel = "_print_bool_false_" + id;
         String endLabel = "_print_bool_end_" + id;
 
         assembly.add("MOV A, " + loc);
         assembly.add("CMP A, 0");
         assembly.add("JZ " + falseLabel);
-        assembly.add("OUT \"true\"");
+        if (isPrintln) {
+            assembly.add("OUT \"true\"");
+        } else {
+            assembly.add("OUT \"true\", 0");
+        }
         assembly.add("JMP " + endLabel);
         assembly.add(falseLabel + ":");
-        assembly.add("OUT \"false\"");
+        if (isPrintln) {
+            assembly.add("OUT \"false\"");
+        } else {
+            assembly.add("OUT \"false\", 0");
+        }
         assembly.add(endLabel + ":");
     }
 

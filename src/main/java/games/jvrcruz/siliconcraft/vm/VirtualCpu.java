@@ -267,19 +267,55 @@ public class VirtualCpu {
         }
     }
 
-    private void execOut(String arg) {
-        arg = arg.trim();
-        if ((arg.startsWith("\"") && arg.endsWith("\"")) || (arg.startsWith("'") && arg.endsWith("'"))) {
-            flushLineBuffer();
-            terminalOutput.add(stripQuotes(arg));
+    private void execOut(String args) {
+        args = args.trim();
+        boolean newline = true;
+        String valPart = args;
+
+        int lastComma = args.lastIndexOf(',');
+        if (lastComma != -1) {
+            boolean insideQuotes = false;
+            char quoteChar = 0;
+            int commaOutside = -1;
+            for (int i = 0; i < args.length(); i++) {
+                char c = args.charAt(i);
+                if ((c == '\"' || c == '\'') && (i == 0 || args.charAt(i - 1) != '\\')) {
+                    if (insideQuotes && c == quoteChar) insideQuotes = false;
+                    else if (!insideQuotes) { insideQuotes = true; quoteChar = c; }
+                } else if (c == ',' && !insideQuotes) {
+                    commaOutside = i;
+                }
+            }
+            if (commaOutside != -1) {
+                valPart = args.substring(0, commaOutside).trim();
+                String flag = args.substring(commaOutside + 1).trim().toLowerCase(Locale.ROOT);
+                if (flag.equals("0") || flag.equals("cont") || flag.equals("no_nl") || flag.equals("false")) {
+                    newline = false;
+                }
+            }
+        }
+
+        if ((valPart.startsWith("\"") && valPart.endsWith("\"")) || (valPart.startsWith("'") && valPart.endsWith("'"))) {
+            lineBuffer.append(stripQuotes(valPart));
         } else {
-            int val = resolveValue(arg);
+            int val = resolveValue(valPart);
+            lineBuffer.append(val);
+        }
+
+        if (newline) {
             flushLineBuffer();
-            terminalOutput.add(String.valueOf(val));
         }
     }
 
     private void execOutc(String arg) {
+        arg = arg.trim();
+        if ((arg.startsWith("\"") && arg.endsWith("\"")) || (arg.startsWith("'") && arg.endsWith("'"))) {
+            String s = stripQuotes(arg);
+            for (byte b : s.getBytes(StandardCharsets.UTF_8)) {
+                emitCharByte(b & 0xFF);
+            }
+            return;
+        }
         int val = resolveValue(arg);
         emitCharByte(val);
     }
@@ -287,7 +323,14 @@ public class VirtualCpu {
     private void emitCharByte(int val) {
         if (val == 10) { // '\n'
             flushUtf8();
-            flushLineBuffer();
+            if (lineBuffer.length() == 0) {
+                terminalOutput.add("");
+                if (terminalOutput.size() > 60) {
+                    terminalOutput.remove(0);
+                }
+            } else {
+                flushLineBuffer();
+            }
             return;
         }
         if (val == 13) { // '\r'
@@ -345,17 +388,32 @@ public class VirtualCpu {
     private void flushLineBuffer() {
         flushUtf8();
         if (lineBuffer.length() > 0) {
-            terminalOutput.add(lineBuffer.toString());
+            String content = lineBuffer.toString();
             lineBuffer.setLength(0);
-            if (terminalOutput.size() > 60) {
-                terminalOutput.remove(0);
+            if (content.contains("\n")) {
+                String[] split = content.split("\n", -1);
+                for (int i = 0; i < split.length - 1; i++) {
+                    terminalOutput.add(split[i]);
+                    if (terminalOutput.size() > 60) {
+                        terminalOutput.remove(0);
+                    }
+                }
+                if (!split[split.length - 1].isEmpty()) {
+                    lineBuffer.append(split[split.length - 1]);
+                }
+            } else {
+                terminalOutput.add(content);
+                if (terminalOutput.size() > 60) {
+                    terminalOutput.remove(0);
+                }
             }
         }
     }
 
     private String stripQuotes(String s) {
         if (s.length() >= 2 && ((s.startsWith("\"") && s.endsWith("\"")) || (s.startsWith("'") && s.endsWith("'")))) {
-            return s.substring(1, s.length() - 1);
+            s = s.substring(1, s.length() - 1);
+            s = s.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r").replace("\\\"", "\"").replace("\\\'", "\'");
         }
         return s;
     }
