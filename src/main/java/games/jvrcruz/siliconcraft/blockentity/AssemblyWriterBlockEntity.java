@@ -44,6 +44,11 @@ public class AssemblyWriterBlockEntity extends BlockEntity implements MenuProvid
         public boolean isItemValid(int slot, ItemStack stack) {
             return stack.is(ModItems.ARCHITECTURE_WRITEUP.get());
         }
+
+        @Override
+        public void setSize(int size) {
+            super.setSize(Math.max(size, 1));
+        }
     };
 
     public AssemblyWriterBlockEntity(BlockPos pos, BlockState blockState) {

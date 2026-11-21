@@ -6,109 +6,158 @@ The **Code Compiler** block compiles `.n` source files directly into SiliconCraf
 
 ---
 
-## 1. Syntax Overview
+## 1. Variables & Automatic Type Detection
 
-`.n` code is structured with statements, blocks wrapped in curly braces `{ ... }`, and variables.
+Variables and constants are declared using **`var`** (mutable) and **`const`** (immutable). Explicit type keywords (such as `int`, `char`, `char[]`) are not used; types are inferred automatically from initial values:
 
-### Variables & Declarations
-Variables are stored in RAM addresses or mapped directly to CPU registers (`A`, `B`, `C`, `D`):
 ```text
-var x = 0
-let total = 100
-var counter = 1
+var counter = 0                   // Integer (32-bit)
+const MAX_LIMIT = 100             // Integer constant (cannot be reassigned)
+var isOnline = true               // Boolean (true / false)
+var symbol = '★'                  // Character
+var message = "Olá Mundo!"        // String (null-terminated UTF-8 char array)
 ```
 
-### Assignment & Arithmetic
-You can assign expressions, perform increment/decrement, and accumulate values:
+### Constant Immutability
+Attempting to reassign to a `const` produces a compile-time error:
 ```text
-x = 5
-x += 2
-x -= 1
-x++
-x--
+const PI = 3
+PI = 4       // Error: Cannot assign to constant 'PI'
 ```
 
-### Print Statement
-Outputs values directly to the computer terminal via the `OUT` instruction:
+---
+
+## 2. Boolean Type
+
+Booleans support `true` and `false` literals and can be evaluated directly in conditionals:
 ```text
-print x
-print A
+var isRunning = true
+const debugMode = false
+
+if isRunning {
+    println "System is active"
+}
+
+if !debugMode {
+    println "Production build"
+}
 ```
 
-### Conditions & Loops
-#### While Loop:
+---
+
+## 3. Lua-Style Tables (`{}`)
+
+In `.n`, the curly braces `{}` are used for Lua-style tables, functioning as both indexed arrays and key-value maps:
+
+### Array Tables (Indexed Lists)
+```text
+var numbers = { 10, 20, 30 }
+var fruits = { "apple", "banana", "cherry" }
+
+println numbers[0]      // 10
+numbers[0] = 99
+println numbers[0]      // 99
+```
+
+### Map Tables (Key-Value Dictionaries)
+Tables support Lua syntax (`key = value`), colon syntax (`key: value`), and bracket syntax (`["key"] = value`):
+```text
+var player = {
+    name = "Steve",
+    health = 100,
+    isAlive = true
+}
+
+// Accessing fields via dot notation
+println player.name        // Steve
+println player.health      // 100
+println player.isAlive     // true
+
+// Accessing fields via bracket notation
+println player["name"]     // Steve
+
+// Modifying fields
+player.health = 85
+player.isAlive = false
+println player.health      // 85
+println player.isAlive     // false
+```
+
+---
+
+## 4. Unified Print Statement: `println`
+
+The only print instruction in `.n` is **`println`** (the legacy `print_char` has been removed). `println` automatically converts whatever type is passed into a string (character array) and outputs it followed by a newline:
+
+- **Strings**: Prints characters sequentially from memory until the null terminator (`0`), then appends newline (`\n`).
+- **Characters**: Prints character glyph, followed by newline.
+- **Booleans**: Evaluates and outputs `"true"` or `"false"`.
+- **Numbers / Integers**: Evaluates and outputs the numerical value as a decimal string.
+- **Table Fields**: Evaluates the field and converts its type to string (e.g. `println user.name` prints `"Steve"`, `println user.isAlive` prints `"true"`).
+
+```text
+println "Starting system..."
+println true
+println '★'
+println 42
+println player.name
+```
+
+---
+
+## 5. Control Flow
+
+### While Loop
 ```text
 var i = 0
-while i < 10 {
-    print i
+while i < 5 {
+    println i
     i++
 }
 ```
 
-#### If Statement:
+### While Loop over Table Array
 ```text
-if x == 10 {
-    print x
+var items = { 10, 20, 30 }
+var i = 0
+while i < 3 {
+    println items[i]
+    i++
 }
 ```
 
-Comparison operators supported: `==`, `!=`, `<`, `<=`, `>`, `>=`.
-
-### Inline Assembly
-If you need direct low-level control or special instructions:
+### If Statement
 ```text
-asm {
-    MOV B, 42
-    OUT B
+var score = 100
+if score >= 100 {
+    println "Victory!"
 }
-```
-
-### Halt & Nop
-```text
-halt    // Halts execution (emits HLT)
-nop     // No-operation (emits NOP)
 ```
 
 ---
 
-## 2. Example Programs
+## 6. Full Example Program
 
-### Fibonacci Sequence in `.n`
 ```text
-var a = 0
-var b = 1
-var count = 10
+const TITLE = "★ SiliconCraft Terminal ★"
+println TITLE
 
-while count > 0 {
-    print a
-    var next = a + b
-    a = b
-    b = next
-    count--
+var server = {
+    host = "127.0.0.1",
+    port = 8080,
+    online = true
 }
+
+println server.host
+println server.port
+println server.online
+
+var metrics = { 45, 60, 80 }
+println metrics[0]
+metrics[0] = 50
+println metrics[0]
+
+server.online = false
+println server.online
 halt
 ```
-
-### Counter with Limit
-```text
-var count = 0
-while count <= 20 {
-    print count
-    count += 2
-}
-halt
-```
-
----
-
-## 3. Compilation & Architecture Verification
-
-When compiling a `.n` file in the **Code Compiler**:
-1. Place an **Architecture Writeup** (from the **Architecture Writer**) into the machine's blueprint slot.
-2. Click **📁 Choose .n File** to select your script.
-3. The Code Compiler parses and compiles the script into SiliconCraft CPU instructions.
-4. **Instruction Check**:
-   - The compiler identifies all opcodes required (e.g. `MOV`, `ADD`, `CMP`, `JNZ`, `OUT`, `HLT`).
-   - If the installed architecture does not support all required opcodes, the compile button is **disabled** with a red status message detailing which instructions are missing.
-   - If all opcodes are supported, the status shows `All opcodes valid!` and you can click **[+ Compile & Add]**.
-5. Once added, the program is permanently registered in your world's program library, ready to be burned onto physical ROM chips using the **ROM Programmer**.

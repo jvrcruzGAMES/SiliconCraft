@@ -39,6 +39,11 @@ public class ArchitectureWriterBlockEntity extends BlockEntity implements MenuPr
             }
             return false;
         }
+
+        @Override
+        public void setSize(int size) {
+            super.setSize(Math.max(size, 2));
+        }
     };
 
     public ArchitectureWriterBlockEntity(BlockPos pos, BlockState blockState) {

@@ -205,7 +205,27 @@ The CPU provides four 32-bit integer registers:
 
 ---
 
-### 12. HLT (Halt Execution)
+### 12. OUTC (Output Character / UTF-8 Byte)
+- **Syntax**:
+  - `OUTC reg` (e.g. `OUTC A`)
+  - `OUTC [mem]` (e.g. `OUTC [0]`)
+  - `OUTC imm` (e.g. `OUTC 65`, `OUTC 'A'`, `OUTC 10`)
+- **Description**: Outputs a character or UTF-8 stream byte to the active line buffer on the CRT monitor.
+  - Supports standard **ASCII** characters (0..127).
+  - Supports streaming **UTF-8** multi-byte sequences (decodes automatically once sequence completes).
+  - Passing `10` (`'\n'`) flushes the current line buffer and advances to the next terminal line.
+- **Flags Affected**: None.
+- **Example**:
+  ```assembly
+  OUTC 'H'
+  OUTC 'i'
+  OUTC '!'
+  OUTC 10        ; Prints "Hi!" on terminal line
+  ```
+
+---
+
+### 13. HLT (Halt Execution)
 - **Syntax**: `HLT`
 - **Description**: Halts the CPU clock. The computer enters the `HALTED` state and stops processing subsequent ticks until reset or power cycled.
 - **Flags Affected**: None.

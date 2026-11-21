@@ -1,14 +1,52 @@
 package games.jvrcruz.siliconcraft.compiler;
 
+import games.jvrcruz.siliconcraft.vm.VirtualCpu;
+
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 public class NCompiler {
+    public enum Type {
+        INT,
+        CHAR,
+        STRING,
+        BOOLEAN,
+        TABLE
+    }
+
+    public static class FieldInfo {
+        public final int offset;
+        public final Type type;
+
+        public FieldInfo(int offset, Type type) {
+            this.offset = offset;
+            this.type = type;
+        }
+    }
+
+    public static class TableInfo {
+        public final int baseAddr;
+        public int capacity;
+        public int nextOffset;
+        public final Map<String, FieldInfo> fields = new LinkedHashMap<>();
+
+        public TableInfo(int baseAddr, int capacity) {
+            this.baseAddr = baseAddr;
+            this.capacity = capacity;
+            this.nextOffset = 0;
+        }
+    }
+
     public record CompileResult(boolean success, List<String> assembly, List<String> errors, Set<String> requiredInstructions) {}
 
     public static CompileResult compile(List<String> sourceLines) {
         List<String> assembly = new ArrayList<>();
         List<String> errors = new ArrayList<>();
         Map<String, String> varMap = new LinkedHashMap<>();
+        Map<String, Type> typeMap = new LinkedHashMap<>();
+        Map<String, TableInfo> tableMap = new LinkedHashMap<>();
+        Set<String> constSet = new HashSet<>();
+
         int nextRamAddress = 0;
         int labelCounter = 1;
 
@@ -38,7 +76,16 @@ public class NCompiler {
                     continue;
                 }
 
-                // Check for inline assembly opcodes
+                // Check for rejected print_char
+                if (line.startsWith("print_char ") || line.startsWith("print_char(") ||
+                    line.startsWith("printChar ") || line.startsWith("printChar(") ||
+                    line.startsWith("println_char ") || line.startsWith("println_char(") ||
+                    line.startsWith("printlnChar ") || line.startsWith("printlnChar(")) {
+                    errors.add("Line " + lineNum + ": 'print_char' has been removed. Use 'println' instead.");
+                    continue;
+                }
+
+                // Inline assembly
                 String firstWord = getFirstWord(line).toUpperCase(Locale.ROOT);
                 if (InstructionValidator.ALL_INSTRUCTIONS_SET.contains(firstWord)) {
                     assembly.add(line);
@@ -57,19 +104,22 @@ public class NCompiler {
                     continue;
                 }
 
-                // Print statement
-                if (line.startsWith("print ") || line.startsWith("println ")) {
-                    String arg = line.substring(line.indexOf(' ') + 1).trim();
-                    if ((arg.startsWith("\"") && arg.endsWith("\"")) || (arg.startsWith("'") && arg.endsWith("'"))) {
-                        assembly.add("OUT " + arg);
-                    } else {
-                        String loc = resolveLocation(arg, varMap);
-                        assembly.add("OUT " + loc);
-                    }
+                // Print statement: ONLY println is supported
+                if (line.startsWith("println ") || line.startsWith("println(")) {
+                    String arg = extractParenthesesOrRest(line);
+                    compilePrintln(arg, labelCounter++, varMap, typeMap, tableMap, assembly);
                     continue;
                 }
 
-                // While loop: while <var> <op> <val> {
+                // Disallow standalone "print " (direct them to println)
+                if (line.startsWith("print ") || line.startsWith("print(")) {
+                    // For convenience and user-friendliness, route to println as the unified print instruction
+                    String arg = extractParenthesesOrRest(line);
+                    compilePrintln(arg, labelCounter++, varMap, typeMap, tableMap, assembly);
+                    continue;
+                }
+
+                // While loop: while <cond> {
                 if (line.startsWith("while ") && line.endsWith("{")) {
                     String condStr = line.substring(6, line.length() - 1).trim();
                     int loopId = labelCounter++;
@@ -77,43 +127,70 @@ public class NCompiler {
                     String endLabel = "_while_end_" + loopId;
 
                     assembly.add(startLabel + ":");
-                    compileCondition(condStr, endLabel, false, varMap, assembly);
+                    compileCondition(condStr, endLabel, false, varMap, tableMap, assembly);
                     loopStack.push(new LoopContext(startLabel, endLabel, loopStack.size() + ifStack.size()));
                     continue;
                 }
 
-                // If statement: if <var> <op> <val> {
+                // If statement: if <cond> {
                 if (line.startsWith("if ") && line.endsWith("{")) {
                     String condStr = line.substring(3, line.length() - 1).trim();
                     int ifId = labelCounter++;
                     String endLabel = "_if_end_" + ifId;
 
-                    compileCondition(condStr, endLabel, false, varMap, assembly);
+                    compileCondition(condStr, endLabel, false, varMap, tableMap, assembly);
                     ifStack.push(new IfContext(endLabel, loopStack.size() + ifStack.size()));
                     continue;
                 }
 
-                // Increment: x++ or ++x
+                // Increment: x++
                 if (line.endsWith("++")) {
                     String var = line.substring(0, line.length() - 2).trim();
-                    String loc = resolveLocation(var, varMap);
+                    if (constSet.contains(var.toLowerCase(Locale.ROOT))) {
+                        errors.add("Line " + lineNum + ": Cannot modify constant '" + var + "'");
+                        continue;
+                    }
+                    String loc = resolveLocation(var, varMap, tableMap, assembly);
                     assembly.add("INC " + loc);
                     continue;
                 }
 
-                // Decrement: x-- or --x
+                // Decrement: x--
                 if (line.endsWith("--")) {
                     String var = line.substring(0, line.length() - 2).trim();
-                    String loc = resolveLocation(var, varMap);
+                    if (constSet.contains(var.toLowerCase(Locale.ROOT))) {
+                        errors.add("Line " + lineNum + ": Cannot modify constant '" + var + "'");
+                        continue;
+                    }
+                    String loc = resolveLocation(var, varMap, tableMap, assembly);
                     assembly.add("DEC " + loc);
                     continue;
                 }
 
-                // Assignment: [var/let] <name> = <expr>
-                if (line.startsWith("var ") || line.startsWith("let ")) {
-                    line = line.substring(4).trim();
+                // Check for rejected type declarations: int, char, boolean, etc.
+                if (line.startsWith("int ") || line.startsWith("char ") || line.startsWith("char[] ") ||
+                    line.startsWith("boolean ") || line.startsWith("string ") || line.startsWith("float ")) {
+                    String typeName = getFirstWord(line);
+                    errors.add("Line " + lineNum + ": Explicit type declaration '" + typeName + "' is not allowed. Use 'var' or 'const' instead.");
+                    continue;
                 }
 
+                // Declaration with 'var' or 'const' (or 'let' as alias for var)
+                boolean isConst = false;
+                boolean isDecl = false;
+                if (line.startsWith("const ")) {
+                    line = line.substring(6).trim();
+                    isConst = true;
+                    isDecl = true;
+                } else if (line.startsWith("var ")) {
+                    line = line.substring(4).trim();
+                    isDecl = true;
+                } else if (line.startsWith("let ")) {
+                    line = line.substring(4).trim();
+                    isDecl = true;
+                }
+
+                // Assignment: target = expr or target += expr or target -= expr
                 if (line.contains("=")) {
                     int eqIndex = line.indexOf('=');
                     String target = line.substring(0, eqIndex).trim();
@@ -126,17 +203,85 @@ public class NCompiler {
                         target = target.substring(0, target.length() - 1).trim();
                     }
 
-                    if (!varMap.containsKey(target.toLowerCase(Locale.ROOT)) && !isRegister(target)) {
-                        varMap.put(target.toLowerCase(Locale.ROOT), "[" + nextRamAddress++ + "]");
+                    String lowerTarget = target.toLowerCase(Locale.ROOT);
+
+                    // Check constant immutability
+                    if (!isDecl && constSet.contains(lowerTarget)) {
+                        errors.add("Line " + lineNum + ": Cannot assign to constant '" + target + "'");
+                        continue;
                     }
-                    String targetLoc = resolveLocation(target, varMap);
+
+                    // Lua table declaration: var t = { ... }
+                    if (isDecl && expr.startsWith("{") && expr.endsWith("}")) {
+                        nextRamAddress = compileTableDeclaration(lowerTarget, expr, nextRamAddress, varMap, typeMap, tableMap, assembly);
+                        if (isConst) constSet.add(lowerTarget);
+                        continue;
+                    }
+
+                    // String literal declaration: var s = "..."
+                    if (isDecl && expr.startsWith("\"") && expr.endsWith("\"")) {
+                        nextRamAddress = allocateStringLiteral(lowerTarget, expr, nextRamAddress, varMap, typeMap, assembly);
+                        if (isConst) constSet.add(lowerTarget);
+                        continue;
+                    }
+
+                    // Char literal declaration: var c = 'x'
+                    if (isDecl && expr.startsWith("'") && expr.endsWith("'")) {
+                        int charVal = VirtualCpu.parseCharLiteral(expr.substring(1, expr.length() - 1));
+                        int addr = nextRamAddress++;
+                        varMap.put(lowerTarget, "[" + addr + "]");
+                        typeMap.put(lowerTarget, Type.CHAR);
+                        assembly.add("MOV [" + addr + "], " + charVal);
+                        if (isConst) constSet.add(lowerTarget);
+                        continue;
+                    }
+
+                    // Boolean literal declaration: var b = true / false
+                    if (isDecl && (expr.equalsIgnoreCase("true") || expr.equalsIgnoreCase("false"))) {
+                        int boolVal = expr.equalsIgnoreCase("true") ? 1 : 0;
+                        int addr = nextRamAddress++;
+                        varMap.put(lowerTarget, "[" + addr + "]");
+                        typeMap.put(lowerTarget, Type.BOOLEAN);
+                        assembly.add("MOV [" + addr + "], " + boolVal);
+                        if (isConst) constSet.add(lowerTarget);
+                        continue;
+                    }
+
+                    // Table element write: tbl.field = expr or tbl["field"] = expr or tbl[i] = expr
+                    if (target.contains(".") || (target.contains("[") && target.endsWith("]"))) {
+                        compileTableOrArrayWrite(target, expr, varMap, typeMap, tableMap, assembly);
+                        continue;
+                    }
+
+                    // Regular variable allocation
+                    if (isDecl && isConst) {
+                        constSet.add(lowerTarget);
+                    }
+
+                    if (!varMap.containsKey(lowerTarget) && !isRegister(target)) {
+                        varMap.put(lowerTarget, "[" + nextRamAddress++ + "]");
+                        // Infer type from expr or default to INT
+                        typeMap.put(lowerTarget, inferType(expr, typeMap));
+                    }
+                    String targetLoc = resolveLocation(target, varMap, tableMap, assembly);
 
                     if (isPlusEq) {
-                        compileAdd(targetLoc, expr, varMap, assembly);
+                        compileAdd(targetLoc, expr, varMap, tableMap, assembly);
                     } else if (isMinusEq) {
-                        compileSub(targetLoc, expr, varMap, assembly);
+                        compileSub(targetLoc, expr, varMap, tableMap, assembly);
                     } else {
-                        compileAssignment(targetLoc, expr, varMap, assembly);
+                        compileAssignment(targetLoc, expr, varMap, tableMap, assembly);
+                    }
+                    continue;
+                }
+
+                // Uninitialized variable declaration: var x
+                if (isDecl) {
+                    String lowerTarget = line.trim().toLowerCase(Locale.ROOT);
+                    if (!varMap.containsKey(lowerTarget) && !isRegister(lowerTarget)) {
+                        varMap.put(lowerTarget, "[" + nextRamAddress++ + "]");
+                        typeMap.put(lowerTarget, Type.INT);
+                        assembly.add("MOV " + varMap.get(lowerTarget) + ", 0");
                     }
                     continue;
                 }
@@ -165,26 +310,303 @@ public class NCompiler {
         return (space == -1 ? line : line.substring(0, space)).trim();
     }
 
+    private static String extractParenthesesOrRest(String line) {
+        int openParen = line.indexOf('(');
+        if (openParen != -1 && line.endsWith(")")) {
+            return line.substring(openParen + 1, line.length() - 1).trim();
+        }
+        int space = line.indexOf(' ');
+        return (space != -1) ? line.substring(space + 1).trim() : "";
+    }
+
     private static boolean isRegister(String token) {
         String u = token.toUpperCase(Locale.ROOT);
         return u.equals("A") || u.equals("B") || u.equals("C") || u.equals("D");
     }
 
-    private static String resolveLocation(String token, Map<String, String> varMap) {
+    private static Type inferType(String expr, Map<String, Type> typeMap) {
+        expr = expr.trim();
+        if (expr.startsWith("\"") && expr.endsWith("\"")) return Type.STRING;
+        if (expr.startsWith("'") && expr.endsWith("'")) return Type.CHAR;
+        if (expr.equalsIgnoreCase("true") || expr.equalsIgnoreCase("false")) return Type.BOOLEAN;
+        if (expr.startsWith("{") && expr.endsWith("}")) return Type.TABLE;
+        return typeMap.getOrDefault(expr.toLowerCase(Locale.ROOT), Type.INT);
+    }
+
+    private static String resolveLocation(String token, Map<String, String> varMap, Map<String, TableInfo> tableMap, List<String> assembly) {
         token = token.trim();
         if (isRegister(token)) {
             return token.toUpperCase(Locale.ROOT);
         }
+
+        // Table dot access: tbl.field
+        if (token.contains(".")) {
+            String[] parts = token.split("\\.", 2);
+            String tblName = parts[0].trim().toLowerCase(Locale.ROOT);
+            String fieldName = parts[1].trim().toLowerCase(Locale.ROOT);
+            if (tableMap.containsKey(tblName)) {
+                TableInfo table = tableMap.get(tblName);
+                if (table.fields.containsKey(fieldName)) {
+                    FieldInfo f = table.fields.get(fieldName);
+                    return "[" + (table.baseAddr + f.offset) + "]";
+                }
+            }
+        }
+
+        // Table bracket access: tbl["field"] or tbl[0]
+        if (token.contains("[") && token.endsWith("]")) {
+            int openBracket = token.indexOf('[');
+            String tblName = token.substring(0, openBracket).trim().toLowerCase(Locale.ROOT);
+            String idxExpr = token.substring(openBracket + 1, token.length() - 1).trim();
+            if (tableMap.containsKey(tblName)) {
+                TableInfo table = tableMap.get(tblName);
+                // String key: tbl["name"]
+                if ((idxExpr.startsWith("\"") && idxExpr.endsWith("\"")) || (idxExpr.startsWith("'") && idxExpr.endsWith("'"))) {
+                    String key = idxExpr.substring(1, idxExpr.length() - 1).toLowerCase(Locale.ROOT);
+                    if (table.fields.containsKey(key)) {
+                        FieldInfo f = table.fields.get(key);
+                        return "[" + (table.baseAddr + f.offset) + "]";
+                    }
+                }
+                // Constant integer index: tbl[0]
+                try {
+                    int constIdx = Integer.parseInt(idxExpr);
+                    return "[" + (table.baseAddr + constIdx) + "]";
+                } catch (NumberFormatException ignored) {}
+
+                // Dynamic variable index: tbl[i]
+                if (assembly != null) {
+                    String idxLoc = resolveLocation(idxExpr, varMap, tableMap, null);
+                    assembly.add("MOV B, " + table.baseAddr);
+                    assembly.add("ADD B, " + idxLoc);
+                    assembly.add("MOV A, [B]");
+                    return "A";
+                }
+            }
+        }
+
         String lower = token.toLowerCase(Locale.ROOT);
         if (varMap.containsKey(lower)) {
             return varMap.get(lower);
         }
-        // Literal number or brackets
+
+        // Char literal: 'x'
+        if (token.startsWith("'") && token.endsWith("'") && token.length() >= 2) {
+            int charVal = VirtualCpu.parseCharLiteral(token.substring(1, token.length() - 1));
+            return String.valueOf(charVal);
+        }
+
+        // Boolean literal: true / false
+        if (token.equalsIgnoreCase("true")) return "1";
+        if (token.equalsIgnoreCase("false")) return "0";
+
         return token;
     }
 
-    private static void compileAssignment(String targetLoc, String expr, Map<String, String> varMap, List<String> assembly) {
+    // Compile Lua-style Table: var t = { 10, "apple", x = 5, [2] = "ok" }
+    private static int compileTableDeclaration(String name, String expr, int nextRam,
+                                               Map<String, String> varMap, Map<String, Type> typeMap,
+                                               Map<String, TableInfo> tableMap, List<String> assembly) {
+        String inner = expr.substring(1, expr.length() - 1).trim();
+        List<String> items = parseTableElements(inner);
+
+        int baseAddr = nextRam;
+        int capacity = Math.max(16, items.size() + 4);
+        nextRam += capacity;
+
+        TableInfo table = new TableInfo(baseAddr, capacity);
+        assembly.add("; Initialize Lua-style table '" + name + "' at RAM [" + baseAddr + "] (capacity: " + capacity + ")");
+
+        int autoIndex = 0;
+        for (String item : items) {
+            item = item.trim();
+            if (item.isEmpty()) continue;
+
+            String key;
+            String valStr;
+
+            int eqIdx = item.indexOf('=');
+            int colonIdx = item.indexOf(':');
+
+            if (eqIdx != -1) {
+                key = item.substring(0, eqIdx).trim();
+                valStr = item.substring(eqIdx + 1).trim();
+            } else if (colonIdx != -1) {
+                key = item.substring(0, colonIdx).trim();
+                valStr = item.substring(colonIdx + 1).trim();
+            } else {
+                // Positional array element
+                key = String.valueOf(autoIndex++);
+                valStr = item;
+            }
+
+            // Strip brackets from key: ["name"] -> name
+            if (key.startsWith("[") && key.endsWith("]")) {
+                key = key.substring(1, key.length() - 1).trim();
+            }
+            if ((key.startsWith("\"") && key.endsWith("\"")) || (key.startsWith("'") && key.endsWith("'"))) {
+                key = key.substring(1, key.length() - 1).trim();
+            }
+
+            int offset;
+            try {
+                offset = Integer.parseInt(key);
+            } catch (NumberFormatException e) {
+                offset = table.nextOffset++;
+            }
+
+            // Store value into table slot
+            int slotAddr = baseAddr + offset;
+            Type fieldType = Type.INT;
+
+            if (valStr.startsWith("\"") && valStr.endsWith("\"")) {
+                // String literal stored as null-terminated UTF-8
+                String content = unescapeString(valStr.substring(1, valStr.length() - 1));
+                byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+                int strAddr = nextRam;
+                nextRam += bytes.length + 1;
+
+                for (int i = 0; i < bytes.length; i++) {
+                    assembly.add("MOV [" + (strAddr + i) + "], " + (bytes[i] & 0xFF));
+                }
+                assembly.add("MOV [" + (strAddr + bytes.length) + "], 0");
+
+                assembly.add("MOV [" + slotAddr + "], " + strAddr);
+                fieldType = Type.STRING;
+            } else if (valStr.startsWith("'") && valStr.endsWith("'")) {
+                int charVal = VirtualCpu.parseCharLiteral(valStr.substring(1, valStr.length() - 1));
+                assembly.add("MOV [" + slotAddr + "], " + charVal);
+                fieldType = Type.CHAR;
+            } else if (valStr.equalsIgnoreCase("true") || valStr.equalsIgnoreCase("false")) {
+                int boolVal = valStr.equalsIgnoreCase("true") ? 1 : 0;
+                assembly.add("MOV [" + slotAddr + "], " + boolVal);
+                fieldType = Type.BOOLEAN;
+            } else {
+                try {
+                    int num = Integer.parseInt(valStr);
+                    assembly.add("MOV [" + slotAddr + "], " + num);
+                    fieldType = Type.INT;
+                } catch (NumberFormatException e) {
+                    // Variable reference
+                    String loc = resolveLocation(valStr, varMap, tableMap, assembly);
+                    assembly.add("MOV A, " + loc);
+                    assembly.add("MOV [" + slotAddr + "], A");
+                    fieldType = typeMap.getOrDefault(valStr.toLowerCase(Locale.ROOT), Type.INT);
+                }
+            }
+
+            table.fields.put(key.toLowerCase(Locale.ROOT), new FieldInfo(offset, fieldType));
+        }
+
+        tableMap.put(name.toLowerCase(Locale.ROOT), table);
+        typeMap.put(name.toLowerCase(Locale.ROOT), Type.TABLE);
+        varMap.put(name.toLowerCase(Locale.ROOT), String.valueOf(baseAddr));
+        return nextRam;
+    }
+
+    private static List<String> parseTableElements(String s) {
+        List<String> items = new ArrayList<>();
+        StringBuilder sb = new StringBuilder();
+        boolean inQuotes = false;
+        char quoteChar = 0;
+        int depth = 0;
+
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if ((ch == '\"' || ch == '\'') && (i == 0 || s.charAt(i - 1) != '\\')) {
+                if (inQuotes && ch == quoteChar) {
+                    inQuotes = false;
+                } else if (!inQuotes) {
+                    inQuotes = true;
+                    quoteChar = ch;
+                }
+            } else if (!inQuotes) {
+                if (ch == '{' || ch == '[') depth++;
+                else if (ch == '}' || ch == ']') depth--;
+                else if (ch == ',' && depth == 0) {
+                    items.add(sb.toString().trim());
+                    sb.setLength(0);
+                    continue;
+                }
+            }
+            sb.append(ch);
+        }
+        if (sb.length() > 0 && !sb.toString().trim().isEmpty()) {
+            items.add(sb.toString().trim());
+        }
+        return items;
+    }
+
+    private static int allocateStringLiteral(String name, String expr, int nextRam, Map<String, String> varMap,
+                                             Map<String, Type> typeMap, List<String> assembly) {
+        String content = unescapeString(expr.substring(1, expr.length() - 1));
+        byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+        int baseAddr = nextRam;
+        int allocSize = bytes.length + 1;
+
+        assembly.add("; Initialize string '" + name + "' at RAM [" + baseAddr + "]");
+        for (int i = 0; i < bytes.length; i++) {
+            assembly.add("MOV [" + (baseAddr + i) + "], " + (bytes[i] & 0xFF));
+        }
+        assembly.add("MOV [" + (baseAddr + bytes.length) + "], 0");
+
+        nextRam += allocSize;
+        String lowerName = name.toLowerCase(Locale.ROOT);
+        varMap.put(lowerName, String.valueOf(baseAddr));
+        typeMap.put(lowerName, Type.STRING);
+        return nextRam;
+    }
+
+    private static void compileTableOrArrayWrite(String target, String expr, Map<String, String> varMap,
+                                                 Map<String, Type> typeMap, Map<String, TableInfo> tableMap, List<String> assembly) {
+        target = target.trim();
+        String tblName;
+        String key;
+
+        if (target.contains(".")) {
+            String[] parts = target.split("\\.", 2);
+            tblName = parts[0].trim().toLowerCase(Locale.ROOT);
+            key = parts[1].trim().toLowerCase(Locale.ROOT);
+        } else {
+            int open = target.indexOf('[');
+            tblName = target.substring(0, open).trim().toLowerCase(Locale.ROOT);
+            key = target.substring(open + 1, target.length() - 1).trim();
+            if ((key.startsWith("\"") && key.endsWith("\"")) || (key.startsWith("'") && key.endsWith("'"))) {
+                key = key.substring(1, key.length() - 1).trim().toLowerCase(Locale.ROOT);
+            }
+        }
+
+        if (!tableMap.containsKey(tblName)) return;
+        TableInfo table = tableMap.get(tblName);
+
+        // Constant integer offset or named field
+        int offset = -1;
+        try {
+            offset = Integer.parseInt(key);
+        } catch (NumberFormatException ignored) {}
+
+        if (offset == -1 && table.fields.containsKey(key)) {
+            offset = table.fields.get(key).offset;
+        }
+
+        if (offset != -1) {
+            int targetAddr = table.baseAddr + offset;
+            compileAssignment("[" + targetAddr + "]", expr, varMap, tableMap, assembly);
+        } else {
+            // Dynamic variable index: tbl[i] = expr
+            String idxLoc = resolveLocation(key, varMap, tableMap, assembly);
+            assembly.add("MOV B, " + table.baseAddr);
+            assembly.add("ADD B, " + idxLoc);
+            String srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
+            assembly.add("MOV A, " + srcLoc);
+            assembly.add("MOV [B], A");
+        }
+    }
+
+    private static void compileAssignment(String targetLoc, String expr, Map<String, String> varMap,
+                                          Map<String, TableInfo> tableMap, List<String> assembly) {
         expr = expr.trim();
+
         // Check for binary + or -
         int plusIdx = expr.indexOf('+');
         int minusIdx = expr.indexOf('-');
@@ -192,15 +614,14 @@ public class NCompiler {
         if (plusIdx > 0 && !expr.startsWith("+")) {
             String left = expr.substring(0, plusIdx).trim();
             String right = expr.substring(plusIdx + 1).trim();
-            compileBinaryOp(targetLoc, left, right, "ADD", varMap, assembly);
+            compileBinaryOp(targetLoc, left, right, "ADD", varMap, tableMap, assembly);
         } else if (minusIdx > 0 && !expr.startsWith("-")) {
             String left = expr.substring(0, minusIdx).trim();
             String right = expr.substring(minusIdx + 1).trim();
-            compileBinaryOp(targetLoc, left, right, "SUB", varMap, assembly);
+            compileBinaryOp(targetLoc, left, right, "SUB", varMap, tableMap, assembly);
         } else {
-            String srcLoc = resolveLocation(expr, varMap);
+            String srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
             if (targetLoc.startsWith("[") && srcLoc.startsWith("[")) {
-                // Cannot directly MOV [x], [y], must use temporary register A
                 assembly.add("MOV A, " + srcLoc);
                 assembly.add("MOV " + targetLoc + ", A");
             } else {
@@ -209,9 +630,10 @@ public class NCompiler {
         }
     }
 
-    private static void compileBinaryOp(String targetLoc, String left, String right, String op, Map<String, String> varMap, List<String> assembly) {
-        String leftLoc = resolveLocation(left, varMap);
-        String rightLoc = resolveLocation(right, varMap);
+    private static void compileBinaryOp(String targetLoc, String left, String right, String op,
+                                        Map<String, String> varMap, Map<String, TableInfo> tableMap, List<String> assembly) {
+        String leftLoc = resolveLocation(left, varMap, tableMap, assembly);
+        String rightLoc = resolveLocation(right, varMap, tableMap, assembly);
 
         if (targetLoc.equalsIgnoreCase(leftLoc)) {
             if (targetLoc.startsWith("[") && rightLoc.startsWith("[")) {
@@ -221,7 +643,6 @@ public class NCompiler {
                 assembly.add(op + " " + targetLoc + ", " + rightLoc);
             }
         } else {
-            // Need to load left into target first
             if (targetLoc.startsWith("[") && leftLoc.startsWith("[")) {
                 assembly.add("MOV A, " + leftLoc);
                 assembly.add("MOV " + targetLoc + ", A");
@@ -237,8 +658,9 @@ public class NCompiler {
         }
     }
 
-    private static void compileAdd(String targetLoc, String expr, Map<String, String> varMap, List<String> assembly) {
-        String srcLoc = resolveLocation(expr, varMap);
+    private static void compileAdd(String targetLoc, String expr, Map<String, String> varMap,
+                                   Map<String, TableInfo> tableMap, List<String> assembly) {
+        String srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
         if (targetLoc.startsWith("[") && srcLoc.startsWith("[")) {
             assembly.add("MOV A, " + srcLoc);
             assembly.add("ADD " + targetLoc + ", A");
@@ -247,8 +669,9 @@ public class NCompiler {
         }
     }
 
-    private static void compileSub(String targetLoc, String expr, Map<String, String> varMap, List<String> assembly) {
-        String srcLoc = resolveLocation(expr, varMap);
+    private static void compileSub(String targetLoc, String expr, Map<String, String> varMap,
+                                   Map<String, TableInfo> tableMap, List<String> assembly) {
+        String srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
         if (targetLoc.startsWith("[") && srcLoc.startsWith("[")) {
             assembly.add("MOV A, " + srcLoc);
             assembly.add("SUB " + targetLoc + ", A");
@@ -257,8 +680,184 @@ public class NCompiler {
         }
     }
 
-    private static void compileCondition(String cond, String branchLabel, boolean jumpOnTrue, Map<String, String> varMap, List<String> assembly) {
-        // Supported operators: ==, !=, >=, <=, >, <
+    // Unified println converting all types to string / char array output
+    private static void compilePrintln(String arg, int id, Map<String, String> varMap,
+                                       Map<String, Type> typeMap, Map<String, TableInfo> tableMap, List<String> assembly) {
+        arg = arg.trim();
+
+        // 1. String literal: println "hello"
+        if (arg.startsWith("\"") && arg.endsWith("\"")) {
+            assembly.add("OUT " + arg);
+            return;
+        }
+
+        // 2. Char literal: println 'A'
+        if (arg.startsWith("'") && arg.endsWith("'")) {
+            assembly.add("OUTC " + arg);
+            assembly.add("OUTC 10");
+            return;
+        }
+
+        // 3. Boolean literal: println true / false
+        if (arg.equalsIgnoreCase("true")) {
+            assembly.add("OUT \"true\"");
+            return;
+        }
+        if (arg.equalsIgnoreCase("false")) {
+            assembly.add("OUT \"false\"");
+            return;
+        }
+
+        // 4. Table field access: println user.name or println user["age"]
+        if (arg.contains(".") || (arg.contains("[") && arg.endsWith("]"))) {
+            String tblName;
+            String fieldKey;
+
+            if (arg.contains(".")) {
+                String[] parts = arg.split("\\.", 2);
+                tblName = parts[0].trim().toLowerCase(Locale.ROOT);
+                fieldKey = parts[1].trim().toLowerCase(Locale.ROOT);
+            } else {
+                int open = arg.indexOf('[');
+                tblName = arg.substring(0, open).trim().toLowerCase(Locale.ROOT);
+                fieldKey = arg.substring(open + 1, arg.length() - 1).trim();
+                if ((fieldKey.startsWith("\"") && fieldKey.endsWith("\"")) || (fieldKey.startsWith("'") && fieldKey.endsWith("'"))) {
+                    fieldKey = fieldKey.substring(1, fieldKey.length() - 1).trim().toLowerCase(Locale.ROOT);
+                }
+            }
+
+            if (tableMap.containsKey(tblName)) {
+                TableInfo table = tableMap.get(tblName);
+                if (table.fields.containsKey(fieldKey)) {
+                    FieldInfo f = table.fields.get(fieldKey);
+                    int addr = table.baseAddr + f.offset;
+
+                    if (f.type == Type.STRING) {
+                        emitPrintStringFromPointer("[" + addr + "]", id, assembly);
+                        return;
+                    } else if (f.type == Type.BOOLEAN) {
+                        emitPrintBoolean("[" + addr + "]", id, assembly);
+                        return;
+                    } else if (f.type == Type.CHAR) {
+                        assembly.add("OUTC [" + addr + "]");
+                        assembly.add("OUTC 10");
+                        return;
+                    } else {
+                        assembly.add("OUT [" + addr + "]");
+                        return;
+                    }
+                } else {
+                    // Constant integer offset or variable offset
+                    try {
+                        int idx = Integer.parseInt(fieldKey);
+                        assembly.add("OUT [" + (table.baseAddr + idx) + "]");
+                        return;
+                    } catch (NumberFormatException ignored) {
+                        // Dynamic index: tbl[i]
+                        String idxLoc = resolveLocation(fieldKey, varMap, tableMap, assembly);
+                        assembly.add("MOV B, " + table.baseAddr);
+                        assembly.add("ADD B, " + idxLoc);
+                        assembly.add("OUT [B]");
+                        return;
+                    }
+                }
+            }
+        }
+
+        // 5. Variable print by Type
+        String lowerArg = arg.toLowerCase(Locale.ROOT);
+        Type t = typeMap.getOrDefault(lowerArg, Type.INT);
+
+        if (t == Type.STRING) {
+            String baseAddr = varMap.get(lowerArg);
+            emitPrintStringDirect(baseAddr, id, assembly);
+        } else if (t == Type.BOOLEAN) {
+            String loc = resolveLocation(arg, varMap, tableMap, assembly);
+            emitPrintBoolean(loc, id, assembly);
+        } else if (t == Type.CHAR) {
+            String loc = resolveLocation(arg, varMap, tableMap, assembly);
+            assembly.add("OUTC " + loc);
+            assembly.add("OUTC 10");
+        } else {
+            // Integer, register, or general value
+            String loc = resolveLocation(arg, varMap, tableMap, assembly);
+            assembly.add("OUT " + loc);
+        }
+    }
+
+    private static void emitPrintStringDirect(String baseAddr, int id, List<String> assembly) {
+        String loopLabel = "_print_str_" + id;
+        String endLabel = "_print_str_end_" + id;
+
+        assembly.add("MOV B, " + baseAddr);
+        assembly.add(loopLabel + ":");
+        assembly.add("MOV A, [B]");
+        assembly.add("CMP A, 0");
+        assembly.add("JZ " + endLabel);
+        assembly.add("OUTC A");
+        assembly.add("INC B");
+        assembly.add("JMP " + loopLabel);
+        assembly.add(endLabel + ":");
+        assembly.add("OUTC 10");
+    }
+
+    private static void emitPrintStringFromPointer(String ptrLoc, int id, List<String> assembly) {
+        String loopLabel = "_print_str_ptr_" + id;
+        String endLabel = "_print_str_ptr_end_" + id;
+
+        assembly.add("MOV B, " + ptrLoc);
+        assembly.add(loopLabel + ":");
+        assembly.add("MOV A, [B]");
+        assembly.add("CMP A, 0");
+        assembly.add("JZ " + endLabel);
+        assembly.add("OUTC A");
+        assembly.add("INC B");
+        assembly.add("JMP " + loopLabel);
+        assembly.add(endLabel + ":");
+        assembly.add("OUTC 10");
+    }
+
+    private static void emitPrintBoolean(String loc, int id, List<String> assembly) {
+        String falseLabel = "_print_bool_false_" + id;
+        String endLabel = "_print_bool_end_" + id;
+
+        assembly.add("MOV A, " + loc);
+        assembly.add("CMP A, 0");
+        assembly.add("JZ " + falseLabel);
+        assembly.add("OUT \"true\"");
+        assembly.add("JMP " + endLabel);
+        assembly.add(falseLabel + ":");
+        assembly.add("OUT \"false\"");
+        assembly.add(endLabel + ":");
+    }
+
+    private static void compileCondition(String cond, String branchLabel, boolean jumpOnTrue,
+                                         Map<String, String> varMap, Map<String, TableInfo> tableMap, List<String> assembly) {
+        cond = cond.trim();
+
+        // Boolean literal condition: while true { ... }
+        if (cond.equalsIgnoreCase("true")) {
+            if (jumpOnTrue) {
+                assembly.add("JMP " + branchLabel);
+            }
+            return;
+        }
+        if (cond.equalsIgnoreCase("false")) {
+            if (!jumpOnTrue) {
+                assembly.add("JMP " + branchLabel);
+            }
+            return;
+        }
+
+        // Negated condition: if !flag { ... }
+        if (cond.startsWith("!")) {
+            String inner = cond.substring(1).trim();
+            String loc = resolveLocation(inner, varMap, tableMap, assembly);
+            assembly.add("CMP " + loc + ", 0");
+            assembly.add(jumpOnTrue ? ("JZ " + branchLabel) : ("JNZ " + branchLabel));
+            return;
+        }
+
         String op = null;
         if (cond.contains("==")) op = "==";
         else if (cond.contains("!=")) op = "!=";
@@ -268,31 +867,56 @@ public class NCompiler {
         else if (cond.contains("<")) op = "<";
 
         if (op == null) {
-            // Truthy check: if var != 0
-            String loc = resolveLocation(cond, varMap);
+            // Truthy check: if flag != 0
+            String loc = resolveLocation(cond, varMap, tableMap, assembly);
             assembly.add("CMP " + loc + ", 0");
             assembly.add(jumpOnTrue ? ("JNZ " + branchLabel) : ("JZ " + branchLabel));
             return;
         }
 
         String[] parts = cond.split(op, 2);
-        String left = resolveLocation(parts[0].trim(), varMap);
-        String right = resolveLocation(parts[1].trim(), varMap);
+        String leftRaw = parts[0].trim();
+        String rightRaw = parts[1].trim();
 
-        assembly.add("CMP " + left + ", " + right);
+        String leftLoc = resolveLocation(leftRaw, varMap, tableMap, assembly);
+        String rightLoc = resolveLocation(rightRaw, varMap, tableMap, assembly);
 
-        // Map condition to JZ / JNZ
+        if (leftLoc.startsWith("[") && rightLoc.startsWith("[")) {
+            assembly.add("MOV A, " + leftLoc);
+            leftLoc = "A";
+        }
+
+        assembly.add("CMP " + leftLoc + ", " + rightLoc);
+
         switch (op) {
             case "==" -> assembly.add(jumpOnTrue ? ("JZ " + branchLabel) : ("JNZ " + branchLabel));
             case "!=" -> assembly.add(jumpOnTrue ? ("JNZ " + branchLabel) : ("JZ " + branchLabel));
-            case ">", ">=" -> {
-                // If left <= 0, jump
-                assembly.add(jumpOnTrue ? ("JNZ " + branchLabel) : ("JZ " + branchLabel));
-            }
-            case "<", "<=" -> {
-                assembly.add(jumpOnTrue ? ("JZ " + branchLabel) : ("JNZ " + branchLabel));
+            case ">", ">=" -> assembly.add(jumpOnTrue ? ("JNZ " + branchLabel) : ("JZ " + branchLabel));
+            case "<", "<=" -> assembly.add(jumpOnTrue ? ("JZ " + branchLabel) : ("JNZ " + branchLabel));
+        }
+    }
+
+    public static String unescapeString(String s) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (ch == '\\' && i + 1 < s.length()) {
+                char next = s.charAt(i + 1);
+                switch (next) {
+                    case 'n' -> { sb.append('\n'); i++; }
+                    case 't' -> { sb.append('\t'); i++; }
+                    case 'r' -> { sb.append('\r'); i++; }
+                    case '0' -> { sb.append('\0'); i++; }
+                    case '\\' -> { sb.append('\\'); i++; }
+                    case '\'' -> { sb.append('\''); i++; }
+                    case '\"' -> { sb.append('\"'); i++; }
+                    default -> sb.append(ch);
+                }
+            } else {
+                sb.append(ch);
             }
         }
+        return sb.toString();
     }
 
     private record LoopContext(String startLabel, String endLabel, int blockDepth) {}

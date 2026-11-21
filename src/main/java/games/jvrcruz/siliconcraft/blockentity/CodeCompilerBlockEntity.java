@@ -44,6 +44,11 @@ public class CodeCompilerBlockEntity extends BlockEntity implements MenuProvider
         public boolean isItemValid(int slot, ItemStack stack) {
             return stack.is(ModItems.ARCHITECTURE_WRITEUP.get());
         }
+
+        @Override
+        public void setSize(int size) {
+            super.setSize(Math.max(size, 1));
+        }
     };
 
     public CodeCompilerBlockEntity(BlockPos pos, BlockState blockState) {

@@ -22,7 +22,7 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
             ResourceLocation.fromNamespaceAndPath(Siliconcraft.MODID, "textures/gui/architecture_writer.png");
 
     private final List<String> allInstructions = ChipForgeBlockEntity.ALL_INSTRUCTIONS;
-    private final List<String> selectedInstructions = new ArrayList<>(List.of("NOP", "MOV", "HLT", "OUT"));
+    private final List<String> selectedInstructions = new ArrayList<>(List.of("NOP", "MOV", "HLT", "OUT", "OUTC"));
 
     private EditBox nameInput;
 

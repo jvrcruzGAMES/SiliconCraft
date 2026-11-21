@@ -4,7 +4,7 @@ import java.util.*;
 
 public class InstructionValidator {
     public static final List<String> ALL_INSTRUCTIONS = List.of(
-            "NOP", "MOV", "ADD", "SUB", "INC", "DEC", "CMP", "JMP", "JZ", "JNZ", "OUT", "HLT"
+            "NOP", "MOV", "ADD", "SUB", "INC", "DEC", "CMP", "JMP", "JZ", "JNZ", "OUT", "OUTC", "HLT"
     );
     public static final Set<String> ALL_INSTRUCTIONS_SET = new HashSet<>(ALL_INSTRUCTIONS);
 

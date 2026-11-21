@@ -1,5 +1,11 @@
 package games.jvrcruz.siliconcraft.vm;
 
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 public class VirtualCpu {
@@ -26,6 +32,8 @@ public class VirtualCpu {
     private final List<String> program = new ArrayList<>();
     private final Map<String, Integer> labels = new HashMap<>();
     private final List<String> terminalOutput = new ArrayList<>();
+    private final StringBuilder lineBuffer = new StringBuilder();
+    private final ByteArrayOutputStream utf8ByteBuf = new ByteArrayOutputStream();
     private int[] ram = new int[256];
 
     public VirtualCpu() {}
@@ -67,6 +75,8 @@ public class VirtualCpu {
         this.errorMessage = "";
         Arrays.fill(ram, 0);
         this.terminalOutput.clear();
+        this.lineBuffer.setLength(0);
+        this.utf8ByteBuf.reset();
         if (state != State.OFF) {
             this.state = State.RUNNING;
         }
@@ -82,6 +92,7 @@ public class VirtualCpu {
     }
 
     public void powerOff() {
+        flushLineBuffer();
         this.state = State.OFF;
         this.terminalOutput.add("[POWER OFF]");
     }
@@ -113,38 +124,36 @@ public class VirtualCpu {
     }
 
     private void executeNextInstruction() {
-        if (pc >= program.size()) {
+        if (pc < 0 || pc >= program.size()) {
             state = State.HALTED;
-            terminalOutput.add("[PROGRAM REACHED END]");
+            flushLineBuffer();
+            terminalOutput.add("[PROGRAM TERMINATED: END OF FILE]");
             return;
         }
 
-        String rawLine = program.get(pc).trim();
-        pc++;
+        String rawLine = program.get(pc++);
         cycles++;
 
-        // Skip comments or empty lines or label declarations
-        if (rawLine.isEmpty() || rawLine.startsWith(";") || rawLine.startsWith("//") || rawLine.startsWith("#") || rawLine.endsWith(":")) {
-            return;
+        // Strip comments
+        int commentIndex = rawLine.indexOf(';');
+        if (commentIndex == -1) commentIndex = rawLine.indexOf("//");
+        if (commentIndex == -1) commentIndex = rawLine.indexOf('#');
+        String line = (commentIndex != -1 ? rawLine.substring(0, commentIndex) : rawLine).trim();
+
+        if (line.isEmpty() || line.endsWith(":")) {
+            return; // Skip empty lines and labels
         }
 
-        // Parse opcode and arguments
-        int firstSpace = rawLine.indexOf(' ');
-        String opcode;
-        String args = "";
-        if (firstSpace == -1) {
-            opcode = rawLine.toUpperCase(Locale.ROOT);
-        } else {
-            opcode = rawLine.substring(0, firstSpace).toUpperCase(Locale.ROOT).trim();
-            args = rawLine.substring(firstSpace + 1).trim();
-        }
+        int spaceIndex = line.indexOf(' ');
+        String opcode = (spaceIndex != -1 ? line.substring(0, spaceIndex) : line).toUpperCase(Locale.ROOT).trim();
+        String args = spaceIndex != -1 ? line.substring(spaceIndex + 1).trim() : "";
 
-        // Verify architecture hardware support!
+        // Check if instruction is supported by this CPU's synthesized hardware
         if (!supportedInstructions.contains(opcode)) {
             state = State.ERROR;
-            errorMessage = "Instruction '" + opcode + "' not supported by this architecture!";
-            terminalOutput.add("[CPU EXCEPTION] Illegal Opcode: " + opcode);
-            terminalOutput.add("Error: " + errorMessage);
+            errorMessage = "Illegal instruction: " + opcode;
+            flushLineBuffer();
+            terminalOutput.add("[CPU EXCEPTION] " + errorMessage);
             return;
         }
 
@@ -161,19 +170,23 @@ public class VirtualCpu {
                 case "JZ" -> execJmp(args, flagZ);
                 case "JNZ" -> execJmp(args, !flagZ);
                 case "OUT" -> execOut(args);
+                case "OUTC" -> execOutc(args);
                 case "HLT" -> {
                     state = State.HALTED;
+                    flushLineBuffer();
                     terminalOutput.add("[EXECUTION HALTED]");
                 }
                 default -> {
                     state = State.ERROR;
                     errorMessage = "Unknown opcode: " + opcode;
+                    flushLineBuffer();
                     terminalOutput.add("[CPU ERROR] " + errorMessage);
                 }
             }
         } catch (Exception e) {
             state = State.ERROR;
             errorMessage = e.getMessage() != null ? e.getMessage() : "Execution exception";
+            flushLineBuffer();
             terminalOutput.add("[CPU EXCEPTION] " + errorMessage);
         }
 
@@ -257,11 +270,128 @@ public class VirtualCpu {
     private void execOut(String arg) {
         arg = arg.trim();
         if ((arg.startsWith("\"") && arg.endsWith("\"")) || (arg.startsWith("'") && arg.endsWith("'"))) {
-            terminalOutput.add(arg.substring(1, arg.length() - 1));
+            flushLineBuffer();
+            terminalOutput.add(stripQuotes(arg));
         } else {
             int val = resolveValue(arg);
-            terminalOutput.add(arg.toUpperCase(Locale.ROOT) + " = " + val);
+            flushLineBuffer();
+            terminalOutput.add(String.valueOf(val));
         }
+    }
+
+    private void execOutc(String arg) {
+        int val = resolveValue(arg);
+        emitCharByte(val);
+    }
+
+    private void emitCharByte(int val) {
+        if (val == 10) { // '\n'
+            flushUtf8();
+            flushLineBuffer();
+            return;
+        }
+        if (val == 13) { // '\r'
+            return;
+        }
+
+        if (val >= 0 && val <= 127) {
+            // ASCII Character
+            flushUtf8();
+            lineBuffer.append((char) val);
+        } else if (val > 255) {
+            // Full Unicode Code Point
+            flushUtf8();
+            if (Character.isValidCodePoint(val)) {
+                lineBuffer.appendCodePoint(val);
+            } else {
+                lineBuffer.append('?');
+            }
+        } else if (val > 127) {
+            // UTF-8 stream byte (128..255)
+            utf8ByteBuf.write((byte) val);
+            byte[] bytes = utf8ByteBuf.toByteArray();
+            try {
+                CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder();
+                CharBuffer charBuf = decoder.decode(ByteBuffer.wrap(bytes));
+                lineBuffer.append(charBuf.toString());
+                utf8ByteBuf.reset();
+            } catch (CharacterCodingException e) {
+                // Continuation bytes needed; flush if buffer exceeds 4 bytes
+                if (utf8ByteBuf.size() >= 4) {
+                    lineBuffer.append('?');
+                    utf8ByteBuf.reset();
+                }
+            }
+        }
+
+        if (lineBuffer.length() >= 42) {
+            flushLineBuffer();
+        }
+    }
+
+    private void flushUtf8() {
+        if (utf8ByteBuf.size() > 0) {
+            try {
+                String decoded = StandardCharsets.UTF_8.newDecoder()
+                        .decode(ByteBuffer.wrap(utf8ByteBuf.toByteArray())).toString();
+                lineBuffer.append(decoded);
+            } catch (Exception e) {
+                lineBuffer.append('?');
+            }
+            utf8ByteBuf.reset();
+        }
+    }
+
+    private void flushLineBuffer() {
+        flushUtf8();
+        if (lineBuffer.length() > 0) {
+            terminalOutput.add(lineBuffer.toString());
+            lineBuffer.setLength(0);
+            if (terminalOutput.size() > 60) {
+                terminalOutput.remove(0);
+            }
+        }
+    }
+
+    private String stripQuotes(String s) {
+        if (s.length() >= 2 && ((s.startsWith("\"") && s.endsWith("\"")) || (s.startsWith("'") && s.endsWith("'")))) {
+            return s.substring(1, s.length() - 1);
+        }
+        return s;
+    }
+
+    public static int parseCharLiteral(String s) {
+        if (s == null || s.isEmpty()) return 0;
+        if (s.startsWith("\\") && s.length() >= 2) {
+            char esc = s.charAt(1);
+            return switch (esc) {
+                case 'n' -> 10;
+                case 't' -> 9;
+                case 'r' -> 13;
+                case '0' -> 0;
+                case '\\' -> 92;
+                case '\'' -> 39;
+                case '\"' -> 34;
+                case 'x', 'X' -> {
+                    if (s.length() >= 4) {
+                        try {
+                            yield Integer.parseInt(s.substring(2, 4), 16);
+                        } catch (NumberFormatException ignored) {}
+                    }
+                    yield s.charAt(1);
+                }
+                case 'u', 'U' -> {
+                    if (s.length() >= 6) {
+                        try {
+                            yield Integer.parseInt(s.substring(2, 6), 16);
+                        } catch (NumberFormatException ignored) {}
+                    }
+                    yield s.charAt(1);
+                }
+                default -> esc;
+            };
+        }
+        return s.codePointAt(0);
     }
 
     private int resolveValue(String token) {
@@ -278,6 +408,12 @@ public class VirtualCpu {
                 return ram[addr];
             }
             throw new IndexOutOfBoundsException("RAM address " + addr + " out of bounds");
+        }
+
+        // Char literal: 'x'
+        if (token.startsWith("'") && token.endsWith("'") && token.length() >= 2) {
+            String inner = token.substring(1, token.length() - 1);
+            return parseCharLiteral(inner);
         }
 
         try {
@@ -326,7 +462,16 @@ public class VirtualCpu {
     public boolean isFlagS() { return flagS; }
     public int getCycles() { return cycles; }
     public String getErrorMessage() { return errorMessage; }
-    public List<String> getTerminalOutput() { return terminalOutput; }
+
+    public List<String> getTerminalOutput() {
+        if (lineBuffer.length() > 0) {
+            List<String> combined = new ArrayList<>(terminalOutput);
+            combined.add(lineBuffer.toString());
+            return combined;
+        }
+        return terminalOutput;
+    }
+
     public Set<String> getSupportedInstructions() { return supportedInstructions; }
     public List<String> getProgram() { return program; }
     public int[] getRam() { return ram; }

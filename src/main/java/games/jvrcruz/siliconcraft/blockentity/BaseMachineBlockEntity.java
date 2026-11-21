@@ -20,6 +20,7 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 import org.jetbrains.annotations.Nullable;
 
 public abstract class BaseMachineBlockEntity extends BlockEntity implements MenuProvider {
+    protected final int slotCount;
     protected final ItemStackHandler itemHandler;
     protected final CustomEnergyStorage energyStorage;
     protected int burnTime = 0;
@@ -27,6 +28,7 @@ public abstract class BaseMachineBlockEntity extends BlockEntity implements Menu
 
     public BaseMachineBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState blockState, int slotCount, int energyCapacity) {
         super(type, pos, blockState);
+        this.slotCount = slotCount;
         this.itemHandler = new ItemStackHandler(slotCount) {
             @Override
             protected void onContentsChanged(int slot) {
@@ -36,6 +38,11 @@ public abstract class BaseMachineBlockEntity extends BlockEntity implements Menu
             @Override
             public boolean isItemValid(int slot, ItemStack stack) {
                 return BaseMachineBlockEntity.this.isSlotItemValid(slot, stack);
+            }
+
+            @Override
+            public void setSize(int size) {
+                super.setSize(Math.max(size, slotCount));
             }
         };
         this.energyStorage = new CustomEnergyStorage(energyCapacity, 1000, 0);
@@ -99,6 +106,9 @@ public abstract class BaseMachineBlockEntity extends BlockEntity implements Menu
         super.loadAdditional(tag, registries);
         if (tag.contains("Inventory")) {
             itemHandler.deserializeNBT(registries, tag.getCompound("Inventory"));
+            if (itemHandler.getSlots() < slotCount) {
+                itemHandler.setSize(slotCount);
+            }
         }
         if (tag.contains("Energy")) {
             energyStorage.deserializeNBT(registries, tag.get("Energy"));
