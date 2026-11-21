@@ -27,14 +27,17 @@ public class ModCreativeTabs {
 
                         // Blocks
                         output.accept(ModItems.SILICON_ORE_ITEM.get());
+                        output.accept(ModItems.DEEPSLATE_SILICON_ORE_ITEM.get());
                         output.accept(ModItems.ARCHITECTURE_WRITER_ITEM.get());
                         output.accept(ModItems.ASSEMBLY_WRITER_ITEM.get());
                         output.accept(ModItems.CODE_COMPILER_ITEM.get());
+                        output.accept(ModItems.PROJECT_COMPILER_ITEM.get());
                         output.accept(ModItems.CHIP_FORGE_ITEM.get());
                         output.accept(ModItems.MEMORY_FORGE_ITEM.get());
                         output.accept(ModItems.PROGRAMMER_ITEM.get());
                         output.accept(ModItems.SOC_MANUFACTURER_ITEM.get());
                         output.accept(ModItems.COMPUTER_CASE_ITEM.get());
                         output.accept(ModItems.COMPUTER_ITEM.get());
+                        output.accept(ModItems.SPEAKER_ITEM.get());
                     }).build());
 }

@@ -2,6 +2,7 @@
   "replace": false,
   "values": [
     "siliconcraft:silicon_ore",
+    "siliconcraft:deepslate_silicon_ore",
     "siliconcraft:chip_forge",
     "siliconcraft:memory_forge",
     "siliconcraft:programmer",
@@ -9,6 +10,7 @@
     "siliconcraft:computer_case",
     "siliconcraft:computer",
     "siliconcraft:assembly_writer",
-    "siliconcraft:code_compiler"
+    "siliconcraft:code_compiler",
+    "siliconcraft:project_compiler"
   ]
 }

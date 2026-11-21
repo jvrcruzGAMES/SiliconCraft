@@ -2,23 +2,22 @@
 
 The **.n** language is SiliconCraft's custom high-level programming language designed specifically for custom CPU architectures fabricated in Minecraft.
 
-The **Code Compiler** block compiles `.n` source files directly into SiliconCraft assembly, checks the emitted opcodes against your **Architecture Writeup**, and adds the compiled program to your global Program Library.
+The **Code Compiler** compiles single `.n` files, and the **Project Compiler** compiles multi-file `.zip` projects into optimized SiliconCraft assembly, checking emitted opcodes against your **Architecture Writeup**.
 
 ---
 
 ## 1. Variables & Automatic Type Detection
 
-Variables and constants are declared using **`var`** (mutable) and **`const`** (immutable). Explicit type keywords (such as `int`, `char`, `char[]`) are not used; types are inferred automatically from initial values:
+Variables and constants are declared using **`var`**, **`let`** (mutable), or **`const`** (immutable). Explicit type keywords are not used; types are inferred automatically:
 
 ```text
 var counter = 0                   // Integer (32-bit)
-const MAX_LIMIT = 100             // Integer constant (cannot be reassigned)
+const MAX_LIMIT = 100             // Constant (cannot be reassigned)
 var isOnline = true               // Boolean (true / false)
 var symbol = '★'                  // Character
-var message = "Olá Mundo!"        // String (null-terminated UTF-8 char array)
+var message = "Olá Mundo!"        // String (null-terminated UTF-8)
 ```
 
-### Constant Immutability
 Attempting to reassign to a `const` produces a compile-time error:
 ```text
 const PI = 3
@@ -27,273 +26,298 @@ PI = 4       // Error: Cannot assign to constant 'PI'
 
 ---
 
-## 2. Boolean Type
+## 2. Numbers: Hexadecimal & Decimal
 
-Booleans support `true` and `false` literals and can be evaluated directly in conditionals:
+Numbers can be written in standard decimal or hexadecimal notation anywhere in your code (variables, array indexes, pointer addresses, and colors):
+
 ```text
-var isRunning = true
-const debugMode = false
+var decVal = 255
+var hexVal = 0xFF                 // Hexadecimal literal (255)
+var address = 0x80
+var color = 0xFF00FF00            // 32-bit ARGB Green
 
-if isRunning {
-    println "System is active"
-}
-
-if !debugMode {
-    println "Production build"
-}
+var mask = 0x0F
+var combined = (0x0F << 4) | 0x0A // 0xFA
 ```
 
 ---
 
-## 3. Lua-Style Tables (`{}`)
+## 3. Bitwise Operators & Precedence
 
-In `.n`, the curly braces `{}` are used for Lua-style tables, functioning as both indexed arrays and key-value maps:
+All standard bitwise operations are fully supported with parentheses precedence:
+- `&` (Bitwise AND)
+- `|` (Bitwise OR)
+- `^` (Bitwise XOR)
+- `~` (Bitwise NOT)
+- `<<` (Bitwise Shift Left)
+- `>>` (Bitwise Shift Right)
+- Compound bitwise assignments: `&=`, `|=`, `^=`, `<<=`, `>>=`
 
-### Array Tables (Indexed Lists)
 ```text
-var numbers = { 10, 20, 30 }
-var fruits = { "apple", "banana", "cherry" }
-
-println numbers[0]      // 10
-numbers[0] = 99
-println numbers[0]      // 99
+var reg = 0x00
+reg |= 0x80              // Set bit 7
+reg &= ~0x80             // Clear bit 7
+reg ^= 0xFF              // Toggle all bits
+reg <<= 2                // Shift left by 2
 ```
 
-### Map Tables (Key-Value Dictionaries)
-Tables support Lua syntax (`key = value`), colon syntax (`key: value`), and bracket syntax (`["key"] = value`):
+---
+
+## 4. Pointers & Direct Memory Access
+
+The `.n` language allows low-level memory programming using standard pointer and memory syntax:
+
+### Address-of Operator (`&`)
+Get the memory address of a variable, table field, or array element:
 ```text
+var x = 42
+var ptr = &x             // Address of x in RAM
+
+var tbl = { 10, 20, 30 }
+var elemPtr = &tbl[1]    // Address of table element
+```
+
+### Pointer Dereferencing (`*`)
+Read or write through a pointer address:
+```text
+var data = 100
+var ptr = &data
+*ptr = 250               // Writes 250 to memory address pointed by ptr
+println *ptr             // 250
+
+*0x10 = 0xAA             // Write directly to absolute RAM address 0x10
+```
+
+### Direct RAM Helpers: `mem[...]`, `peek`, `poke`
+Access RAM directly without variable binding:
+```text
+mem[0x20] = 55           // Write to RAM address 0x20
+var val = mem[0x20]      // Read from RAM address 0x20
+
+poke(0x30, 0xCC)         // poke(addr, val) helper
+var readVal = peek(0x30) // peek(addr) helper
+```
+
+---
+
+## 5. Lua-Style Tables (`{}`)
+
+In `.n`, curly braces `{}` define tables, functioning as indexed arrays and key-value maps:
+
+```text
+// Indexed arrays
+var numbers = { 10, 20, 30 }
+println numbers[0]       // 10
+numbers[0] = 99
+
+// Key-value maps
 var player = {
     name = "Steve",
     health = 100,
     isAlive = true
 }
 
-// Accessing fields via dot notation
-println player.name        // Steve
-println player.health      // 100
-println player.isAlive     // true
-
-// Accessing fields via bracket notation
-println player["name"]     // Steve
-
-// Modifying fields
-player.health = 85
-player.isAlive = false
-println player.health      // 85
-println player.isAlive     // false
+println player.name      // Steve
+println player["health"] // 100
+player.health -= 15
 ```
 
 ---
 
-## 4. Output Functions: `print` and `println`
+## 6. Output Functions: `print`, `println`, and Hex Display
 
-The `.n` language provides two output functions: **`print`** and **`println`** (the legacy `print_char` has been removed). Both functions automatically convert whatever argument type is passed into a string (character array):
+Output functions automatically convert all types (integers, strings, booleans, characters) into text:
 
-- **`print <expr>`**: Appends the string representation of `<expr>` directly to the **current line** on the terminal screen without a trailing newline.
-- **`println <expr>`**: Appends the string representation of `<expr>` and advances to the **next line** (appends `\n`). Calling `println()` or `println` with no argument outputs an empty line.
+- `print <expr>`: Prints `<expr>` without trailing newline.
+- `println <expr>`: Prints `<expr>` with trailing newline (`\n`).
+- `print_hex <expr>`: Prints integer `<expr>` formatted as hexadecimal (e.g. `0xFF`).
+- `println_hex <expr>`: Prints integer in hexadecimal followed by newline.
+- `hex(<expr>)`: Can also be used inside `print()` or `println()`, e.g. `println hex(0x10)`.
 
-### Supported Types
-Both `print` and `println` handle all types seamlessly:
-- **Strings**: Streams characters sequentially until the null terminator (`0`).
-- **Characters**: Emits the glyph (ASCII or UTF-8).
-- **Booleans**: Converts to `"true"` or `"false"`.
-- **Numbers / Integers**: Converts the numerical value into its decimal digit string.
-- **Table Fields**: Evaluates the table element and converts it to string according to its inferred type.
-
-### Example: Combining `print` and `println`
 ```text
-var user = { name = "Steve", level = 50 }
-
-print "User: "
-print user.name
-print " (Level "
-print user.level
-println ")"
-
-// Displays on the CRT terminal:
-// User: Steve (Level 50)
+var val = 255
+println val              // 255
+println_hex val          // 0xFF
+print "Value: "
+println_hex 0xCAFE       // 0xCAFE
 ```
 
 ---
 
-## 5. Control Flow
+## 7. Multi-Drive Binary Storage
 
-### While Loop
+The `.n` language provides complete binary storage control across all installed storage drives (SoC flash and PC NVMe drives):
+
+### Storage Inspection & Drive Selection
+```text
+var numDrives = storage.count()    // Number of attached storage drives
+var curSize = storage.size()       // Capacity of currently selected drive in bytes
+storage.select(1)                  // Switch active drive to drive index 1
+var active = storage.selected()    // Get active drive index
+```
+
+### Reading & Writing Bytes and Integers
+```text
+storage.write(0, 0xAB)             // Write single byte 0xAB to address 0
+var b = storage.read(0)            // Read single byte from address 0
+
+storage.write_int(4, 100000)       // Write 32-bit integer (4 bytes little-endian)
+var num = storage.read_int(4)      // Read 32-bit integer
+
+// Direct drive indexing syntax:
+storage[0].write(0x10, 42)
+var val = storage[1].read(0x10)
+```
+
+### Strings & Byte Blocks
+```text
+storage.write_string(0x20, "Hello Storage!")
+var s = storage.read_string(0x20, 14) // Reads null-terminated string into RAM
+println s
+```
+
+---
+
+## 8. Framebuffer Graphics (Direct Screen Canvas)
+
+The computer monitor supports direct $128 \times 64$ hardware pixel rendering via `fb.*` or `display.*`:
+
+```text
+var w = fb.width()                 // 128
+var h = fb.height()                // 64
+
+// Clear / fill screen with black (ARGB: 0xFF000000)
+fb.fill(0xFF000000)
+
+// Set individual pixels (x, y, 32-bit ARGB color)
+fb.set(10, 10, 0xFFFF0000)        // Red pixel
+var pix = fb.get(10, 10)          // Read pixel color
+
+// Draw shapes
+fb.line(0, 0, 127, 63, 0xFF00FF00) // Green diagonal line
+fb.rect(20, 20, 40, 20, 0xFF0000FF)// Blue filled rectangle
+
+// Flip back-buffer to screen
+fb.flip()
+```
+
+---
+
+## 9. Hardware Audio Buffer & Sound Synthesis
+
+The computer synthesizes audio through an onboard 4-channel audio buffer (`audio.*`), played on the screen or in-world via a **Speaker** block:
+
+```text
+// audio.beep(frequencyHz, durationTicks, waveformType, volume)
+// Waveform types: 0 = Sine, 1 = Square, 2 = Triangle, 3 = Sawtooth, 4 = Noise
+
+audio.beep(440, 20, 1, 100)       // 440 Hz (A4), 1 second (20 ticks), Square wave, 100% volume
+audio.beep(880, 10, 0, 80)        // 880 Hz (A5), 0.5s, Sine wave, 80% volume
+
+audio.play()                       // Start buffer playback
+audio.stop()                       // Stop playback
+audio.clear()                      // Clear queued audio buffer
+var pending = audio.status()       // Remaining audio samples / buffer status
+```
+
+---
+
+## 10. Control Flow, Loops & Functions
+
+### Conditionals (`if`, `else`)
+```text
+var x = 15
+if x > 10 {
+    println "Greater than 10"
+} else {
+    println "10 or less"
+}
+```
+
+### Loops (`while`, `break`, `continue`)
 ```text
 var i = 0
-while i < 5 {
+while i < 10 {
+    if i == 5 {
+        i++
+        continue
+    }
     println i
     i++
 }
 ```
 
-### While Loop over Table Array
+### Functions (`func`, `return`)
 ```text
-var items = { 10, 20, 30 }
-var i = 0
-while i < 3 {
-    println items[i]
-    i++
+func multiply(x, y) {
+    return x * y
 }
-```
 
-### If Statement
-```text
-var score = 100
-if score >= 100 {
-    println "Victory!"
-}
+var result = multiply(7, 8)
+println result                   // 56
 ```
 
 ---
 
-## 6. BIOS & System Functions
+## 11. Multi-File Projects & Modular Imports (Project Compiler)
 
-Since you implement your own BIOS in `.n` (or assembly), `.n` provides built-in system tools:
+When writing large applications, package your project into a `.zip` archive and compile using the **Project Compiler**.
 
-### Screen Control: `cls()`
-Clears the CRT terminal screen:
+### Import Syntax
+Inside any `.n` file (starting with `main.n` as entrypoint):
 ```text
-cls()
-println "=== BIOS v1.0 ==="
+import "math/vec.n"
+import "drivers/display.n"
+import utils.string               // Resolves to utils/string.n
 ```
 
-### Time: `time.now()`
-Returns the current Minecraft world time in ticks:
-```text
-var start = time.now()
-println start
-```
-
-### Delay: `sleep(seconds)` and `sleep_ticks(ticks)`
-Pauses CPU execution for the specified duration:
-```text
-println "Starting POST..."
-sleep(1)            // Sleep 1 second (20 Minecraft ticks)
-println "Checking memory..."
-sleep(0.5)          // Sleep 10 ticks
-sleep_ticks(5)      // Sleep raw 5 Minecraft ticks
-```
-
-### Random Numbers: `rand(max)`
-Generates a random integer in the range `[0, max - 1]`:
-```text
-var dice = rand(6) + 1
-println dice
-```
+### Rules for Project Compilation
+- The `.zip` root or entrypoint must be `main.n`.
+- Imports can reference subdirectories (`"sub/module.n"`).
+- Duplicate and circular imports are automatically detected and prevented.
+- The output assembly `<zipname>.asm` is compiled and registered in your Program Library.
 
 ---
 
-## 7. Functions (`fn`)
+## 12. Interrupts, Events & Exception Handlers
 
-You can define and call subroutines and functions:
+The `.n` language provides native event-hooking and exception handling primitives that map directly to the CPU's Interrupt Vector Table (IVT):
 
+### Input Event Handlers
 ```text
-fn boot() {
-    cls()
-    println "SiliconCraft BIOS Initialized"
-    println "Time: " + time.now()
+on_key(handle_key)              // Vector 10: Keyboard input
+on_mouse_move(handle_mouse)     // Vector 11: Mouse movement in CRT canvas
+on_mouse_click(handle_click)    // Vector 12: Mouse click in CRT canvas
+
+fn handle_key() {
+    // Register A holds the typed character code
+    print "Key: "
+    println A
+    IRET
 }
 
-fn add(x, y) {
-    return x + y
+fn handle_click() {
+    // A = mouse X (0..227), B = mouse Y (0..81), C = button (0: left, 1: right)
+    fb.set(A, B, 0xFFFFFFFF)
+    fb.flip()
+    IRET
 }
-
-boot()
-var sum = add(10, 25)
-println sum             // 35
 ```
 
----
-
-## 8. Arithmetic & Math Operations
-
-All standard arithmetic operators are supported with operator precedence:
-- `+` (Addition), `-` (Subtraction)
-- `*` (Multiplication)
-- `/` (Integer division)
-- `%` (Modulo / remainder)
-- Compound assignments: `+=`, `-=`, `*=`, `/=`, `%=`
-
+### Exception Handlers (`catch`)
+Register custom handlers for hardware and runtime exceptions:
 ```text
-var a = 20
-var b = 6
-println a * b           // 120
-println a / b           // 3
-println a % b           // 2
+catch(DIV_ZERO, handle_div_zero)
+catch(OUT_OF_BOUNDS, handle_out_of_bounds)
 
-a += 10                 // 30
-a *= 2                  // 60
-```
-
----
-
-## 9. Full Architecture Instruction Set (ISA)
-
-When writing an **Architecture Writeup** at the Architecture Writer, the following hardware instructions are available:
-
-| Opcode | Description |
-|---|---|
-| `NOP` | No operation |
-| `HLT` | Halts CPU execution |
-| `MOV <dest>, <src>` | Move value or register |
-| `PUSH <src>` | Push onto data stack |
-| `POP <dest>` | Pop from data stack |
-| `ADD <dest>, <src>` | Addition |
-| `SUB <dest>, <src>` | Subtraction |
-| `MUL <dest>, <src>` | Multiplication |
-| `DIV <dest>, <src>` | Integer division |
-| `MOD <dest>, <src>` | Modulo / remainder |
-| `INC <reg/mem>` | Increment by 1 |
-| `DEC <reg/mem>` | Decrement by 1 |
-| `CMP <reg>, <val>` | Compare (sets Z and S flags) |
-| `AND <dest>, <src>` | Bitwise AND |
-| `OR <dest>, <src>` | Bitwise OR |
-| `XOR <dest>, <src>` | Bitwise XOR |
-| `NOT <dest>` | Bitwise NOT |
-| `SHL <dest>, <count>` | Bitwise Shift Left |
-| `SHR <dest>, <count>` | Bitwise Shift Right |
-| `JMP <target>` | Unconditional jump |
-| `JZ <target>` | Jump if Zero (`Z == 1`) |
-| `JNZ <target>` | Jump if Not Zero (`Z == 0`) |
-| `JS <target>` | Jump if Sign / Negative (`S == 1`) |
-| `JNS <target>` | Jump if Not Sign / Positive (`S == 0`) |
-| `JL <target>` | Jump if Less (`S == 1 && Z == 0`) |
-| `JLE <target>` | Jump if Less or Equal (`S == 1 || Z == 1`) |
-| `JG <target>` | Jump if Greater (`S == 0 && Z == 0`) |
-| `JGE <target>` | Jump if Greater or Equal (`S == 0`) |
-| `CALL <target>` | Call subroutine (pushes return address) |
-| `RET` | Return from subroutine |
-| `OUT <val>[, mode]` | Output to CRT terminal |
-| `OUTC <char/byte>` | Output character byte (ASCII / UTF-8) |
-| `CLS` | Clear CRT terminal display |
-| `SLEEP <ticks>` | Pause execution for Minecraft ticks |
-| `TIME <dest>` | Store Minecraft game time in ticks |
-| `RAND <dest>, <max>` | Generate random integer `[0, max - 1]` |
-
----
-
-## 10. Full BIOS Example Program
-
-```text
-cls()
-println "=== JTech Computers ==="
-println "BIOS v1.0 Release"
-println "Boot tick: " + time.now()
-println ""
-
-sleep(1)
-println "Testing CPU instructions..."
-
-var points = 0
-while points < 5 {
-    print "Point: "
-    println points
-    points++
+fn handle_div_zero() {
+    println "[ERROR] Division by zero caught!"
+    A = 0                       // Set fallback result
+    IRET                        // Resumes after faulting line
 }
-
-println "All diagnostics passed!"
-sleep(0.5)
-println "System Ready."
-halt
 ```
+
+### Low-Level Control (`CLI`, `STI`, `INT`)
+- `CLI`: Disable/mask interrupts. Incoming events are queued safely.
+- `STI`: Enable/unmask interrupts. Queued events are immediately dispatched.
+- `INT <vector>`: Trigger a software interrupt or system call.

@@ -53,7 +53,7 @@ public class ProgrammerBlockEntity extends BaseMachineBlockEntity {
     protected boolean isSlotItemValid(int slot, ItemStack stack) {
         return switch (slot) {
             case 0 -> net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity.isFuel(stack);
-            case 1 -> stack.is(ModItems.ROM.get());
+            case 1 -> stack.is(ModItems.ROM.get()) || stack.is(ModItems.STORAGE.get());
             default -> false;
         };
     }
@@ -63,8 +63,8 @@ public class ProgrammerBlockEntity extends BaseMachineBlockEntity {
     }
 
     public boolean burnProgram(List<String> lines) {
-        ItemStack romStack = itemHandler.getStackInSlot(1);
-        if (romStack.isEmpty() || !romStack.is(ModItems.ROM.get())) {
+        ItemStack inputStack = itemHandler.getStackInSlot(1);
+        if (inputStack.isEmpty() || (!inputStack.is(ModItems.ROM.get()) && !inputStack.is(ModItems.STORAGE.get()))) {
             return false;
         }
         if (energyStorage.getEnergyStored() < 100) {
@@ -77,18 +77,18 @@ public class ProgrammerBlockEntity extends BaseMachineBlockEntity {
 
         // Consume 100 FE
         energyStorage.extractEnergyInternal(100, false);
-        romStack.shrink(1);
 
-        ItemStack programmedRom = new ItemStack(ModItems.ROM.get());
-        programmedRom.set(ModDataComponents.ROM_DATA.get(), new RomData(new ArrayList<>(lines)));
+        ItemStack programmed = inputStack.copyWithCount(1);
+        programmed.set(ModDataComponents.ROM_DATA.get(), new RomData(new ArrayList<>(lines)));
+        inputStack.shrink(1);
 
         if (outStack.isEmpty()) {
-            itemHandler.setStackInSlot(2, programmedRom);
-        } else if (ItemStack.isSameItemSameComponents(outStack, programmedRom)) {
+            itemHandler.setStackInSlot(2, programmed);
+        } else if (ItemStack.isSameItemSameComponents(outStack, programmed)) {
             outStack.grow(1);
         } else {
             // If cannot stack into slot 2, place back in slot 1 or drop
-            itemHandler.setStackInSlot(1, programmedRom);
+            itemHandler.setStackInSlot(1, programmed);
         }
 
         setChanged();

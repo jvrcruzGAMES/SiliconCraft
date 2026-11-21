@@ -35,4 +35,7 @@ public class ModMenuTypes {
 
     public static final DeferredHolder<MenuType<?>, MenuType<CodeCompilerMenu>> CODE_COMPILER_MENU =
             MENUS.register("code_compiler_menu", () -> IMenuTypeExtension.create(CodeCompilerMenu::new));
+
+    public static final DeferredHolder<MenuType<?>, MenuType<ProjectCompilerMenu>> PROJECT_COMPILER_MENU =
+            MENUS.register("project_compiler_menu", () -> IMenuTypeExtension.create(ProjectCompilerMenu::new));
 }

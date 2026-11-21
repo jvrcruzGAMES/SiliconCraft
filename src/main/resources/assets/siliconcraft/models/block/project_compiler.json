@@ -1,0 +1,9 @@
+{
+  "parent": "minecraft:block/orientable_with_bottom",
+  "textures": {
+    "top": "siliconcraft:block/project_compiler_top",
+    "bottom": "siliconcraft:block/project_compiler_bottom",
+    "front": "siliconcraft:block/project_compiler_front",
+    "side": "siliconcraft:block/project_compiler_side"
+  }
+}

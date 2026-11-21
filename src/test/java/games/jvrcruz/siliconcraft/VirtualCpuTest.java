@@ -163,4 +163,426 @@ public class VirtualCpuTest {
         cpu.setTerminalOutput(List.of("Replaced"));
         assertEquals(List.of("Replaced"), cpu.getTerminalOutput());
     }
+
+    @Test
+    public void testDynamicHardwareUpdate() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "HLT");
+        List<String> code = List.of(
+                "MOV [10], 42",
+                "MOV [300], 99",
+                "HLT"
+        );
+
+        cpu.configure(isa, 256, code, false, 0);
+        assertFalse(cpu.hasNvme());
+        assertEquals(0, cpu.getStorageSize());
+        assertEquals(256, cpu.getRam().length);
+
+        cpu.powerOn();
+        cpu.step(); // executes MOV [10], 42
+        assertEquals(42, cpu.getRam()[10]);
+
+        // Dynamically add RAM modules and NVMe storage
+        cpu.updateHardware(1024, true, 2048);
+        assertTrue(cpu.hasNvme());
+        assertEquals(2048, cpu.getStorageSize());
+        assertEquals(1024, cpu.getRam().length);
+        // Existing memory at address 10 must be preserved!
+        assertEquals(42, cpu.getRam()[10]);
+
+        // Continue execution with enlarged RAM: writes to address 300
+        cpu.step(); // executes MOV [300], 99
+        assertEquals(99, cpu.getRam()[300]);
+        cpu.step(); // HLT
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+    }
+
+    @Test
+    public void testStorageInstructions() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "SSIZE", "SREAD", "SWRITE", "SBLKR", "SBLKW", "HLT");
+        List<String> code = List.of(
+                "SSIZE A",                  // Query storage size into A
+                "SWRITE 10, 77",            // Write byte 77 into storage[10]
+                "SREAD B, 10",              // Read byte from storage[10] into B
+                "MOV [0], 10",              // RAM[0] = 10
+                "MOV [1], 20",              // RAM[1] = 20
+                "MOV [2], 30",              // RAM[2] = 30
+                "SBLKW 100, 0, 3",          // Write RAM[0..2] to storage[100..102]
+                "SBLKR 50, 100, 3",         // Read storage[100..102] into RAM[50..52]
+                "HLT"
+        );
+
+        // Configure with 512KB storage = 524,288 bytes
+        cpu.configure(isa, 256, code, false, 512);
+        cpu.powerOn();
+        cpu.tick(100);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(524288, cpu.getRegA(), "Storage size in bytes should be 512 * 1024");
+        assertEquals(77, cpu.getRegB(), "Byte at storage[10] should be 77");
+        assertEquals(77, cpu.getStorage()[10]);
+
+        assertEquals(10, cpu.getRam()[50]);
+        assertEquals(20, cpu.getRam()[51]);
+        assertEquals(30, cpu.getRam()[52]);
+
+        // Reset CPU: verify storage is non-volatile and persists!
+        cpu.reset();
+        assertEquals(0, cpu.getRam()[50], "RAM should be wiped on reset");
+        assertEquals(77, cpu.getStorage()[10], "Storage must NOT be wiped on reset");
+    }
+
+    @Test
+    public void testFramebufferInstructions() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of(
+                "MOV", "FBMODE", "FBSET", "FBGET", "FBCLR", "FBRECT", "FBLINE", "FBLIT", "FBSWAP", "FBWIDTH", "FBHEIGHT", "HLT"
+        );
+        List<String> code = List.of(
+                "FBWIDTH A",
+                "FBHEIGHT B",
+                "FBMODE 1",
+                "FBCLR 0x112233",
+                "FBSET 10, 20, 0xFF00FF",
+                "FBGET C, 10, 20",
+                "FBRECT 2, 2, 4, 3, 0x00FF00",
+                "FBLINE 0, 0, 5, 0, 0xFF0000",
+                "MOV [10], 0x123456",
+                "FBLIT 50, 50, 10, 1, 1",
+                "FBSWAP",
+                "HLT"
+        );
+
+        cpu.configure(isa, 256, code, false, 0);
+        cpu.powerOn();
+        cpu.tick(100);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(VirtualCpu.FB_WIDTH, cpu.getRegA());
+        assertEquals(VirtualCpu.FB_HEIGHT, cpu.getRegB());
+        assertEquals(1, cpu.getDisplayMode());
+        assertEquals(0xFFFF00FF, cpu.getRegC());
+
+        int[] fb = cpu.getFramebuffer();
+        assertEquals(0xFFFF00FF, fb[20 * VirtualCpu.FB_WIDTH + 10]);
+        assertEquals(0xFF00FF00, fb[2 * VirtualCpu.FB_WIDTH + 2]);
+        assertEquals(0xFFFF0000, fb[0 * VirtualCpu.FB_WIDTH + 3]);
+        assertEquals(0xFF123456, fb[50 * VirtualCpu.FB_WIDTH + 50]);
+        assertTrue(cpu.isFbDirty());
+    }
+
+    @Test
+    public void testAudioInstructions() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of(
+                "MOV", "APUSH", "ABUFW", "ACLR", "ASTAT", "ATONE", "APLAY", "HLT"
+        );
+        List<String> code = List.of(
+                "APUSH 128",
+                "APUSH 200",
+                "MOV [0], 100",
+                "MOV [1], 150",
+                "ABUFW 0, 2",
+                "ASTAT A",
+                "APLAY",
+                "HLT"
+        );
+
+        cpu.configure(isa, 256, code, false, 0);
+        cpu.powerOn();
+        cpu.tick(100);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(4, cpu.getRegA());
+
+        byte[] samples = cpu.pollAudioSamples();
+        assertNotNull(samples);
+        assertEquals(4, samples.length);
+        assertEquals((byte) 128, samples[0]);
+        assertEquals((byte) 200, samples[1]);
+        assertEquals((byte) 100, samples[2]);
+        assertEquals((byte) 150, samples[3]);
+
+        // Tone test
+        List<String> toneCode = List.of(
+                "ATONE 440, 50",
+                "ASTAT B",
+                "HLT"
+        );
+        cpu.configure(isa, 256, toneCode, false, 0);
+        cpu.powerOn();
+        cpu.tick(100);
+        assertTrue(cpu.getRegB() > 0, "Tone should populate audio buffer samples");
+        byte[] toneSamples = cpu.pollAudioSamples();
+        assertNotNull(toneSamples);
+        assertTrue(toneSamples.length > 0);
+    }
+
+    @Test
+    public void testMultiDriveAccessAndSeparation() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of(
+                "MOV", "SSIZE", "SREAD", "SWRITE", "SBLKR", "SBLKW",
+                "SCOUNT", "SSEL", "SDRV", "HLT"
+        );
+        List<String> code = List.of(
+                "SCOUNT A",                 // A should be 3 (drives 0, 1, 2)
+                "SSEL 1",                   // Select drive 1
+                "SDRV B",                   // B should be 1
+                "SWRITE 0, 42",             // Write 42 to drive 1 at addr 0 (via selected drive)
+                "SWRITE 2, 0, 84",          // Write 84 to drive 2 at addr 0 (via drive operand)
+                "SWRITE 0, 0, 21",          // Write 21 to drive 0 at addr 0 (via drive operand)
+                "SREAD C, 1, 0",            // Read from drive 1 at addr 0 -> C should be 42
+                "SREAD D, 2, 0",            // Read from drive 2 at addr 0 -> D should be 84
+                "HLT"
+        );
+
+        cpu.configure(isa, 256, code, false, 0);
+
+        // Setup 3 separate drives
+        byte[] drv0 = new byte[64];
+        byte[] drv1 = new byte[128];
+        byte[] drv2 = new byte[256];
+        cpu.setStorageDrive(0, drv0);
+        cpu.setStorageDrive(1, drv1);
+        cpu.setStorageDrive(2, drv2);
+
+        java.util.Map<Integer, Integer> writeEvents = new java.util.HashMap<>();
+        cpu.setDriveWriteListener((drv, data) -> writeEvents.put(drv, writeEvents.getOrDefault(drv, 0) + 1));
+
+        cpu.powerOn();
+        cpu.tick(100);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(3, cpu.getRegA()); // count
+        assertEquals(1, cpu.getRegB()); // selected drive
+        assertEquals(42, cpu.getRegC()); // drive 1 read
+        assertEquals(84, cpu.getRegD()); // drive 2 read
+
+        // Verify independent drive memory contents
+        assertEquals((byte) 21, cpu.getStorageDrive(0)[0]);
+        assertEquals((byte) 42, cpu.getStorageDrive(1)[0]);
+        assertEquals((byte) 84, cpu.getStorageDrive(2)[0]);
+
+        // Verify listeners fired for all 3 drives
+        assertEquals(1, writeEvents.get(0));
+        assertEquals(1, writeEvents.get(1));
+        assertEquals(1, writeEvents.get(2));
+    }
+
+    @Test
+    public void testUnhandledDivideByZeroException() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "DIV", "HLT");
+        List<String> code = List.of(
+                "MOV A, 100",
+                "MOV B, 0",
+                "DIV A, B",
+                "HLT"
+        );
+
+        cpu.configure(isa, 256, code, false, 0);
+        cpu.powerOn();
+        cpu.tick(100);
+
+        assertEquals(VirtualCpu.State.ERROR, cpu.getState());
+        assertTrue(cpu.getErrorMessage().contains("Exception not handled: Division by zero"),
+                "Error should show unhandled divide by zero: " + cpu.getErrorMessage());
+        assertTrue(cpu.getTerminalOutput().stream().anyMatch(line -> line.contains("Exception not handled: Division by zero")),
+                "Terminal should contain unhandled exception message");
+    }
+
+    @Test
+    public void testHandledDivideByZeroException() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "DIV", "IVEC", "IRET", "HLT");
+        List<String> code = List.of(
+                "IVEC 0, div_handler",
+                "MOV A, 100",
+                "MOV B, 0",
+                "DIV A, B",
+                "MOV C, 42",
+                "HLT",
+                "div_handler:",
+                "MOV A, 999",
+                "IRET"
+        );
+
+        cpu.configure(isa, 256, code, false, 0);
+        cpu.powerOn();
+        cpu.tick(100);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(999, cpu.getRegA(), "Handler should have set A to 999");
+        assertEquals(42, cpu.getRegC(), "Execution should resume after faulting instruction");
+    }
+
+    @Test
+    public void testUnhandledOutOfBoundsException() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "HLT");
+        List<String> code = List.of(
+                "MOV A, [500]",
+                "HLT"
+        );
+
+        cpu.configure(isa, 64, code, false, 0);
+        cpu.powerOn();
+        cpu.tick(100);
+
+        assertEquals(VirtualCpu.State.ERROR, cpu.getState());
+        assertTrue(cpu.getErrorMessage().contains("Exception not handled: RAM address 500 out of bounds"),
+                "Error should show out of bounds: " + cpu.getErrorMessage());
+    }
+
+    @Test
+    public void testKeyboardInterruptHandling() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "CMP", "JZ", "IVEC", "IRET", "HLT");
+        List<String> code = List.of(
+                "IVEC 10, key_handler",
+                "MOV [0], 0",
+                "wait_key:",
+                "CMP [0], 0",
+                "JZ wait_key",
+                "HLT",
+                "key_handler:",
+                "MOV [1], A", // A contains key code
+                "MOV [0], 1",
+                "IRET"
+        );
+
+        cpu.configure(isa, 256, code, false, 0);
+        cpu.powerOn();
+        cpu.tick(50); // Run until looping in wait_key
+
+        assertEquals(VirtualCpu.State.RUNNING, cpu.getState());
+        assertEquals(0, cpu.getRam()[0]);
+
+        // Send keyboard input 'Z' (ASCII 90)
+        cpu.queueKeyboardInterrupt(90);
+        cpu.tick(50); // Process interrupt and continue
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(1, cpu.getRam()[0]);
+        assertEquals(90, cpu.getRam()[1], "RAM[1] should contain received key code 90");
+    }
+
+    @Test
+    public void testMouseInterrupts() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "CMP", "JNZ", "IVEC", "IRET", "HLT");
+        List<String> code = List.of(
+                "IVEC 11, move_handler",
+                "IVEC 12, click_handler",
+                "wait_input:",
+                "CMP [0], 2",
+                "JNZ wait_input",
+                "HLT",
+                "move_handler:",
+                "MOV [10], A", // mouse X
+                "MOV [11], B", // mouse Y
+                "MOV [0], 1",
+                "IRET",
+                "click_handler:",
+                "MOV [20], A", // mouse X
+                "MOV [21], B", // mouse Y
+                "MOV [22], C", // button
+                "MOV [0], 2",
+                "IRET"
+        );
+
+        cpu.configure(isa, 256, code, false, 0);
+        cpu.powerOn();
+        cpu.tick(20);
+
+        // Send mouse move to (120, 45)
+        cpu.queueMouseMoveInterrupt(120, 45);
+        cpu.tick(20);
+        assertEquals(1, cpu.getRam()[0]);
+        assertEquals(120, cpu.getRam()[10]);
+        assertEquals(45, cpu.getRam()[11]);
+
+        // Send mouse click at (150, 60) button 1 (right click)
+        cpu.queueMouseClickInterrupt(150, 60, 1);
+        cpu.tick(50);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(2, cpu.getRam()[0]);
+        assertEquals(150, cpu.getRam()[20]);
+        assertEquals(60, cpu.getRam()[21]);
+        assertEquals(1, cpu.getRam()[22]);
+    }
+
+    @Test
+    public void testCliAndStiInterruptMasking() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "CMP", "JZ", "JMP", "CLI", "STI", "IVEC", "IRET", "HLT");
+        List<String> code = List.of(
+                "IVEC 10, key_handler",
+                "CLI",           // Disable interrupts
+                "MOV [0], 0",
+                "loop1:",
+                "CMP [0], 1",
+                "JZ loop1_exit",
+                "CMP [2], 5",
+                "JZ enable_ints",
+                "MOV A, [2]",
+                "MOV B, 1",
+                "MOV C, 0",
+                "MOV [2], 5",
+                "JMP loop1",
+                "enable_ints:",
+                "STI",           // Re-enable interrupts
+                "JMP loop1",
+                "loop1_exit:",
+                "HLT",
+                "key_handler:",
+                "MOV [0], 1",
+                "IRET"
+        );
+
+        cpu.configure(isa, 256, code, false, 0);
+        cpu.powerOn();
+
+        // Run until CLI has executed
+        cpu.tick(3);
+        assertFalse(cpu.isInterruptsEnabled(), "Interrupts should be disabled after CLI");
+
+        // While CLI is active, queue an interrupt
+        cpu.queueKeyboardInterrupt(75);
+        cpu.tick(5); // Loop in loop1; interrupt must not fire
+        assertEquals(0, cpu.getRam()[0], "Interrupt should not fire while CLI is active");
+
+        // Step further so STI executes and interrupt gets serviced
+        cpu.tick(50);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(1, cpu.getRam()[0], "Interrupt should fire after STI");
+    }
+
+    @Test
+    public void testSoftwareInterruptInstruction() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "INT", "IVEC", "IRET", "HLT");
+        List<String> code = List.of(
+                "IVEC 15, custom_sw_handler",
+                "INT 15",
+                "MOV B, 100",
+                "HLT",
+                "custom_sw_handler:",
+                "MOV A, 777",
+                "IRET"
+        );
+
+        cpu.configure(isa, 256, code, false, 0);
+        cpu.powerOn();
+        cpu.tick(50);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(777, cpu.getRegA());
+        assertEquals(100, cpu.getRegB());
+    }
 }

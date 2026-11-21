@@ -350,4 +350,546 @@ public class CompilerAndValidatorTest {
         // 20 * 4 = 80; 20 / 4 = 5; 20 % 6 = 2; sum = 80 + 5 + 2 = 87
         assertTrue(output.contains("87"), "Output should contain 87: " + output);
     }
+
+    @Test
+    public void testImportRejectedInStandardCompiler() {
+        List<String> source = List.of(
+                "import \"utils.n\"",
+                "println \"Hello\""
+        );
+        NCompiler.CompileResult result = NCompiler.compile(source);
+        assertFalse(result.success());
+        assertTrue(result.errors().get(0).contains("Imports are not supported in the default Code Compiler"));
+    }
+
+    @Test
+    public void testProjectCompilerBasicImport() {
+        java.util.Map<String, List<String>> files = new java.util.HashMap<>();
+        files.put("main.n", List.of(
+                "import \"utils.n\"",
+                "var res = doubleVal()",
+                "println res"
+        ));
+        files.put("utils.n", List.of(
+                "var factor = 2",
+                "fn doubleVal() {",
+                "    var x = 21",
+                "    return x * factor",
+                "}"
+        ));
+
+        NCompiler.CompileResult result = NCompiler.compileProject(files, "main.n");
+        assertTrue(result.success(), "Project compile should succeed: " + result.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "MUL", "CALL", "RET", "JMP", "OUT", "OUTC", "HLT");
+        cpu.configure(isa, 256, result.assembly(), false, 0);
+        cpu.powerOn();
+        cpu.tick(100);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertTrue(cpu.getTerminalOutput().contains("42"), "Terminal output should contain 42: " + cpu.getTerminalOutput());
+    }
+
+    @Test
+    public void testProjectCompilerSubfoldersAndRelativeImports() {
+        java.util.Map<String, List<String>> files = new java.util.HashMap<>();
+        files.put("main.n", List.of(
+                "import \"math/vec.n\"",
+                "import \"core/engine.n\"",
+                "runEngine()"
+        ));
+        files.put("math/vec.n", List.of(
+                "const DIM = 3",
+                "fn getDim() {",
+                "    return DIM",
+                "}"
+        ));
+        files.put("core/engine.n", List.of(
+                "import \"../math/vec.n\"",
+                "fn runEngine() {",
+                "    var d = getDim()",
+                "    println d",
+                "}"
+        ));
+
+        NCompiler.CompileResult result = NCompiler.compileProject(files, "main.n");
+        assertTrue(result.success(), "Subfolder project compile should succeed: " + result.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "CALL", "RET", "JMP", "OUT", "OUTC", "HLT");
+        cpu.configure(isa, 256, result.assembly(), false, 0);
+        cpu.powerOn();
+        cpu.tick(100);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertTrue(cpu.getTerminalOutput().contains("3"), "Terminal output should contain 3: " + cpu.getTerminalOutput());
+    }
+
+    @Test
+    public void testProjectCompilerCircularImportDetected() {
+        java.util.Map<String, List<String>> files = new java.util.HashMap<>();
+        files.put("main.n", List.of(
+                "import \"a.n\""
+        ));
+        files.put("a.n", List.of(
+                "import \"b.n\""
+        ));
+        files.put("b.n", List.of(
+                "import \"a.n\""
+        ));
+
+        NCompiler.CompileResult result = NCompiler.compileProject(files, "main.n");
+        assertFalse(result.success(), "Circular import must fail");
+        assertTrue(result.errors().get(0).contains("Circular import detected"), "Error should mention circular import: " + result.errors());
+    }
+
+    @Test
+    public void testProjectCompilerMissingEntrypoint() {
+        java.util.Map<String, List<String>> files = new java.util.HashMap<>();
+        files.put("helper.n", List.of("println \"no main\""));
+
+        NCompiler.CompileResult result = NCompiler.compileProject(files, null);
+        assertFalse(result.success());
+        assertTrue(result.errors().get(0).contains("main.n"));
+    }
+
+    @Test
+    public void testZipNameExtraction() {
+        assertEquals("MyProject.asm", NCompiler.getAsmNameFromZip("MyProject.zip"));
+        assertEquals("space_invaders.asm", NCompiler.getAsmNameFromZip("/path/to/space_invaders.ZIP"));
+        assertEquals("game.asm", NCompiler.getAsmNameFromZip("game"));
+    }
+
+    @Test
+    public void testProjectZipUnpackAndCompile() throws Exception {
+        // Create an in-memory zip containing:
+        // - main.n
+        // - math/operations.n
+        // - io/display.n (which imports math/operations.n via "../math/operations.n")
+        java.io.ByteArrayOutputStream zipBaos = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(zipBaos, java.nio.charset.StandardCharsets.UTF_8)) {
+            // entry: math/operations.n
+            zos.putNextEntry(new java.util.zip.ZipEntry("math/operations.n"));
+            zos.write("var baseVal = 32\nfn addTen() {\n    return baseVal + 10\n}\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zos.closeEntry();
+
+            // entry: io/display.n
+            zos.putNextEntry(new java.util.zip.ZipEntry("io/display.n"));
+            zos.write("import \"../math/operations.n\"\nfn showResult() {\n    var x = addTen()\n    print \"Result: \"\n    println x\n}\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zos.closeEntry();
+
+            // entry: main.n
+            zos.putNextEntry(new java.util.zip.ZipEntry("main.n"));
+            zos.write("import \"io/display.n\"\nshowResult()\nhalt\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zos.closeEntry();
+        }
+
+        // Unpack zip using exact logic from ProjectCompilerScreen
+        java.util.Map<String, List<String>> extracted = new java.util.LinkedHashMap<>();
+        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(zipBaos.toByteArray()), java.nio.charset.StandardCharsets.UTF_8)) {
+            java.util.zip.ZipEntry entry;
+            byte[] buffer = new byte[4096];
+            while ((entry = zis.getNextEntry()) != null) {
+                if (!entry.isDirectory() && entry.getName().toLowerCase().endsWith(".n")) {
+                    java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                    int len;
+                    while ((len = zis.read(buffer)) > 0) {
+                        baos.write(buffer, 0, len);
+                    }
+                    String text = baos.toString(java.nio.charset.StandardCharsets.UTF_8);
+                    List<String> rawLines = java.util.Arrays.asList(text.split("\\r?\\n"));
+                    List<String> cleaned = new java.util.ArrayList<>();
+                    for (String line : rawLines) {
+                        String trimmed = line.trim();
+                        if (!trimmed.isEmpty()) {
+                            cleaned.add(trimmed);
+                        }
+                    }
+                    String normPath = entry.getName().replace('\\', '/');
+                    while (normPath.startsWith("/")) {
+                        normPath = normPath.substring(1);
+                    }
+                    extracted.put(normPath, cleaned);
+                }
+                zis.closeEntry();
+            }
+        }
+
+        assertEquals(3, extracted.size(), "Should extract 3 .n files");
+        assertTrue(extracted.containsKey("main.n"));
+        assertTrue(extracted.containsKey("math/operations.n"));
+        assertTrue(extracted.containsKey("io/display.n"));
+
+        // Compile project
+        NCompiler.CompileResult result = NCompiler.compileProject(extracted, null);
+        assertTrue(result.success(), "Compile should succeed: " + result.errors());
+
+        // Validate asm filename
+        String asmName = NCompiler.getAsmNameFromZip("MyAwesomeGame.zip");
+        assertEquals("MyAwesomeGame.asm", asmName);
+
+        // Run on VirtualCpu
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "ADD", "CALL", "RET", "JMP", "OUT", "OUTC", "HLT");
+        cpu.configure(isa, 256, result.assembly(), false, 0);
+        cpu.powerOn();
+        cpu.tick(150);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        List<String> out = cpu.getTerminalOutput();
+        assertTrue(out.contains("Result: 42"), "Output should contain 'Result: 42': " + out);
+    }
+
+    @Test
+    public void testNStorageHelpers() {
+        List<String> nSource = List.of(
+                "var sz = storage.size()",
+                "storage.write(0, 42)",
+                "var byteVal = storage.read(0)",
+                "storage.write_int(4, 99999)",
+                "var val = storage.read_int(4)",
+                "storage.write_string(16, \"MyFS\")",
+                "var name = storage.read_string(16, 4)",
+                "print \"Capacity: \"",
+                "println sz",
+                "print \"Byte: \"",
+                "println byteVal",
+                "print \"Int: \"",
+                "println val",
+                "print \"FS: \"",
+                "println name",
+                "halt"
+        );
+
+        NCompiler.CompileResult result = NCompiler.compile(nSource);
+        assertTrue(result.success(), "N code with storage helpers should compile: " + result.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of(
+                "MOV", "INC", "SHL", "SHR", "OR", "CMP", "JZ", "JNZ", "JMP",
+                "OUT", "OUTC", "SSIZE", "SREAD", "SWRITE", "SBLKR", "SBLKW", "HLT"
+        );
+        // Configure with 512KB storage
+        cpu.configure(isa, 512, result.assembly(), false, 512);
+        cpu.powerOn();
+        cpu.tick(300);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        List<String> output = cpu.getTerminalOutput();
+
+        assertTrue(output.contains("Capacity: 524288"), "Output should contain storage capacity: " + output);
+        assertTrue(output.contains("Byte: 42"), "Output should contain byte 42: " + output);
+        assertTrue(output.contains("Int: 99999"), "Output should contain int 99999: " + output);
+        assertTrue(output.contains("FS: MyFS"), "Output should contain 'FS: MyFS': " + output);
+    }
+
+    @Test
+    public void testNFramebufferAndAudioHelpers() {
+        List<String> nSource = List.of(
+                "display.mode(1)",
+                "var w = display.width()",
+                "var h = display.height()",
+                "display.clear(0x000000)",
+                "display.rect(10, 10, 20, 20, 0xFF0000)",
+                "display.line(0, 0, 50, 50, 0x00FF00)",
+                "display.set(5, 5, 0x0000FF)",
+                "var pix = display.get(5, 5)",
+                "display.swap()",
+                "audio.sample(128)",
+                "audio.sample(255)",
+                "var aSize = audio.status()",
+                "audio.play()",
+                "audio.tone(440, 100)",
+                "print \"W: \"",
+                "println w",
+                "print \"H: \"",
+                "println h",
+                "print \"Pix: \"",
+                "println pix",
+                "print \"ASize: \"",
+                "println aSize",
+                "halt"
+        );
+
+        NCompiler.CompileResult result = NCompiler.compile(nSource);
+        assertTrue(result.success(), "N code with FB and Audio helpers should compile: " + result.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of(
+                "MOV", "OUT", "OUTC", "FBMODE", "FBSET", "FBGET", "FBCLR", "FBRECT", "FBLINE", "FBLIT", "FBSWAP",
+                "FBWIDTH", "FBHEIGHT", "APUSH", "ABUFW", "ACLR", "ASTAT", "ATONE", "APLAY", "HLT"
+        );
+        cpu.configure(isa, 512, result.assembly(), false, 0);
+        cpu.powerOn();
+        cpu.tick(200);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(1, cpu.getDisplayMode());
+        int[] fb = cpu.getFramebuffer();
+        assertEquals(0xFF0000FF, fb[5 * VirtualCpu.FB_WIDTH + 5]);
+        assertEquals(0xFF00FF00, fb[15 * VirtualCpu.FB_WIDTH + 15]); // On diagonal line
+        assertEquals(0xFFFF0000, fb[12 * VirtualCpu.FB_WIDTH + 20]); // Inside rectangle
+
+        List<String> output = cpu.getTerminalOutput();
+        assertTrue(output.contains("W: 228"), "Output should contain width 228: " + output);
+        assertTrue(output.contains("H: 82"), "Output should contain height 82: " + output);
+        assertTrue(output.contains("Pix: -16776961"), "Output should contain 0xFF0000FF pixel value: " + output);
+        assertTrue(output.contains("ASize: 2"), "Output should contain audio size 2: " + output);
+    }
+
+    @Test
+    public void testNMultiDriveOperations() {
+        List<String> nSource = List.of(
+                "var cnt = storage.count()",
+                "storage.select(1)",
+                "var cur = storage.selected()",
+                "storage[1].write(5, 77)",
+                "storage[2].write(5, 88)",
+                "var v1 = storage[1].read(5)",
+                "var v2 = storage[2].read(5)",
+                "storage.write(1, 10, 111)",
+                "var v3 = storage.read(1, 10)",
+                "print \"Count: \"",
+                "println cnt",
+                "print \"Selected: \"",
+                "println cur",
+                "print \"V1: \"",
+                "println v1",
+                "print \"V2: \"",
+                "println v2",
+                "print \"V3: \"",
+                "println v3",
+                "halt"
+        );
+
+        NCompiler.CompileResult result = NCompiler.compile(nSource);
+        assertTrue(result.success(), "N multi-drive operations should compile: " + result.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of(
+                "MOV", "OUT", "OUTC", "SSIZE", "SREAD", "SWRITE", "SBLKR", "SBLKW",
+                "SCOUNT", "SSEL", "SDRV", "HLT"
+        );
+        cpu.configure(isa, 512, result.assembly(), false, 0);
+
+        byte[] drv1 = new byte[64];
+        byte[] drv2 = new byte[64];
+        cpu.setStorageDrive(1, drv1);
+        cpu.setStorageDrive(2, drv2);
+
+        cpu.powerOn();
+        cpu.tick(300);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        List<String> output = cpu.getTerminalOutput();
+
+        assertTrue(output.contains("Count: 2"), "Output should contain 'Count: 2': " + output);
+        assertTrue(output.contains("Selected: 1"), "Output should contain 'Selected: 1': " + output);
+        assertTrue(output.contains("V1: 77"), "Output should contain 'V1: 77': " + output);
+        assertTrue(output.contains("V2: 88"), "Output should contain 'V2: 88': " + output);
+        assertTrue(output.contains("V3: 111"), "Output should contain 'V3: 111': " + output);
+        assertEquals((byte) 77, drv1[5]);
+        assertEquals((byte) 88, drv2[5]);
+        assertEquals((byte) 111, drv1[10]);
+    }
+
+    @Test
+    public void testHexadecimalAndPointers() {
+        // Test isNumeric and parseNumber helpers
+        assertTrue(NCompiler.isNumeric("0x10"));
+        assertTrue(NCompiler.isNumeric("0X10"));
+        assertTrue(NCompiler.isNumeric("-0x10"));
+        assertTrue(NCompiler.isNumeric("0xFF"));
+        assertTrue(NCompiler.isNumeric("0xFFFFFFFF"));
+        assertTrue(NCompiler.isNumeric("255"));
+        assertTrue(NCompiler.isNumeric("-255"));
+        assertFalse(NCompiler.isNumeric("0xG1"));
+        assertFalse(NCompiler.isNumeric("hello"));
+
+        assertEquals(16, NCompiler.parseNumber("0x10"));
+        assertEquals(16, NCompiler.parseNumber("0X10"));
+        assertEquals(-16, NCompiler.parseNumber("-0x10"));
+        assertEquals(255, NCompiler.parseNumber("0xFF"));
+        assertEquals(-1, NCompiler.parseNumber("0xFFFFFFFF"));
+        assertEquals(Integer.MIN_VALUE, NCompiler.parseNumber("0x80000000"));
+        assertEquals(255, NCompiler.parseNumber("255"));
+        assertEquals(-255, NCompiler.parseNumber("-255"));
+
+        List<String> nSource = List.of(
+                "var numA = 0x10",
+                "var numB = 0x20",
+                "var sum = numA + numB",
+                "print \"Sum: \"",
+                "println sum",
+                // Bitwise expressions with parentheses and precedence
+                "var bitwise = (0x0F << 4) | 0x0A",
+                "print \"Bitwise: \"",
+                "println bitwise",
+                "var anded = bitwise & 0xF0",
+                "print \"Anded: \"",
+                "println anded",
+                // Bitwise compound assignments
+                "var comp = 0x0F",
+                "comp <<= 4",
+                "comp |= 0x05",
+                "print \"Comp: \"",
+                "println comp",
+                // Pointer operations
+                "var target = 0x42",
+                "var ptr = &target",
+                "*ptr = 0x77",
+                "print \"Target: \"",
+                "println target",
+                "var fromPtr = *ptr",
+                "print \"FromPtr: \"",
+                "println fromPtr",
+                // Direct RAM memory
+                "*0x50 = 0x99",
+                "var directRam = *0x50",
+                "print \"DirectRam: \"",
+                "println directRam",
+                "mem[0x60] = 0xAA",
+                "var memBracket = mem[0x60]",
+                "print \"MemBracket: \"",
+                "println memBracket",
+                "mem.write(0x70, 0xBB)",
+                "var memRead = mem.read(0x70)",
+                "print \"MemRead: \"",
+                "println memRead",
+                "poke(0x80, 0xCC)",
+                "var peekVal = peek(0x80)",
+                "print \"PeekVal: \"",
+                "println peekVal",
+                // Hex output
+                "print \"Hex: \"",
+                "println_hex numA",
+                "print_hex 0xAA",
+                "println \"\"",
+                "halt"
+        );
+
+        NCompiler.CompileResult result = NCompiler.compile(nSource);
+        assertTrue(result.success(), "N compilation should succeed with hex & pointers: " + result.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of(
+                "MOV", "ADD", "SUB", "MUL", "DIV", "MOD", "INC", "DEC", "CMP",
+                "AND", "OR", "XOR", "NOT", "SHL", "SHR", "OUT", "OUTH", "OUTC", "HLT"
+        );
+        cpu.configure(isa, 512, result.assembly(), false, 0);
+        cpu.powerOn();
+        cpu.tick(300);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        List<String> output = cpu.getTerminalOutput();
+
+        assertTrue(output.contains("Sum: 48"), "0x10 + 0x20 should be 48: " + output);
+        assertTrue(output.contains("Bitwise: 250"), "(0x0F << 4) | 0x0A should be 250: " + output);
+        assertTrue(output.contains("Anded: 240"), "250 & 0xF0 should be 240: " + output);
+        assertTrue(output.contains("Comp: 245"), "(0x0F << 4) | 0x05 should be 245: " + output);
+        assertTrue(output.contains("Target: 119"), "target should be updated via pointer to 0x77 (119): " + output);
+        assertTrue(output.contains("FromPtr: 119"), "fromPtr should read 119: " + output);
+        assertTrue(output.contains("DirectRam: 153"), "*0x50 should read 0x99 (153): " + output);
+        assertTrue(output.contains("MemBracket: 170"), "mem[0x60] should read 0xAA (170): " + output);
+        assertTrue(output.contains("MemRead: 187"), "mem.read(0x70) should read 0xBB (187): " + output);
+        assertTrue(output.contains("PeekVal: 204"), "peek(0x80) should read 0xCC (204): " + output);
+        assertTrue(output.contains("Hex: 0x10"), "println_hex numA should output 'Hex: 0x10': " + output);
+        assertTrue(output.contains("0xAA"), "print_hex 0xAA should output '0xAA': " + output);
+    }
+
+    @Test
+    public void testHexadecimalStorageAndTables() {
+        List<String> nSource = List.of(
+                // Hex table indexing and values
+                "var t = { [0x01] = 0xAA, [0x02] = 0xBB }",
+                "var v1 = t[0x01]",
+                "t[0x02] = 0xCC",
+                "var v2 = t[0x02]",
+                "print \"V1: \"",
+                "println v1",
+                "print \"V2: \"",
+                "println v2",
+                // Multi-drive storage with hex drives and addresses
+                "storage.select(0x01)",
+                "storage.write(0x01, 0x10, 0xDE)",
+                "var sVal = storage.read(0x01, 0x10)",
+                "print \"StorageVal: \"",
+                "println sVal",
+                "storage[0x02].write(0x20, 0xEA)",
+                "var sVal2 = storage[0x02].read(0x20)",
+                "print \"StorageVal2: \"",
+                "println sVal2",
+                "halt"
+        );
+
+        NCompiler.CompileResult result = NCompiler.compile(nSource);
+        assertTrue(result.success(), "N compilation should succeed with hex storage and tables: " + result.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of(
+                "MOV", "ADD", "SUB", "OUT", "OUTC", "SREAD", "SWRITE", "SSEL", "HLT"
+        );
+        cpu.configure(isa, 512, result.assembly(), false, 0);
+
+        byte[] drv1 = new byte[64];
+        byte[] drv2 = new byte[64];
+        cpu.setStorageDrive(1, drv1);
+        cpu.setStorageDrive(2, drv2);
+
+        cpu.powerOn();
+        cpu.tick(300);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        List<String> output = cpu.getTerminalOutput();
+
+        assertTrue(output.contains("V1: 170"), "t[0x01] should be 170 (0xAA): " + output);
+        assertTrue(output.contains("V2: 204"), "t[0x02] should be 204 (0xCC): " + output);
+        assertTrue(output.contains("StorageVal: 222"), "storage.read(0x01, 0x10) should be 222 (0xDE): " + output);
+        assertTrue(output.contains("StorageVal2: 234"), "storage[0x02].read(0x20) should be 234 (0xEA): " + output);
+        assertEquals((byte) 0xDE, drv1[0x10]);
+        assertEquals((byte) 0xEA, drv2[0x20]);
+    }
+
+    @Test
+    public void testNLanguageInterruptHelpers() {
+        List<String> nSource = List.of(
+                "on_key(handle_key)",
+                "on_mouse_move(handle_mouse)",
+                "on_mouse_click(handle_click)",
+                "catch(0, handle_div_zero)",
+                "catch(DIV_ZERO, handle_div_zero)",
+                "CLI",
+                "STI",
+                "INT 10",
+                "halt",
+                "handle_key:",
+                "IRET",
+                "handle_mouse:",
+                "IRET",
+                "handle_click:",
+                "IRET",
+                "handle_div_zero:",
+                "IRET"
+        );
+
+        NCompiler.CompileResult result = NCompiler.compile(nSource);
+        assertTrue(result.success(), "Interrupt helper code should compile successfully: " + result.errors());
+        assertTrue(result.assembly().contains("IVEC 10, handle_key"));
+        assertTrue(result.assembly().contains("IVEC 11, handle_mouse"));
+        assertTrue(result.assembly().contains("IVEC 12, handle_click"));
+        assertTrue(result.assembly().contains("IVEC 0, handle_div_zero"));
+        assertTrue(result.assembly().contains("IVEC DIV_ZERO, handle_div_zero"));
+        assertTrue(result.assembly().contains("CLI"));
+        assertTrue(result.assembly().contains("STI"));
+        assertTrue(result.assembly().contains("INT 10"));
+
+        Set<String> req = result.requiredInstructions();
+        assertTrue(req.contains("IVEC"));
+        assertTrue(req.contains("IRET"));
+        assertTrue(req.contains("CLI"));
+        assertTrue(req.contains("STI"));
+        assertTrue(req.contains("INT"));
+    }
 }
+

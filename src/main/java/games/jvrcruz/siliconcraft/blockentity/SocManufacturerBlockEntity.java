@@ -62,6 +62,12 @@ public class SocManufacturerBlockEntity extends BaseMachineBlockEntity {
         super(ModBlockEntities.SOC_MANUFACTURER.get(), pos, blockState, 9, 30000);
     }
 
+    public static boolean isFlashStorage(ItemStack stack) {
+        if (!stack.is(ModItems.STORAGE.get())) return false;
+        StorageData sd = stack.get(ModDataComponents.STORAGE_DATA.get());
+        return sd == null || !sd.isNvme();
+    }
+
     @Override
     protected boolean isSlotItemValid(int slot, ItemStack stack) {
         return switch (slot) {
@@ -72,7 +78,7 @@ public class SocManufacturerBlockEntity extends BaseMachineBlockEntity {
             case 4 -> stack.is(ModItems.ROM.get());
             case 5 -> stack.is(ModItems.CHIP.get());
             case 6 -> stack.is(ModItems.RAM.get());
-            case 7 -> stack.is(ModItems.STORAGE.get());
+            case 7 -> isFlashStorage(stack);
             default -> false;
         };
     }
@@ -88,6 +94,7 @@ public class SocManufacturerBlockEntity extends BaseMachineBlockEntity {
         ItemStack rom = itemHandler.getStackInSlot(4);
         ItemStack chip = itemHandler.getStackInSlot(5);
         ItemStack ram = itemHandler.getStackInSlot(6);
+        ItemStack storage = itemHandler.getStackInSlot(7);
         ItemStack output = itemHandler.getStackInSlot(8);
 
         if (wood.isEmpty() || !wood.is(ItemTags.WOODEN_SLABS)) return false;
@@ -95,7 +102,8 @@ public class SocManufacturerBlockEntity extends BaseMachineBlockEntity {
         if (gold.isEmpty() || !gold.is(Items.GOLD_INGOT) || gold.getCount() < 2) return false;
         if (rom.isEmpty() || !rom.is(ModItems.ROM.get())) return false;
         if (chip.isEmpty() || !chip.is(ModItems.CHIP.get())) return false;
-        if (ram.isEmpty() || !ram.is(ModItems.RAM.get())) return false;
+        if (!ram.isEmpty() && !ram.is(ModItems.RAM.get())) return false;
+        if (!storage.isEmpty() && !isFlashStorage(storage)) return false;
 
         if (energyStorage.getEnergyStored() < 1000) return false;
 
@@ -139,27 +147,31 @@ public class SocManufacturerBlockEntity extends BaseMachineBlockEntity {
 
                 RomData romData = romStack.getOrDefault(ModDataComponents.ROM_DATA.get(), RomData.EMPTY);
                 ChipData chipData = chipStack.getOrDefault(ModDataComponents.CHIP_DATA.get(), ChipData.EMPTY);
-                RamData ramData = ramStack.getOrDefault(ModDataComponents.RAM_DATA.get(), RamData.DEFAULT);
 
-                boolean hasNvme = false;
+                int totalRam = 0;
+                if (!ramStack.isEmpty() && ramStack.is(ModItems.RAM.get())) {
+                    RamData ramData = ramStack.getOrDefault(ModDataComponents.RAM_DATA.get(), RamData.DEFAULT);
+                    int ramCount = Math.min(ramStack.getCount(), 4);
+                    totalRam = ramCount * ramData.capacity();
+                    ramStack.shrink(ramCount);
+                }
+
                 int storageCap = 0;
-                if (!storageStack.isEmpty() && storageStack.is(ModItems.STORAGE.get())) {
+                if (!storageStack.isEmpty() && isFlashStorage(storageStack)) {
                     StorageData sd = storageStack.getOrDefault(ModDataComponents.STORAGE_DATA.get(), StorageData.DEFAULT);
-                    hasNvme = sd.isNvme();
                     storageCap = sd.capacity();
                     storageStack.shrink(1);
                 }
 
                 romStack.shrink(1);
                 chipStack.shrink(1);
-                ramStack.shrink(1);
 
                 ItemStack socStack = new ItemStack(ModItems.SOC.get());
                 socStack.set(ModDataComponents.SOC_DATA.get(), new SocData(
                         chipData.instructions(),
-                        ramData.capacity(),
+                        totalRam,
                         romData.lines(),
-                        hasNvme,
+                        false,
                         storageCap
                 ));
 

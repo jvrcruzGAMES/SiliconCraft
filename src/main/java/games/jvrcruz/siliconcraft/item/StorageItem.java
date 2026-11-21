@@ -26,6 +26,42 @@ public class StorageItem extends Item {
             tooltip.add(Component.translatable("tooltip.siliconcraft.storage.standard").withStyle(ChatFormatting.GRAY));
         }
         tooltip.add(Component.translatable("tooltip.siliconcraft.storage.capacity", cap).withStyle(ChatFormatting.YELLOW));
+        games.jvrcruz.siliconcraft.data.RomData romData = stack.get(ModDataComponents.ROM_DATA.get());
+        if (romData != null && !romData.lines().isEmpty()) {
+            tooltip.add(Component.translatable("tooltip.siliconcraft.rom.lines", romData.lines().size()).withStyle(ChatFormatting.LIGHT_PURPLE));
+            int show = Math.min(romData.lines().size(), 3);
+            for (int i = 0; i < show; i++) {
+                tooltip.add(Component.literal("  " + (i + 1) + ": " + romData.lines().get(i)).withStyle(ChatFormatting.DARK_GRAY));
+            }
+            if (romData.lines().size() > 3) {
+                tooltip.add(Component.literal("  ...").withStyle(ChatFormatting.DARK_GRAY));
+            }
+        }
         super.appendHoverText(stack, context, tooltip, flag);
+    }
+
+    public static byte[] getStorageBytes(ItemStack stack) {
+        if (stack == null || stack.isEmpty() || !(stack.getItem() instanceof StorageItem)) {
+            return new byte[0];
+        }
+        net.minecraft.world.item.component.CustomData customData = stack.get(net.minecraft.core.component.DataComponents.CUSTOM_DATA);
+        if (customData != null) {
+            net.minecraft.nbt.CompoundTag tag = customData.copyTag();
+            if (tag.contains("BinaryStorage", net.minecraft.nbt.Tag.TAG_BYTE_ARRAY)) {
+                return tag.getByteArray("BinaryStorage");
+            }
+        }
+        StorageData sd = stack.get(ModDataComponents.STORAGE_DATA.get());
+        int capKb = (sd != null) ? sd.capacity() : 512;
+        return new byte[capKb * 1024];
+    }
+
+    public static void setStorageBytes(ItemStack stack, byte[] data) {
+        if (stack == null || stack.isEmpty() || !(stack.getItem() instanceof StorageItem)) {
+            return;
+        }
+        net.minecraft.world.item.component.CustomData.update(net.minecraft.core.component.DataComponents.CUSTOM_DATA, stack, tag -> {
+            tag.putByteArray("BinaryStorage", data != null ? data : new byte[0]);
+        });
     }
 }

@@ -1,9 +1,6 @@
 package games.jvrcruz.siliconcraft.compat.jei;
 
 import games.jvrcruz.siliconcraft.Siliconcraft;
-import games.jvrcruz.siliconcraft.client.screen.ChipForgeScreen;
-import games.jvrcruz.siliconcraft.client.screen.MemoryForgeScreen;
-import games.jvrcruz.siliconcraft.client.screen.SocManufacturerScreen;
 import games.jvrcruz.siliconcraft.compat.jei.category.ChipForgeCategory;
 import games.jvrcruz.siliconcraft.compat.jei.category.ComputerAssemblyCategory;
 import games.jvrcruz.siliconcraft.compat.jei.category.MemoryForgeCategory;
@@ -71,25 +68,26 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
                 new ItemStack(Items.REDSTONE, 5),
                 starterChip,
                 2000,
-                220,
+                198,
                 "Silicon-8 Starter CPU (8 ops)",
                 starterArch
         ));
 
-        // Complete 35-instruction RISC CPU
+        // Complete 61-instruction RISC CPU
         List<String> fullArch = InstructionValidator.ALL_INSTRUCTIONS;
+        int fullCount = fullArch.size();
         ItemStack fullWriteup = new ItemStack(ModItems.ARCHITECTURE_WRITEUP.get());
-        fullWriteup.set(ModDataComponents.ARCHITECTURE_DATA.get(), new ArchitectureData("Silicon-35", fullArch));
+        fullWriteup.set(ModDataComponents.ARCHITECTURE_DATA.get(), new ArchitectureData("Silicon-" + fullCount, fullArch));
         ItemStack fullChip = new ItemStack(ModItems.CHIP.get());
         fullChip.set(ModDataComponents.CHIP_DATA.get(), new ChipData(fullArch));
         chipRecipes.add(new ChipForgeJeiRecipe(
                 fullWriteup,
-                new ItemStack(ModItems.SILICON_POWDER.get(), 12),
-                new ItemStack(Items.REDSTONE, 18),
+                new ItemStack(ModItems.SILICON_POWDER.get(), 1 + (fullCount / 3)),
+                new ItemStack(Items.REDSTONE, 1 + (fullCount / 2)),
                 fullChip,
-                7400,
-                760,
-                "Silicon-35 Full RISC CPU (35 ops)",
+                400 + (fullCount * 200),
+                54 + (fullCount * 18),
+                "Silicon-" + fullCount + " Full RISC CPU (" + fullCount + " ops)",
                 fullArch
         ));
 
@@ -105,7 +103,7 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
                 new ItemStack(Items.REDSTONE, 2),
                 minChip,
                 1000,
-                120,
+                108,
                 "Silicon-3 Micro-Controller (3 ops)",
                 minArch
         ));
@@ -168,7 +166,23 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
         ItemStack biosRom = new ItemStack(ModItems.ROM.get());
         biosRom.set(ModDataComponents.ROM_DATA.get(), new RomData(List.of("MOV A, 1", "OUT A", "HLT")));
 
-        // Standard SoC (No NVMe)
+        // Minimal SoC (No RAM, No Storage)
+        ItemStack minSoc = new ItemStack(ModItems.SOC.get());
+        minSoc.set(ModDataComponents.SOC_DATA.get(), new SocData(starterArch, 0, List.of("MOV A, 1", "OUT A", "HLT"), false, 0));
+        socRecipes.add(new SocManufacturerJeiRecipe(
+                Ingredient.of(ItemTags.WOODEN_SLABS),
+                new ItemStack(ModItems.SILICON_POWDER.get(), 2),
+                new ItemStack(Items.GOLD_INGOT, 2),
+                biosRom,
+                starterChip,
+                ItemStack.EMPTY,
+                ItemStack.EMPTY,
+                minSoc,
+                1000,
+                80
+        ));
+
+        // Standard SoC (1x RAM 256B, No Storage)
         ItemStack standardSoc = new ItemStack(ModItems.SOC.get());
         standardSoc.set(ModDataComponents.SOC_DATA.get(), new SocData(starterArch, 256, List.of("MOV A, 1", "OUT A", "HLT"), false, 0));
         socRecipes.add(new SocManufacturerJeiRecipe(
@@ -184,9 +198,9 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
                 80
         ));
 
-        // Advanced SoC (with NVMe)
+        // Advanced SoC (with 512B Flash Storage)
         ItemStack advancedSoc = new ItemStack(ModItems.SOC.get());
-        advancedSoc.set(ModDataComponents.SOC_DATA.get(), new SocData(fullArch, 256, List.of("MOV A, 1", "OUT A", "HLT"), true, 1024));
+        advancedSoc.set(ModDataComponents.SOC_DATA.get(), new SocData(fullArch, 256, List.of("MOV A, 1", "OUT A", "HLT"), false, 512));
         socRecipes.add(new SocManufacturerJeiRecipe(
                 Ingredient.of(ItemTags.WOODEN_SLABS),
                 new ItemStack(ModItems.SILICON_POWDER.get(), 2),
@@ -194,7 +208,7 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
                 biosRom,
                 fullChip,
                 ramStack,
-                nvmeStack,
+                storageStack,
                 advancedSoc,
                 1000,
                 80
@@ -215,6 +229,8 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
         // --- Informational Pages for Mod Items & Blocks ---
         registration.addIngredientInfo(ModBlocks.SILICON_ORE.get(),
                 Component.translatable("jei.siliconcraft.info.silicon_ore"));
+        registration.addIngredientInfo(ModBlocks.DEEPSLATE_SILICON_ORE.get(),
+                Component.translatable("jei.siliconcraft.info.silicon_ore"));
         registration.addIngredientInfo(ModItems.SILICON_POWDER.get(),
                 Component.translatable("jei.siliconcraft.info.silicon_powder"));
         registration.addIngredientInfo(ModItems.ARCHITECTURE_WRITEUP.get(),
@@ -225,12 +241,16 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
                 Component.translatable("jei.siliconcraft.info.programmer"));
         registration.addIngredientInfo(ModBlocks.CODE_COMPILER.get(),
                 Component.translatable("jei.siliconcraft.info.code_compiler"));
+        registration.addIngredientInfo(ModBlocks.PROJECT_COMPILER.get(),
+                Component.translatable("jei.siliconcraft.info.project_compiler"));
         registration.addIngredientInfo(ModBlocks.ASSEMBLY_WRITER.get(),
                 Component.translatable("jei.siliconcraft.info.assembly_writer"));
         registration.addIngredientInfo(ModBlocks.COMPUTER_CASE.get(),
                 Component.translatable("jei.siliconcraft.info.computer_case"));
         registration.addIngredientInfo(ModBlocks.COMPUTER.get(),
                 Component.translatable("jei.siliconcraft.info.computer"));
+        registration.addIngredientInfo(ModBlocks.SPEAKER.get(),
+                Component.translatable("jei.siliconcraft.info.speaker"));
     }
 
     @Override
@@ -244,8 +264,7 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
 
     @Override
     public void registerGuiHandlers(IGuiHandlerRegistration registration) {
-        registration.addRecipeClickArea(ChipForgeScreen.class, 96, 54, 70, 24, ChipForgeCategory.RECIPE_TYPE);
-        registration.addRecipeClickArea(MemoryForgeScreen.class, 124, 30, 44, 40, MemoryForgeCategory.RECIPE_TYPE);
-        registration.addRecipeClickArea(SocManufacturerScreen.class, 90, 44, 48, 24, SocManufacturerCategory.RECIPE_TYPE);
+        // Do not add recipe click areas over machine processing buttons ("Forge", "Assemble SoC")
+        // to prevent JEI from intercepting button clicks with "Show all recipes".
     }
 }

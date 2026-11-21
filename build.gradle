@@ -18,6 +18,13 @@ repositories {
             includeGroup "curse.maven"
         }
     }
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+        content {
+            includeGroup "maven.modrinth"
+        }
+    }
 }
 
 base {
@@ -107,6 +114,8 @@ dependencies {
     implementation "curse.maven:jei-238222:9717805"
     runtimeOnly "curse.maven:mezzconfig-1689768:9527937"
     runtimeOnly "curse.maven:mezzconfiggui-1700987:9701162"
+
+    implementation "maven.modrinth:jade:15.10.3+neoforge"
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

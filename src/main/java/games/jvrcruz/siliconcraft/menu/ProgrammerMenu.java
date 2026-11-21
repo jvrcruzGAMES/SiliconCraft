@@ -38,10 +38,10 @@ public class ProgrammerMenu extends AbstractContainerMenu {
                 AbstractFurnaceBlockEntity::isFuel,
                 Component.literal("Fuel (Coal, Charcoal, etc.)")));
         this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 1, 27, 20,
-                stack -> stack.is(ModItems.ROM.get()),
-                Component.literal("ROM Chip (Blank or Programmed)")));
+                stack -> stack.is(ModItems.ROM.get()) || stack.is(ModItems.STORAGE.get()),
+                Component.literal("ROM Chip or Storage Drive")));
         this.addSlot(new OutputSlot(blockEntity.getItemHandler(), 2, 49, 20,
-                Component.literal("Flashed ROM Chip Output")));
+                Component.literal("Programmed Output")));
 
         // Player Inventory
         for (int row = 0; row < 3; ++row) {
@@ -78,7 +78,7 @@ public class ProgrammerMenu extends AbstractContainerMenu {
             } else {
                 if (AbstractFurnaceBlockEntity.isFuel(slotStack)) {
                     if (!this.moveItemStackTo(slotStack, 0, 1, false)) return ItemStack.EMPTY;
-                } else if (slotStack.is(ModItems.ROM.get())) {
+                } else if (slotStack.is(ModItems.ROM.get()) || slotStack.is(ModItems.STORAGE.get())) {
                     if (!this.moveItemStackTo(slotStack, 1, 2, false)) return ItemStack.EMPTY;
                 } else {
                     return ItemStack.EMPTY;

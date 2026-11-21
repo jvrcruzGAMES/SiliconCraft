@@ -27,8 +27,10 @@ public class SocItem extends Item {
             tooltip.add(Component.translatable("tooltip.siliconcraft.soc.bios", data.bios().size()).withStyle(ChatFormatting.LIGHT_PURPLE));
             if (data.hasNvme()) {
                 tooltip.add(Component.translatable("tooltip.siliconcraft.soc.nvme", data.storageCapacity()).withStyle(ChatFormatting.AQUA));
+            } else if (data.storageCapacity() > 0) {
+                tooltip.add(Component.translatable("tooltip.siliconcraft.soc.flash", data.storageCapacity()).withStyle(ChatFormatting.AQUA));
             } else {
-                tooltip.add(Component.translatable("tooltip.siliconcraft.soc.no_nvme").withStyle(ChatFormatting.DARK_GRAY));
+                tooltip.add(Component.translatable("tooltip.siliconcraft.soc.no_storage").withStyle(ChatFormatting.DARK_GRAY));
             }
         }
         super.appendHoverText(stack, context, tooltip, flag);

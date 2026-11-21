@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "siliconcraft:block/speaker" },
+    "facing=east":  { "model": "siliconcraft:block/speaker", "y": 90 },
+    "facing=south": { "model": "siliconcraft:block/speaker", "y": 180 },
+    "facing=west":  { "model": "siliconcraft:block/speaker", "y": 270 }
+  }
+}

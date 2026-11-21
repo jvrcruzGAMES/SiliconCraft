@@ -14,9 +14,13 @@ import java.util.List;
 public class ProgramSavedData extends SavedData {
     private static final String DATA_NAME = "siliconcraft_programs";
     private final List<ProgramEntry> programs = new ArrayList<>();
+    private boolean defaultsInitialized = false;
 
     public ProgramSavedData() {
-        initDefaultPrograms();
+        if (!defaultsInitialized) {
+            initDefaultPrograms();
+            defaultsInitialized = true;
+        }
     }
 
     private void initDefaultPrograms() {
@@ -71,6 +75,15 @@ public class ProgramSavedData extends SavedData {
         setDirty();
     }
 
+    public boolean removeProgram(String id) {
+        if (id == null || id.isEmpty()) return false;
+        boolean removed = programs.removeIf(p -> p.id().equals(id) || p.name().equalsIgnoreCase(id));
+        if (removed) {
+            setDirty();
+        }
+        return removed;
+    }
+
     public static ProgramSavedData get(ServerLevel level) {
         return level.getServer().overworld().getDataStorage().computeIfAbsent(
                 new Factory<>(ProgramSavedData::new, ProgramSavedData::load, null),
@@ -81,6 +94,8 @@ public class ProgramSavedData extends SavedData {
     public static ProgramSavedData load(CompoundTag tag, HolderLookup.Provider registries) {
         ProgramSavedData data = new ProgramSavedData();
         data.programs.clear();
+        data.defaultsInitialized = tag.getBoolean("DefaultsInitialized");
+
         if (tag.contains("Programs", Tag.TAG_LIST)) {
             ListTag list = tag.getList("Programs", Tag.TAG_COMPOUND);
             for (int i = 0; i < list.size(); i++) {
@@ -104,12 +119,16 @@ public class ProgramSavedData extends SavedData {
                 data.programs.add(new ProgramEntry(id, name, archName, lines, req));
             }
         }
-        data.initDefaultPrograms();
+        if (!data.defaultsInitialized && data.programs.isEmpty()) {
+            data.initDefaultPrograms();
+            data.defaultsInitialized = true;
+        }
         return data;
     }
 
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
+        tag.putBoolean("DefaultsInitialized", defaultsInitialized);
         ListTag list = new ListTag();
         for (ProgramEntry p : programs) {
             CompoundTag pTag = new CompoundTag();

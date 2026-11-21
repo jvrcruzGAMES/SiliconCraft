@@ -11,7 +11,15 @@ public class InstructionValidator {
             // Arithmetic & Logic
             "ADD", "SUB", "MUL", "DIV", "MOD", "INC", "DEC", "CMP", "AND", "OR", "XOR", "NOT", "SHL", "SHR",
             // I/O & System / BIOS
-            "OUT", "OUTC", "CLS", "SLEEP", "TIME", "RAND"
+            "OUT", "OUTC", "OUTH", "CLS", "SLEEP", "TIME", "RAND",
+            // Storage (multi-drive)
+            "SSIZE", "SREAD", "SWRITE", "SBLKR", "SBLKW", "SCOUNT", "SSEL", "SDRV",
+            // Framebuffer / Graphics
+            "FBMODE", "FBSET", "FBGET", "FBCLR", "FBRECT", "FBLINE", "FBLIT", "FBSWAP", "FBWIDTH", "FBHEIGHT",
+            // Audio Buffer & Sound
+            "APUSH", "ABUFW", "ACLR", "ASTAT", "ATONE", "APLAY",
+            // Interrupts & Exceptions
+            "IVEC", "IRET", "CLI", "STI", "INT"
     );
     public static final Set<String> ALL_INSTRUCTIONS_SET = new HashSet<>(ALL_INSTRUCTIONS);
 

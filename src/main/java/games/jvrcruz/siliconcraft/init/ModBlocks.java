@@ -19,6 +19,13 @@ public class ModBlocks {
                     .strength(3.0F, 3.0F)
                     .sound(SoundType.STONE)));
 
+    public static final DeferredBlock<SiliconOreBlock> DEEPSLATE_SILICON_ORE = BLOCKS.register("deepslate_silicon_ore",
+            () -> new SiliconOreBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.DEEPSLATE)
+                    .requiresCorrectToolForDrops()
+                    .strength(4.5F, 3.0F)
+                    .sound(SoundType.DEEPSLATE)));
+
     public static final DeferredBlock<ChipForgeBlock> CHIP_FORGE = BLOCKS.register("chip_forge",
             () -> new ChipForgeBlock(BlockBehaviour.Properties.of()
                     .mapColor(MapColor.METAL)
@@ -80,4 +87,18 @@ public class ModBlocks {
                     .requiresCorrectToolForDrops()
                     .strength(3.5F, 4.0F)
                     .sound(SoundType.METAL)));
+
+    public static final DeferredBlock<ProjectCompilerBlock> PROJECT_COMPILER = BLOCKS.register("project_compiler",
+            () -> new ProjectCompilerBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.METAL)
+                    .requiresCorrectToolForDrops()
+                    .strength(3.5F, 4.0F)
+                    .sound(SoundType.METAL)));
+
+    public static final DeferredBlock<SpeakerBlock> SPEAKER = BLOCKS.register("speaker",
+            () -> new SpeakerBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.METAL)
+                    .requiresCorrectToolForDrops()
+                    .strength(2.5F, 3.0F)
+                    .sound(SoundType.WOOD)));
 }

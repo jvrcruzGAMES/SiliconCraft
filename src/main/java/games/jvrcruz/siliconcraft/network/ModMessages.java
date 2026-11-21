@@ -22,13 +22,18 @@ public class ModMessages {
         registrar.playToServer(ProgrammerPacket.TYPE, ProgrammerPacket.STREAM_CODEC, ModMessages::handleProgrammer);
         registrar.playToServer(SocManufacturerPacket.TYPE, SocManufacturerPacket.STREAM_CODEC, ModMessages::handleSocManufacturer);
         registrar.playToServer(ComputerActionPacket.TYPE, ComputerActionPacket.STREAM_CODEC, ModMessages::handleComputerAction);
+        registrar.playToServer(ComputerInputPacket.TYPE, ComputerInputPacket.STREAM_CODEC, ModMessages::handleComputerInput);
 
         // Program library packets
         registrar.playToServer(AddAssemblyProgramPacket.TYPE, AddAssemblyProgramPacket.STREAM_CODEC, ModMessages::handleAddAssemblyProgram);
         registrar.playToServer(CompileProgramPacket.TYPE, CompileProgramPacket.STREAM_CODEC, ModMessages::handleCompileProgram);
+        registrar.playToServer(CompileProjectPacket.TYPE, CompileProjectPacket.STREAM_CODEC, ModMessages::handleCompileProject);
+        registrar.playToServer(DeleteProgramPacket.TYPE, DeleteProgramPacket.STREAM_CODEC, ModMessages::handleDeleteProgram);
         registrar.playToServer(RequestProgramsPacket.TYPE, RequestProgramsPacket.STREAM_CODEC, ModMessages::handleRequestPrograms);
         registrar.playToClient(SyncProgramsPacket.TYPE, SyncProgramsPacket.STREAM_CODEC, ModMessages::handleSyncPrograms);
         registrar.playToClient(SyncTerminalPacket.TYPE, SyncTerminalPacket.STREAM_CODEC, ModMessages::handleSyncTerminal);
+        registrar.playToClient(SyncFramebufferPacket.TYPE, SyncFramebufferPacket.STREAM_CODEC, (pkt, ctx) -> games.jvrcruz.siliconcraft.client.ClientPayloadHandler.handleSyncFramebuffer(pkt, ctx));
+        registrar.playToClient(PlayAudioPacket.TYPE, PlayAudioPacket.STREAM_CODEC, (pkt, ctx) -> games.jvrcruz.siliconcraft.client.ClientPayloadHandler.handlePlayAudio(pkt, ctx));
     }
 
     private static void handleArchitectureWriter(ArchitectureWriterPacket packet, IPayloadContext context) {
@@ -62,6 +67,32 @@ public class ModMessages {
                 BlockEntity be = serverPlayer.level().getBlockEntity(packet.pos());
                 if (be instanceof CodeCompilerBlockEntity compilerBe) {
                     compilerBe.compileAndAddProgram(serverPlayer, packet.name(), packet.sourceLines());
+                }
+            }
+        });
+    }
+
+    private static void handleCompileProject(CompileProjectPacket packet, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            Player player = context.player();
+            if (player instanceof ServerPlayer serverPlayer && serverPlayer.level().isLoaded(packet.pos())) {
+                BlockEntity be = serverPlayer.level().getBlockEntity(packet.pos());
+                if (be instanceof ProjectCompilerBlockEntity compilerBe) {
+                    compilerBe.compileAndAddProject(serverPlayer, packet.projectName(), packet.files());
+                }
+            }
+        });
+    }
+
+    private static void handleDeleteProgram(DeleteProgramPacket packet, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            Player player = context.player();
+            if (player instanceof ServerPlayer serverPlayer) {
+                ProgramSavedData savedData = ProgramSavedData.get(serverPlayer.serverLevel());
+                boolean removed = savedData.removeProgram(packet.id());
+                if (removed) {
+                    PacketDistributor.sendToAllPlayers(new SyncProgramsPacket(savedData.getPrograms()));
+                    player.displayClientMessage(net.minecraft.network.chat.Component.literal("Deleted program from library.").withStyle(net.minecraft.ChatFormatting.YELLOW), false);
                 }
             }
         });
@@ -149,6 +180,24 @@ public class ModMessages {
                         compBe.resetCpu();
                     } else if (packet.action() == 2) {
                         compBe.stepCpu();
+                    }
+                }
+            }
+        });
+    }
+
+    private static void handleComputerInput(ComputerInputPacket packet, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            Player player = context.player();
+            if (player != null && player.level().isLoaded(packet.pos())) {
+                BlockEntity be = player.level().getBlockEntity(packet.pos());
+                if (be instanceof ComputerBlockEntity compBe) {
+                    if (packet.inputType() == 0) {
+                        compBe.getCpu().queueKeyboardInterrupt(packet.arg1());
+                    } else if (packet.inputType() == 1) {
+                        compBe.getCpu().queueMouseMoveInterrupt(packet.arg1(), packet.arg2());
+                    } else if (packet.inputType() == 2) {
+                        compBe.getCpu().queueMouseClickInterrupt(packet.arg1(), packet.arg2(), packet.arg3());
                     }
                 }
             }

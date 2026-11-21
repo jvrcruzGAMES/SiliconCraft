@@ -34,6 +34,7 @@ public class ModItems {
 
     // Block Items
     public static final DeferredItem<BlockItem> SILICON_ORE_ITEM = ITEMS.registerSimpleBlockItem("silicon_ore", ModBlocks.SILICON_ORE);
+    public static final DeferredItem<BlockItem> DEEPSLATE_SILICON_ORE_ITEM = ITEMS.registerSimpleBlockItem("deepslate_silicon_ore", ModBlocks.DEEPSLATE_SILICON_ORE);
     public static final DeferredItem<BlockItem> CHIP_FORGE_ITEM = ITEMS.registerSimpleBlockItem("chip_forge", ModBlocks.CHIP_FORGE);
     public static final DeferredItem<BlockItem> MEMORY_FORGE_ITEM = ITEMS.registerSimpleBlockItem("memory_forge", ModBlocks.MEMORY_FORGE);
     public static final DeferredItem<BlockItem> PROGRAMMER_ITEM = ITEMS.registerSimpleBlockItem("programmer", ModBlocks.PROGRAMMER);
@@ -43,4 +44,6 @@ public class ModItems {
     public static final DeferredItem<BlockItem> ARCHITECTURE_WRITER_ITEM = ITEMS.registerSimpleBlockItem("architecture_writer", ModBlocks.ARCHITECTURE_WRITER);
     public static final DeferredItem<BlockItem> ASSEMBLY_WRITER_ITEM = ITEMS.registerSimpleBlockItem("assembly_writer", ModBlocks.ASSEMBLY_WRITER);
     public static final DeferredItem<BlockItem> CODE_COMPILER_ITEM = ITEMS.registerSimpleBlockItem("code_compiler", ModBlocks.CODE_COMPILER);
+    public static final DeferredItem<BlockItem> PROJECT_COMPILER_ITEM = ITEMS.registerSimpleBlockItem("project_compiler", ModBlocks.PROJECT_COMPILER);
+    public static final DeferredItem<BlockItem> SPEAKER_ITEM = ITEMS.registerSimpleBlockItem("speaker", ModBlocks.SPEAKER);
 }

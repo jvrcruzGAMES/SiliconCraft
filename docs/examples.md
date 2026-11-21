@@ -201,3 +201,175 @@ memory_error:
     OUT "[FATAL] Memory verification failed!"
     HLT
 ```
+
+---
+
+## Example 6: Framebuffer Direct Pixel Graphics (`graphics_demo.asm`)
+
+Draws geometric primitives (filled boxes, diagonal lines, and pixels) directly onto the $228 \times 82$ CRT pixel canvas and renders the frame.
+
+### Required CPU Instructions
+- `FBCLR`, `FBRECT`, `FBLINE`, `FBSET`, `FBSWAP`, `HLT`
+
+```assembly
+; ============================================
+; Program: graphics_demo.asm
+; Description: Renders 2D geometric shapes on CRT
+; ============================================
+
+; Clear canvas to dark slate (ARGB: 0xFF181824)
+FBCLR 0xFF181824
+
+; Draw a blue title banner rectangle (x=10, y=10, w=208, h=16)
+FBRECT 10, 10, 208, 16, 0xFF2A4494
+
+; Draw diagonal crosshairs across the canvas
+FBLINE 0, 0, 227, 81, 0xFF44AA44
+FBLINE 0, 81, 227, 0, 0xFF44AA44
+
+; Draw an accent gold square in the center
+FBRECT 104, 36, 20, 20, 0xFFFFCC00
+
+; Plot a single white pixel in the center of the gold box
+FBSET 114, 46, 0xFFFFFFFF
+
+; Flip buffer to display on screen
+FBSWAP
+HLT
+```
+
+---
+
+## Example 7: Audio Buffer & Melody Playback (`audio_tune.asm`)
+
+Queues musical note frequencies into the 8000 Hz audio buffer and initiates playback on the local computer and adjacent Speaker blocks.
+
+### Required CPU Instructions
+- `OUT`, `ATONE`, `APLAY`, `HLT`
+
+```assembly
+; ============================================
+; Program: audio_tune.asm
+; Description: Plays an arpeggiated chime melody
+; ============================================
+
+OUT "Synthesizing chime chord..."
+
+; Queue A4 (440 Hz) for 8 ticks (~400ms)
+ATONE 440, 8
+
+; Queue C#5 (554 Hz) for 8 ticks
+ATONE 554, 8
+
+; Queue E5 (659 Hz) for 8 ticks
+ATONE 659, 8
+
+; Queue A5 (880 Hz) for 16 ticks
+ATONE 880, 16
+
+; Fire audio playback
+APLAY
+
+OUT "Playback dispatched to speaker!"
+HLT
+```
+
+---
+
+## Example 8: Interrupt & Fault Exception Handling (`interrupt_demo.asm`)
+
+Demonstrates registering handlers in the Interrupt Vector Table (IVT) for both fault recovery (`DIV_ZERO`) and real-time user input (`KEYBOARD`).
+
+### Required CPU Instructions
+- `OUT`, `OUTC`, `MOV`, `DIV`, `IVEC`, `IRET`, `STI`, `JMP`, `HLT`
+
+```assembly
+; ============================================
+; Program: interrupt_demo.asm
+; Description: Recovers from divide-by-zero & handles keys
+; ============================================
+
+; Register IVT handlers:
+; Vector 0 = DIV_ZERO exception
+; Vector 10 = KEYBOARD interactive interrupt
+IVEC 0, handle_div_zero
+IVEC 10, handle_key
+
+; Enable hardware interrupts
+STI
+
+OUT "Testing exception handler..."
+
+; Intentional fault: divide 100 by 0
+MOV A, 100
+MOV B, 0
+DIV A, B              ; Triggers Vector 0 fault
+
+; Execution resumes here after handler returns
+OUT "Division result after recovery: ", 0
+OUT A
+OUT "Now waiting for keyboard input..."
+
+idle_loop:
+    JMP idle_loop
+
+; --- Handlers ---
+handle_div_zero:
+    OUT "[INTERRUPT] Caught DIV_ZERO exception!"
+    MOV B, 2          ; Fix divisor to 2
+    MOV A, 50         ; Set safe quotient
+    IRET              ; Resume execution after fault
+
+handle_key:
+    ; Register A holds the typed character code
+    OUT "Key pressed: ", 0
+    OUTC A
+    OUTC 10
+    IRET
+```
+
+---
+
+## Example 9: Storage Drive Persistence (`storage_io.asm`)
+
+Demonstrates writing binary data to persistent Storage Drives (Flash / NVMe) that remain stored in NBT even when the drive is detached.
+
+### Required CPU Instructions
+- `OUT`, `OUTC`, `MOV`, `CMP`, `JZ`, `SCOUNT`, `SSEL`, `SWRITE`, `SREAD`, `HLT`
+
+```assembly
+; ============================================
+; Program: storage_io.asm
+; Description: Writes persistent bytes to Storage Drive
+; ============================================
+
+SCOUNT A
+CMP A, 0
+JZ no_drive
+
+OUT "Found installed Storage Drive(s): ", 0
+OUT A
+
+; Select Drive 0
+SSEL 0
+
+; Write magic byte signature 'SC' (0x53, 0x43) at address 0x00
+SWRITE 0, 0x00, 0x53
+SWRITE 0, 0x01, 0x43
+
+; Read bytes back from drive
+SREAD B, 0, 0x00
+SREAD C, 0, 0x01
+
+OUT "Read magic signature: ", 0
+OUTC B
+OUTC C
+OUTC 10
+OUT "Data persisted successfully."
+HLT
+
+no_drive:
+    OUT "[ERROR] No storage drive inserted!"
+    HLT
+```
+

@@ -110,6 +110,7 @@ public class ComputerBlock extends BaseEntityBlock {
             if (!level.isClientSide) {
                 BlockEntity be = level.getBlockEntity(pos);
                 if (be instanceof ComputerBlockEntity compBe) {
+                    compBe.dropContents(level, pos);
                     SocData socData = compBe.getSocData();
                     if (socData != null && !socData.instructions().isEmpty()) {
                         ItemStack socStack = new ItemStack(ModItems.SOC.get());
@@ -139,9 +140,10 @@ public class ComputerBlock extends BaseEntityBlock {
     @Override
     protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
         if (!state.is(newState.getBlock())) {
-            if (!newState.is(ModBlocks.COMPUTER_CASE.get())) {
-                BlockEntity be = level.getBlockEntity(pos);
-                if (be instanceof ComputerBlockEntity compBe) {
+            BlockEntity be = level.getBlockEntity(pos);
+            if (be instanceof ComputerBlockEntity compBe) {
+                compBe.dropContents(level, pos);
+                if (!newState.is(ModBlocks.COMPUTER_CASE.get())) {
                     SocData socData = compBe.getSocData();
                     if (socData != null && !socData.instructions().isEmpty()) {
                         ItemStack socStack = new ItemStack(ModItems.SOC.get());

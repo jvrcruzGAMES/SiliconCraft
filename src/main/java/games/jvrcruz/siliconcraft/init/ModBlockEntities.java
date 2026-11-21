@@ -42,4 +42,8 @@ public class ModBlockEntities {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<CodeCompilerBlockEntity>> CODE_COMPILER =
             BLOCK_ENTITIES.register("code_compiler", () ->
                     BlockEntityType.Builder.of(CodeCompilerBlockEntity::new, ModBlocks.CODE_COMPILER.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ProjectCompilerBlockEntity>> PROJECT_COMPILER =
+            BLOCK_ENTITIES.register("project_compiler", () ->
+                    BlockEntityType.Builder.of(ProjectCompilerBlockEntity::new, ModBlocks.PROJECT_COMPILER.get()).build(null));
 }

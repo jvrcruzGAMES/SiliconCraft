@@ -20,5 +20,8 @@ public class ModCapabilities {
         // SoC Manufacturer
         event.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, ModBlockEntities.SOC_MANUFACTURER.get(), (be, side) -> be.getEnergyStorage());
         event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.SOC_MANUFACTURER.get(), (be, side) -> be.getItemHandler());
+
+        // Computer
+        event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.COMPUTER.get(), (be, side) -> be.getItemHandler());
     }
 }

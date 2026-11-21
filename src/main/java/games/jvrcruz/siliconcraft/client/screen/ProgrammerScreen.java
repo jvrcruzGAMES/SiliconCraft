@@ -4,15 +4,19 @@ import games.jvrcruz.siliconcraft.Siliconcraft;
 import games.jvrcruz.siliconcraft.client.ClientProgramManager;
 import games.jvrcruz.siliconcraft.data.ProgramEntry;
 import games.jvrcruz.siliconcraft.menu.ProgrammerMenu;
+import games.jvrcruz.siliconcraft.network.DeleteProgramPacket;
 import games.jvrcruz.siliconcraft.network.ProgrammerPacket;
 import games.jvrcruz.siliconcraft.network.RequestProgramsPacket;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.neoforged.neoforge.network.PacketDistributor;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +37,7 @@ public class ProgrammerScreen extends BaseMachineScreen<ProgrammerMenu> {
     private float scrollAmount = 0.0f;
     private boolean isDraggingScrollbar = false;
     private Button burnButton;
+    private Button deleteButton;
 
     public ProgrammerScreen(ProgrammerMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
@@ -46,18 +51,39 @@ public class ProgrammerScreen extends BaseMachineScreen<ProgrammerMenu> {
         PacketDistributor.sendToServer(new RequestProgramsPacket());
 
         // Burn button
-        burnButton = Button.builder(Component.literal("⚡ Burn to ROM"), b -> {
+        burnButton = Button.builder(Component.literal("⚡ Write"), b -> {
             if (selectedProgram != null && selectedProgram.lines() != null && !selectedProgram.lines().isEmpty()) {
                 PacketDistributor.sendToServer(new ProgrammerPacket(
                         menu.getBlockEntity().getBlockPos(),
                         new ArrayList<>(selectedProgram.lines())
                 ));
-                statusText = "Flashed " + selectedProgram.name();
+                statusText = "Programmed " + selectedProgram.name();
             }
-        }).bounds(this.leftPos + 72, this.topPos + 63, 96, 16).build();
+        }).bounds(this.leftPos + 72, this.topPos + 63, 68, 16).build();
 
         burnButton.active = false;
         this.addRenderableWidget(burnButton);
+
+        // Delete button
+        deleteButton = Button.builder(Component.literal("Del").withStyle(ChatFormatting.RED), b -> {
+            deleteSelectedProgram();
+        }).bounds(this.leftPos + 142, this.topPos + 63, 26, 16)
+          .tooltip(Tooltip.create(Component.literal("Delete program from library")))
+          .build();
+
+        deleteButton.active = false;
+        this.addRenderableWidget(deleteButton);
+    }
+
+    private void deleteSelectedProgram() {
+        if (selectedProgram != null) {
+            String name = selectedProgram.name();
+            PacketDistributor.sendToServer(new DeleteProgramPacket(selectedProgram.id()));
+            statusText = "Deleted " + name;
+            selectedProgram = null;
+            if (burnButton != null) burnButton.active = false;
+            if (deleteButton != null) deleteButton.active = false;
+        }
     }
 
     private List<ProgramEntry> getPrograms() {
@@ -108,12 +134,22 @@ public class ProgrammerScreen extends BaseMachineScreen<ProgrammerMenu> {
             int clickedIndex = relativeY / ITEM_HEIGHT;
             if (clickedIndex >= 0 && clickedIndex < progs.size()) {
                 selectedProgram = progs.get(clickedIndex);
-                burnButton.active = true;
+                if (burnButton != null) burnButton.active = true;
+                if (deleteButton != null) deleteButton.active = true;
                 statusText = "Selected: " + selectedProgram.name();
                 return true;
             }
         }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (selectedProgram != null && (keyCode == GLFW.GLFW_KEY_DELETE || keyCode == GLFW.GLFW_KEY_BACKSPACE)) {
+            deleteSelectedProgram();
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override
@@ -155,11 +191,28 @@ public class ProgrammerScreen extends BaseMachineScreen<ProgrammerMenu> {
 
         List<ProgramEntry> progs = getPrograms();
 
+        if (selectedProgram != null) {
+            boolean exists = false;
+            for (ProgramEntry p : progs) {
+                if (p.id().equals(selectedProgram.id())) {
+                    selectedProgram = p;
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                selectedProgram = null;
+                if (burnButton != null) burnButton.active = false;
+                if (deleteButton != null) deleteButton.active = false;
+            }
+        }
+
         if (progs.isEmpty()) {
             guiGraphics.drawString(this.font, "No programs!", listLeft + 4, listTop + 6, 0x888888, false);
             guiGraphics.drawString(this.font, "Use Compiler or", listLeft + 4, listTop + 16, 0x666666, false);
             guiGraphics.drawString(this.font, "Assembly Writer", listLeft + 4, listTop + 26, 0x666666, false);
-            burnButton.active = false;
+            if (burnButton != null) burnButton.active = false;
+            if (deleteButton != null) deleteButton.active = false;
         } else {
             guiGraphics.enableScissor(listLeft, listTop, listRight, listBottom);
 
@@ -211,9 +264,9 @@ public class ProgrammerScreen extends BaseMachineScreen<ProgrammerMenu> {
     @Override
     protected void renderLabels(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         guiGraphics.drawString(this.font, this.title, 8, 6, 0x404040, false);
-        if (selectedProgram != null) {
-            burnButton.active = true;
-        }
+        boolean hasSelected = (selectedProgram != null);
+        if (burnButton != null) burnButton.active = hasSelected;
+        if (deleteButton != null) deleteButton.active = hasSelected;
     }
 
     @Override

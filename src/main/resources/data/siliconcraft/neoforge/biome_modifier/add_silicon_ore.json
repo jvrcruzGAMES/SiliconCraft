@@ -1,0 +1,9 @@
+{
+  "type": "neoforge:add_features",
+  "biomes": "#minecraft:is_overworld",
+  "features": [
+    "siliconcraft:silicon_ore_upper",
+    "siliconcraft:silicon_ore_lower"
+  ],
+  "step": "underground_ores"
+}

@@ -27,7 +27,7 @@ public class ChipForgeBlockEntity extends BaseMachineBlockEntity {
     public static final List<String> ALL_INSTRUCTIONS = games.jvrcruz.siliconcraft.compiler.InstructionValidator.ALL_INSTRUCTIONS;
 
     private int progress = 0;
-    private int maxProgress = 100;
+    private int maxProgress = 90;
     private boolean forging = false;
 
     // Container data for syncing progress and energy:
@@ -115,7 +115,7 @@ public class ChipForgeBlockEntity extends BaseMachineBlockEntity {
     public int calculateMaxProgress() {
         ArchitectureData arch = getInstalledArchitecture();
         int count = (arch != null) ? arch.instructions().size() : 3;
-        return 60 + (count * 20);
+        return 54 + (count * 18);
     }
 
     public void startForging() {
