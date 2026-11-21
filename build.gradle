@@ -105,6 +105,8 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 dependencies {
     implementation "curse.maven:jei-238222:9717805"
+    runtimeOnly "curse.maven:mezzconfig-1689768:9527937"
+    runtimeOnly "curse.maven:mezzconfiggui-1700987:9701162"
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
