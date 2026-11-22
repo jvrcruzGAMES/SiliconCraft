@@ -73,7 +73,27 @@ Agents must adhere to these thread-safety requirements:
 
 ---
 
-## 5. Audio Subsystem Rules
+## 5. Interrupt Vector Table & Reset Lifecycle
+
+- **Interrupt Vectors**:
+  - `0`: `VEC_DIV_ZERO`
+  - `1`: `VEC_ILLEGAL_OPCODE`
+  - `2`: `VEC_OUT_OF_BOUNDS`
+  - `3`: `VEC_STACK_FAULT`
+  - `4`: `VEC_GENERAL_EXCEPTION`
+  - `10`: `VEC_KEYBOARD`
+  - `11`: `VEC_MOUSE_MOVE`
+  - `12`: `VEC_MOUSE_CLICK`
+  - `13`: `VEC_TIMER` / `VEC_VBLANK`
+  - `14`: `VEC_RESET` (invoked right after CPU reset if registered)
+- **Reset Lifecycle Rules**:
+  - **RAM Preservation**: RAM is **never cleared** automatically on CPU reset (`reset()`); previous RAM contents persist so programs can recover state or inspect previous buffers.
+  - **IVT Persistence**: The Interrupt Vector Table (`ivt`) persists across CPU resets, ensuring registered `VEC_RESET` handlers run immediately.
+  - **Reset Interrupt Dispatch**: A `VEC_RESET` (14) event is queued immediately upon `reset()`. If a handler was registered (`IVEC RESET, handler` or `on_reset(handler)`), the CPU jumps directly to the handler on the first cycle following the reset, with `pc = 0` saved on the interrupt stack. If unhandled, execution starts at `pc = 0` normally.
+
+---
+
+## 6. Audio Subsystem Rules
 
 - **Sample Format**: 8000 Hz, 8-bit unsigned PCM (`byte[]`).
 - **Speaker vs. Screen Routing**:
@@ -85,7 +105,7 @@ Agents must adhere to these thread-safety requirements:
 
 ---
 
-## 6. Hardware Specifications
+## 7. Hardware Specifications
 
 - **RAM Module Capacity**: 1024 KB (1,048,576 Bytes).
 - **Storage Drive Capacity** (Flash & NVMe): 1024 MB (1,048,576 KB / 1,073,741,824 Bytes).
@@ -93,7 +113,7 @@ Agents must adhere to these thread-safety requirements:
 
 ---
 
-## 7. Verification & Testing
+## 8. Verification & Testing
 
 Before completing any task:
 1. Run `./gradlew test` — all test suites must pass 100%.
@@ -101,7 +121,7 @@ Before completing any task:
 
 ---
 
-## 8. Standalone CPU Emulator (`SiliconCraft-ComputerEmulator`)
+## 9. Standalone CPU Emulator (`SiliconCraft-ComputerEmulator`)
 
 A standalone, cycle-accurate Rust implementation of the SiliconCraft Virtual CPU architecture is located at `/home/jvrcruz/Documentos/Projects/SiliconCraft-ComputerEmulator`:
 

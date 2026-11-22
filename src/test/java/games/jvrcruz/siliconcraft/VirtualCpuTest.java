@@ -230,7 +230,9 @@ public class VirtualCpuTest {
 
         // Reset CPU: verify storage is non-volatile and persists!
         cpu.reset();
-        assertEquals(0, cpu.getRam()[50], "RAM should be wiped on reset");
+        assertEquals(10, cpu.getRam()[50], "RAM must NOT be wiped on reset");
+        assertEquals(20, cpu.getRam()[51], "RAM must NOT be wiped on reset");
+        assertEquals(30, cpu.getRam()[52], "RAM must NOT be wiped on reset");
         assertEquals(77, cpu.getStorage()[10], "Storage must NOT be wiped on reset");
     }
 
@@ -748,5 +750,40 @@ public class VirtualCpuTest {
 
         assertEquals(VirtualCpu.State.OFF, cpu.getState());
         assertNull(cpu.pollAudioSamples(), "Audio queue must be empty when powered off");
+    }
+
+    @Test
+    void testResetInterruptAndRamPreservation() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "IVEC", "IRET", "HLT");
+        List<String> code = List.of(
+                "IVEC RESET, on_reset",
+                "MOV [100], 42",
+                "HLT",
+                "on_reset:",
+                "MOV A, [100]",
+                "MOV [101], A",
+                "IRET"
+        );
+
+        cpu.configure(isa, 1024, code, false, 0);
+        cpu.powerOn();
+        cpu.tick(20);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(42, cpu.getRam()[100]);
+        assertEquals(0, cpu.getRam()[101]);
+
+        // Reset CPU
+        cpu.reset();
+
+        // RAM must still hold 42 at address 100!
+        assertEquals(42, cpu.getRam()[100], "RAM must persist across reset");
+
+        // Next ticks should trigger the reset interrupt handler
+        cpu.tick(20);
+
+        // on_reset handler must have read [100] (42) and stored it into [101]
+        assertEquals(42, cpu.getRam()[101], "Reset handler should run right after reset and see previous RAM contents");
     }
 }

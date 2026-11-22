@@ -3,6 +3,7 @@ package games.jvrcruz.siliconcraft.client.screen;
 import games.jvrcruz.siliconcraft.Siliconcraft;
 import games.jvrcruz.siliconcraft.client.ClientProgramManager;
 import games.jvrcruz.siliconcraft.data.ProgramEntry;
+import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
 import games.jvrcruz.siliconcraft.menu.ProgrammerMenu;
 import games.jvrcruz.siliconcraft.network.DeleteProgramPacket;
 import games.jvrcruz.siliconcraft.network.ProgrammerPacket;
@@ -19,6 +20,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class ProgrammerScreen extends BaseMachineScreen<ProgrammerMenu> {
@@ -59,7 +61,9 @@ public class ProgrammerScreen extends BaseMachineScreen<ProgrammerMenu> {
                 ));
                 statusText = "Programmed " + selectedProgram.name();
             }
-        }).bounds(this.leftPos + 72, this.topPos + 63, 68, 16).build();
+        }).bounds(this.leftPos + 72, this.topPos + 63, 68, 16)
+          .tooltip(Tooltip.create(Component.literal("Write selected program to ROM or Storage (Costs 100 FE)")))
+          .build();
 
         burnButton.active = false;
         this.addRenderableWidget(burnButton);
@@ -277,5 +281,78 @@ public class ProgrammerScreen extends BaseMachineScreen<ProgrammerMenu> {
 
         renderEnergyTooltip(guiGraphics, menu.getEnergy(), menu.getMaxEnergy(), menu.getBurnTime(), mouseX, mouseY);
         renderSlotEmptyTooltip(guiGraphics, mouseX, mouseY);
+        renderProgramTooltip(guiGraphics, mouseX, mouseY);
+    }
+
+    private void renderProgramTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        if (isDraggingScrollbar || !menu.getCarried().isEmpty()) return;
+
+        int listLeft = this.leftPos + LIST_X;
+        int listTop = this.topPos + LIST_Y;
+        int listRight = listLeft + LIST_WIDTH - SCROLLBAR_WIDTH;
+        int listBottom = listTop + LIST_HEIGHT;
+
+        if (mouseX >= listLeft && mouseX < listRight && mouseY >= listTop && mouseY < listBottom) {
+            List<ProgramEntry> progs = getPrograms();
+            if (progs.isEmpty()) return;
+
+            int relativeY = (int) (mouseY - listTop + scrollAmount);
+            if (relativeY < 0) return;
+            int hoveredIndex = relativeY / ITEM_HEIGHT;
+
+            if (hoveredIndex >= 0 && hoveredIndex < progs.size()) {
+                ProgramEntry entry = progs.get(hoveredIndex);
+                List<Component> tooltip = new ArrayList<>();
+
+                // Program Name (untruncated)
+                tooltip.add(Component.literal(entry.name()).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
+
+                // Target Architecture
+                String arch = (entry.archName() != null && !entry.archName().isBlank()) ? entry.archName() : "Any";
+                tooltip.add(Component.literal("Architecture: ").withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal(arch).withStyle(ChatFormatting.AQUA)));
+
+                // Instructions / Line count
+                int lineCount = entry.lines() != null ? entry.lines().size() : 0;
+                tooltip.add(Component.literal("Size: ").withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal(lineCount + " instructions").withStyle(ChatFormatting.YELLOW)));
+
+                // Required Instructions
+                List<String> req = entry.requiredInstructions();
+                if ((req == null || req.isEmpty()) && entry.lines() != null && !entry.lines().isEmpty()) {
+                    req = new ArrayList<>(InstructionValidator.getRequiredInstructions(entry.lines()));
+                }
+
+                if (req != null && !req.isEmpty()) {
+                    List<String> sortedReq = new ArrayList<>(req);
+                    Collections.sort(sortedReq);
+                    tooltip.add(Component.literal("Required Instructions (" + sortedReq.size() + "):").withStyle(ChatFormatting.GRAY));
+
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < sortedReq.size(); i++) {
+                        if (i > 0) sb.append(", ");
+                        sb.append(sortedReq.get(i));
+                        if ((i + 1) % 6 == 0 || i == sortedReq.size() - 1) {
+                            tooltip.add(Component.literal("  " + sb.toString()).withStyle(ChatFormatting.DARK_AQUA));
+                            sb.setLength(0);
+                        }
+                    }
+                } else {
+                    tooltip.add(Component.literal("Required Instructions: ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal("None").withStyle(ChatFormatting.DARK_GRAY)));
+                }
+
+                // Selection hint
+                tooltip.add(Component.empty());
+                boolean isSelected = (selectedProgram != null && selectedProgram.id().equals(entry.id()));
+                if (isSelected) {
+                    tooltip.add(Component.literal("✔ Selected for writing").withStyle(ChatFormatting.GREEN));
+                } else {
+                    tooltip.add(Component.literal("Click to select for writing").withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
+                }
+
+                guiGraphics.renderComponentTooltip(this.font, tooltip, mouseX, mouseY);
+            }
+        }
     }
 }

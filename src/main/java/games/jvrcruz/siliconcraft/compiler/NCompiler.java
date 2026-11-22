@@ -741,6 +741,11 @@ public class NCompiler {
                     assembly.add("IVEC 13, " + handler);
                     continue;
                 }
+                if ((line.startsWith("on_reset(") || line.startsWith("on_reset ")) && line.endsWith(")")) {
+                    String handler = extractParenthesesOrRest(line).trim();
+                    assembly.add("IVEC 14, " + handler);
+                    continue;
+                }
                 if ((line.startsWith("timer.start(") || line.startsWith("timer.set(") || line.startsWith("timer(")) && line.endsWith(")")) {
                     String inner = extractParenthesesOrRest(line).trim();
                     String hzLoc = resolveLocation(inner, varMap, tableMap, assembly);

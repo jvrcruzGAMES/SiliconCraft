@@ -81,6 +81,7 @@ public class VirtualCpu {
     public static final int VEC_MOUSE_CLICK = 12;
     public static final int VEC_TIMER = 13;
     public static final int VEC_VBLANK = 13;
+    public static final int VEC_RESET = 14;
 
     // Gamepad / Held controller state (bitmask)
     public static final int PAD_RIGHT  = 1 << 0;  // 0x0001
@@ -472,6 +473,7 @@ public class VirtualCpu {
         this.program.clear();
         this.program.addAll(code);
         this.labels.clear();
+        this.ivt.clear();
         preprocessLabels();
         compileBytecode();
         reset();
@@ -707,7 +709,6 @@ public class VirtualCpu {
         this.timerHz = 0;
         this.timerIntervalCycles = 0;
         Arrays.fill(this.padStates, 0);
-        Arrays.fill(ram, 0);
         loadStaticData();
         this.displayMode = 0;
         Arrays.fill(this.framebuffer, 0xFF051009);
@@ -726,7 +727,6 @@ public class VirtualCpu {
                 break;
             }
         }
-        this.ivt.clear();
         this.interruptQueue.clear();
         this.interruptStack.clear();
         this.interruptsEnabled = true;
@@ -734,6 +734,7 @@ public class VirtualCpu {
         if (state != State.OFF) {
             this.state = State.RUNNING;
         }
+        queueResetInterrupt();
     }
 
     public Object getExecutionLock() {
@@ -1428,8 +1429,22 @@ public class VirtualCpu {
             case "MOUSE_MOVE", "MOUSE_POS" -> VEC_MOUSE_MOVE;
             case "MOUSE_CLICK", "CLICK" -> VEC_MOUSE_CLICK;
             case "TIMER", "VBLANK", "VBL", "NMI", "FRAME" -> VEC_TIMER;
+            case "RESET", "RST" -> VEC_RESET;
             default -> resolveValue(token);
         };
+    }
+
+    public void queueResetInterrupt() {
+        synchronized (interruptQueue) {
+            for (InterruptEvent e : interruptQueue) {
+                if (e.vector == VEC_RESET) {
+                    return;
+                }
+            }
+            if (interruptQueue.size() < 64) {
+                interruptQueue.addFirst(new InterruptEvent(VEC_RESET, 0, 0, 0));
+            }
+        }
     }
 
     public void queueTimerInterrupt() {
