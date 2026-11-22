@@ -941,5 +941,123 @@ public class CompilerAndValidatorTest {
         assertTrue(req.contains("STI"));
         assertTrue(req.contains("INT"));
     }
+
+    @Test
+    public void testComplexSubExpressionsInNLanguage() {
+        List<String> nSource = List.of(
+                "var tile_ty = 5",
+                "const LEVEL_COLS = 16",
+                "var base = 100",
+                // Test 1: base + (tile_ty * LEVEL_COLS)
+                "var idx1 = base + (tile_ty * LEVEL_COLS)",
+                // Test 2: compound assignment += with parenthesized expression
+                "var offset = 100",
+                "offset += (tile_ty * LEVEL_COLS)",
+                // Test 3: compound assignment += without parentheses (precedence test)
+                "var offset2 = 50",
+                "offset2 += tile_ty * LEVEL_COLS",
+                // Test 4: nested grouping ((a + b) * c)
+                "var grouped = (10 + tile_ty) * 2",
+                // Test 5: compound -= and *= with complex expressions
+                "var subVal = 200",
+                "subVal -= (tile_ty * 10)",
+                "var mulVal = 3",
+                "mulVal *= (tile_ty + 2)",
+                // Print results
+                "println idx1",
+                "println offset",
+                "println offset2",
+                "println grouped",
+                "println subVal",
+                "println mulVal",
+                "halt"
+        );
+
+        NCompiler.CompileResult result = NCompiler.compile(nSource);
+        assertTrue(result.success(), "N compilation should succeed for complex expressions: " + result.errors());
+
+        // Ensure no invalid uncompiled tokens remain in the assembly
+        for (String line : result.assembly()) {
+            assertFalse(line.contains("(tile_ty"), "Assembly line must not contain uncompiled expression: " + line);
+            assertFalse(line.contains("LEVEL_COLS"), "Assembly line must not contain raw constant name: " + line);
+        }
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "ADD", "SUB", "MUL", "DIV", "MOD", "CMP", "JZ", "JNZ", "JMP", "PUSH", "POP", "OUT", "OUTC", "HLT");
+        cpu.configure(isa, 512, result.assembly(), false, 0);
+        cpu.powerOn();
+        cpu.tick(300);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState(), "CPU should halt cleanly without exception: " + cpu.getErrorMessage());
+        List<String> output = cpu.getTerminalOutput();
+        assertTrue(output.contains("180"), "Output should contain 180 (100 + 5 * 16): " + output);
+        assertTrue(output.contains("180"), "Output should contain 180 (offset += 80): " + output);
+        assertTrue(output.contains("130"), "Output should contain 130 (50 + 5 * 16): " + output);
+        assertTrue(output.contains("30"), "Output should contain 30 ((10 + 5) * 2): " + output);
+        assertTrue(output.contains("150"), "Output should contain 150 (200 - 50): " + output);
+        assertTrue(output.contains("21"), "Output should contain 21 (3 * 7): " + output);
+    }
+
+    @Test
+    public void testPointerAndMemBracketComplexExpressions() {
+        List<String> nSource = List.of(
+                "var target = 100",
+                "var ptr = &target",
+                "var tile_ty = 4",
+                "const COLS = 10",
+                "*ptr += (tile_ty * COLS)",
+                "mem[50] = 200",
+                "mem[50] += (tile_ty * 5)",
+                "println *ptr",
+                "println mem[50]",
+                "halt"
+        );
+
+        NCompiler.CompileResult result = NCompiler.compile(nSource);
+        assertTrue(result.success(), "Pointer and mem bracket with complex expressions should compile: " + result.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "ADD", "SUB", "MUL", "CMP", "JZ", "JNZ", "JMP", "PUSH", "POP", "OUT", "OUTC", "HLT");
+        cpu.configure(isa, 512, result.assembly(), false, 0);
+        cpu.powerOn();
+        cpu.tick(300);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        List<String> output = cpu.getTerminalOutput();
+        assertTrue(output.contains("140"), "Output should contain 140 (100 + 40): " + output);
+        assertTrue(output.contains("220"), "Output should contain 220 (200 + 20): " + output);
+    }
+
+    @Test
+    public void testVirtualCpuAssemblyExpressionSupport() {
+        List<String> assembly = List.of(
+                "MOV [86], 100",
+                "ADD [86], (4 * 16)",        // Expression in ADD source
+                "MOV A, (2 + 3 * 4)",        // Precedence: 2 + 12 = 14
+                "MOV B, ((2 + 3) * 4)",      // Parenthesized: 5 * 4 = 20
+                "MOV C, (1 << 4)",           // Shift: 16
+                "MOV D, (0xFF & 0x0F)",      // Bitwise AND: 15
+                "MOV [10 + (2 * 4)], 42",    // Expression in RAM destination: ram[18] = 42
+                "CMP A, (7 * 2)",            // Compare A with 14 -> should be equal (flag Z)
+                "JZ match",
+                "MOV A, 0",
+                "match:",
+                "HLT"
+        );
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "ADD", "CMP", "JZ", "HLT");
+        cpu.configure(isa, 512, assembly, false, 0);
+        cpu.powerOn();
+        cpu.tick(100);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState(), "CPU should execute assembly expressions without error: " + cpu.getErrorMessage());
+        assertEquals(164, cpu.getRam()[86], "RAM[86] should be 100 + 64 = 164");
+        assertEquals(14, cpu.getRegA(), "RegA should be 14");
+        assertEquals(20, cpu.getRegB(), "RegB should be 20");
+        assertEquals(16, cpu.getRegC(), "RegC should be 16");
+        assertEquals(15, cpu.getRegD(), "RegD should be 15");
+        assertEquals(42, cpu.getRam()[18], "RAM[18] should be 42");
+    }
 }
 

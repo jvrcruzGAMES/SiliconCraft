@@ -630,7 +630,7 @@ public class VirtualCpu {
     }
 
     private void execMov(String args) {
-        String[] parts = args.split(",", 2);
+        String[] parts = splitArgs(args, 2);
         if (parts.length != 2) throw new IllegalArgumentException("MOV requires dest, src");
         String dest = parts[0].trim();
         String src = parts[1].trim();
@@ -639,7 +639,7 @@ public class VirtualCpu {
     }
 
     private void execAdd(String args) {
-        String[] parts = args.split(",", 2);
+        String[] parts = splitArgs(args, 2);
         if (parts.length != 2) throw new IllegalArgumentException("ADD requires dest, src");
         String dest = parts[0].trim();
         int current = resolveValue(dest);
@@ -650,7 +650,7 @@ public class VirtualCpu {
     }
 
     private void execSub(String args) {
-        String[] parts = args.split(",", 2);
+        String[] parts = splitArgs(args, 2);
         if (parts.length != 2) throw new IllegalArgumentException("SUB requires dest, src");
         String dest = parts[0].trim();
         int current = resolveValue(dest);
@@ -661,7 +661,7 @@ public class VirtualCpu {
     }
 
     private void execMul(String args) {
-        String[] parts = args.split(",", 2);
+        String[] parts = splitArgs(args, 2);
         if (parts.length != 2) throw new IllegalArgumentException("MUL requires dest, src");
         String dest = parts[0].trim();
         int current = resolveValue(dest);
@@ -672,7 +672,7 @@ public class VirtualCpu {
     }
 
     private void execDiv(String args) {
-        String[] parts = args.split(",", 2);
+        String[] parts = splitArgs(args, 2);
         if (parts.length != 2) throw new IllegalArgumentException("DIV requires dest, src");
         String dest = parts[0].trim();
         int current = resolveValue(dest);
@@ -684,7 +684,7 @@ public class VirtualCpu {
     }
 
     private void execMod(String args) {
-        String[] parts = args.split(",", 2);
+        String[] parts = splitArgs(args, 2);
         if (parts.length != 2) throw new IllegalArgumentException("MOD requires dest, src");
         String dest = parts[0].trim();
         int current = resolveValue(dest);
@@ -696,7 +696,7 @@ public class VirtualCpu {
     }
 
     private void execAnd(String args) {
-        String[] parts = args.split(",", 2);
+        String[] parts = splitArgs(args, 2);
         if (parts.length != 2) throw new IllegalArgumentException("AND requires dest, src");
         String dest = parts[0].trim();
         int current = resolveValue(dest);
@@ -707,7 +707,7 @@ public class VirtualCpu {
     }
 
     private void execOr(String args) {
-        String[] parts = args.split(",", 2);
+        String[] parts = splitArgs(args, 2);
         if (parts.length != 2) throw new IllegalArgumentException("OR requires dest, src");
         String dest = parts[0].trim();
         int current = resolveValue(dest);
@@ -718,7 +718,7 @@ public class VirtualCpu {
     }
 
     private void execXor(String args) {
-        String[] parts = args.split(",", 2);
+        String[] parts = splitArgs(args, 2);
         if (parts.length != 2) throw new IllegalArgumentException("XOR requires dest, src");
         String dest = parts[0].trim();
         int current = resolveValue(dest);
@@ -737,7 +737,7 @@ public class VirtualCpu {
     }
 
     private void execShl(String args) {
-        String[] parts = args.split(",", 2);
+        String[] parts = splitArgs(args, 2);
         if (parts.length != 2) throw new IllegalArgumentException("SHL requires dest, count");
         String dest = parts[0].trim();
         int current = resolveValue(dest);
@@ -748,7 +748,7 @@ public class VirtualCpu {
     }
 
     private void execShr(String args) {
-        String[] parts = args.split(",", 2);
+        String[] parts = splitArgs(args, 2);
         if (parts.length != 2) throw new IllegalArgumentException("SHR requires dest, count");
         String dest = parts[0].trim();
         int current = resolveValue(dest);
@@ -775,7 +775,7 @@ public class VirtualCpu {
     }
 
     private void execCmp(String args) {
-        String[] parts = args.split(",", 2);
+        String[] parts = splitArgs(args, 2);
         if (parts.length != 2) throw new IllegalArgumentException("CMP requires reg, val");
         int left = resolveValue(parts[0].trim());
         int right = resolveValue(parts[1].trim());
@@ -1709,12 +1709,122 @@ public class VirtualCpu {
         return s.codePointAt(0);
     }
 
+    public static boolean isMatchingOuterParentheses(String s) {
+        if (!s.startsWith("(") || !s.endsWith(")")) return false;
+        int depth = 0;
+        for (int i = 0; i < s.length() - 1; i++) {
+            char c = s.charAt(i);
+            if (c == '(') depth++;
+            else if (c == ')') {
+                depth--;
+                if (depth == 0) return false;
+            }
+        }
+        return depth == 1;
+    }
+
+    private int findTopLevelBinaryOp(String expr, String... ops) {
+        int parenDepth = 0;
+        int bracketDepth = 0;
+        boolean inQuotes = false;
+        char quoteChar = 0;
+        for (int i = expr.length() - 1; i >= 0; i--) {
+            char c = expr.charAt(i);
+            if ((c == '\"' || c == '\'') && (i == 0 || expr.charAt(i - 1) != '\\')) {
+                if (inQuotes && c == quoteChar) inQuotes = false;
+                else if (!inQuotes) { inQuotes = true; quoteChar = c; }
+            }
+            if (inQuotes) continue;
+            if (c == ')') parenDepth++;
+            else if (c == '(') parenDepth--;
+            else if (c == ']') bracketDepth++;
+            else if (c == '[') bracketDepth--;
+            else if (parenDepth == 0 && bracketDepth == 0) {
+                for (String op : ops) {
+                    if (i + op.length() <= expr.length() && expr.startsWith(op, i)) {
+                        if (isValidBinaryOpPosition(expr, i, op)) {
+                            return i;
+                        }
+                    }
+                }
+            }
+        }
+        return -1;
+    }
+
+    private boolean isValidBinaryOpPosition(String expr, int i, String op) {
+        if (i <= 0) return false;
+        int opLen = op.length();
+        if (i + opLen >= expr.length()) return false;
+
+        String leftPrefix = expr.substring(0, i).trim();
+        if (leftPrefix.isEmpty()) return false;
+        char lastLeft = leftPrefix.charAt(leftPrefix.length() - 1);
+        if (lastLeft == '+' || lastLeft == '-' || lastLeft == '*' || lastLeft == '/' || lastLeft == '%'
+                || lastLeft == '&' || lastLeft == '|' || lastLeft == '^' || lastLeft == '<' || lastLeft == '>'
+                || lastLeft == '=' || lastLeft == '(' || lastLeft == '[') {
+            return false;
+        }
+
+        if (op.equals("|")) {
+            if (i > 0 && expr.charAt(i - 1) == '|') return false;
+            if (i + 1 < expr.length() && expr.charAt(i + 1) == '|') return false;
+        } else if (op.equals("&")) {
+            if (i > 0 && expr.charAt(i - 1) == '&') return false;
+            if (i + 1 < expr.length() && expr.charAt(i + 1) == '&') return false;
+        } else if (op.equals("<")) {
+            if (i > 0 && expr.charAt(i - 1) == '<') return false;
+            if (i + 1 < expr.length() && expr.charAt(i + 1) == '<') return false;
+        } else if (op.equals(">")) {
+            if (i > 0 && expr.charAt(i - 1) == '>') return false;
+            if (i + 1 < expr.length() && expr.charAt(i + 1) == '>') return false;
+        }
+        return true;
+    }
+
+    public static String[] splitArgs(String args, int limit) {
+        if (args == null) return new String[0];
+        List<String> list = new ArrayList<>();
+        int parenDepth = 0;
+        int bracketDepth = 0;
+        boolean inQuotes = false;
+        char quoteChar = 0;
+        int start = 0;
+        for (int i = 0; i < args.length(); i++) {
+            char c = args.charAt(i);
+            if ((c == '\"' || c == '\'') && (i == 0 || args.charAt(i - 1) != '\\')) {
+                if (inQuotes && c == quoteChar) inQuotes = false;
+                else if (!inQuotes) { inQuotes = true; quoteChar = c; }
+            }
+            if (inQuotes) continue;
+            if (c == '(') parenDepth++;
+            else if (c == ')') parenDepth--;
+            else if (c == '[') bracketDepth++;
+            else if (c == ']') bracketDepth--;
+            else if (c == ',' && parenDepth == 0 && bracketDepth == 0) {
+                if (limit > 0 && list.size() == limit - 1) {
+                    break;
+                }
+                list.add(args.substring(start, i));
+                start = i + 1;
+            }
+        }
+        list.add(args.substring(start));
+        return list.toArray(new String[0]);
+    }
+
     private int resolveValue(String token) {
         token = token.trim();
+        while (token.startsWith("(") && token.endsWith(")") && isMatchingOuterParentheses(token)) {
+            token = token.substring(1, token.length() - 1).trim();
+        }
+
         if (token.equalsIgnoreCase("A")) return regA;
         if (token.equalsIgnoreCase("B")) return regB;
         if (token.equalsIgnoreCase("C")) return regC;
         if (token.equalsIgnoreCase("D")) return regD;
+        if (token.equalsIgnoreCase("PC")) return pc;
+        if (token.equalsIgnoreCase("FLAGS")) return (flagZ ? 1 : 0) | (flagS ? 2 : 0);
 
         if (token.startsWith("[") && token.endsWith("]")) {
             String inner = token.substring(1, token.length() - 1).trim();
@@ -1731,18 +1841,51 @@ public class VirtualCpu {
             return parseCharLiteral(inner);
         }
 
-        // Support token + offset: e.g. "table + 1" or "D + 2"
-        if (token.contains("+") && !token.startsWith("+")) {
-            int plusIdx = token.indexOf('+');
-            String left = token.substring(0, plusIdx).trim();
-            String right = token.substring(plusIdx + 1).trim();
-            return resolveValue(left) + resolveValue(right);
+        // Binary operations in precedence order (lowest to highest)
+        int orIdx = findTopLevelBinaryOp(token, "|");
+        if (orIdx > 0) {
+            return resolveValue(token.substring(0, orIdx)) | resolveValue(token.substring(orIdx + 1));
         }
-        if (token.contains("-") && !token.startsWith("-")) {
-            int minusIdx = token.indexOf('-');
-            String left = token.substring(0, minusIdx).trim();
-            String right = token.substring(minusIdx + 1).trim();
-            return resolveValue(left) - resolveValue(right);
+
+        int xorIdx = findTopLevelBinaryOp(token, "^");
+        if (xorIdx > 0) {
+            return resolveValue(token.substring(0, xorIdx)) ^ resolveValue(token.substring(xorIdx + 1));
+        }
+
+        int andIdx = findTopLevelBinaryOp(token, "&");
+        if (andIdx > 0) {
+            return resolveValue(token.substring(0, andIdx)) & resolveValue(token.substring(andIdx + 1));
+        }
+
+        int shiftIdx = findTopLevelBinaryOp(token, "<<", ">>");
+        if (shiftIdx > 0) {
+            if (token.startsWith("<<", shiftIdx)) {
+                return resolveValue(token.substring(0, shiftIdx)) << resolveValue(token.substring(shiftIdx + 2));
+            } else {
+                return resolveValue(token.substring(0, shiftIdx)) >> resolveValue(token.substring(shiftIdx + 2));
+            }
+        }
+
+        int addSubIdx = findTopLevelBinaryOp(token, "+", "-");
+        if (addSubIdx > 0) {
+            char op = token.charAt(addSubIdx);
+            int left = resolveValue(token.substring(0, addSubIdx));
+            int right = resolveValue(token.substring(addSubIdx + 1));
+            return (op == '+') ? (left + right) : (left - right);
+        }
+
+        int mulDivIdx = findTopLevelBinaryOp(token, "*", "/", "%");
+        if (mulDivIdx > 0) {
+            char op = token.charAt(mulDivIdx);
+            int left = resolveValue(token.substring(0, mulDivIdx));
+            int right = resolveValue(token.substring(mulDivIdx + 1));
+            if (op == '*') return left * right;
+            if (op == '/') {
+                if (right == 0) throw new ArithmeticException("Division by zero in expression: " + token);
+                return left / right;
+            }
+            if (right == 0) throw new ArithmeticException("Modulo by zero in expression: " + token);
+            return left % right;
         }
 
         // Label reference: returns line number (code label) or RAM address (data label)
@@ -1766,10 +1909,14 @@ public class VirtualCpu {
 
     private void setDestination(String dest, int val) {
         dest = dest.trim();
+        while (dest.startsWith("(") && dest.endsWith(")") && isMatchingOuterParentheses(dest)) {
+            dest = dest.substring(1, dest.length() - 1).trim();
+        }
         if (dest.equalsIgnoreCase("A")) { regA = val; return; }
         if (dest.equalsIgnoreCase("B")) { regB = val; return; }
         if (dest.equalsIgnoreCase("C")) { regC = val; return; }
         if (dest.equalsIgnoreCase("D")) { regD = val; return; }
+        if (dest.equalsIgnoreCase("PC")) { pc = val; return; }
 
         if (dest.startsWith("[") && dest.endsWith("]")) {
             String inner = dest.substring(1, dest.length() - 1).trim();

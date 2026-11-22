@@ -75,8 +75,30 @@ public class NExpressionCompiler {
         return typeMap.getOrDefault(expr.toLowerCase(Locale.ROOT), NType.Type.INT);
     }
 
-    public static String resolveLocation(String token, Map<String, String> varMap, Map<String, NType.TableInfo> tableMap, List<String> assembly) {
+    public static boolean isComplexExpression(String token) {
+        if (token == null) return false;
         token = token.trim();
+        while (token.startsWith("(") && token.endsWith(")") && isMatchingOuterParentheses(token)) {
+            token = token.substring(1, token.length() - 1).trim();
+        }
+        if (token.isEmpty()) return false;
+        if (findBinaryOp(token, "|", "^", "&", "+", "-", "*", "/", "%", "<<", ">>") > 0) return true;
+        if (token.startsWith("~")) return true;
+        if (token.startsWith("rand(") && token.endsWith(")")) return true;
+        if (token.startsWith("storage[") && token.contains("].")) return true;
+        return false;
+    }
+
+    public static boolean isSimpleLocation(String token, Map<String, String> varMap, Map<String, NType.TableInfo> tableMap) {
+        return !isComplexExpression(token);
+    }
+
+    public static String resolveLocation(String token, Map<String, String> varMap, Map<String, NType.TableInfo> tableMap, List<String> assembly) {
+        if (token == null) return "";
+        token = token.trim();
+        while (token.startsWith("(") && token.endsWith(")") && isMatchingOuterParentheses(token)) {
+            token = token.substring(1, token.length() - 1).trim();
+        }
         if (isRegister(token)) {
             return token.toUpperCase(Locale.ROOT);
         }
@@ -580,11 +602,13 @@ public class NExpressionCompiler {
             }
         } else {
             String srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
-            if (targetLoc.startsWith("[") && srcLoc.startsWith("[")) {
-                assembly.add("MOV A, " + srcLoc);
-                assembly.add("MOV " + targetLoc + ", A");
-            } else {
-                assembly.add("MOV " + targetLoc + ", " + srcLoc);
+            if (!targetLoc.equalsIgnoreCase(srcLoc)) {
+                if (targetLoc.startsWith("[") && srcLoc.startsWith("[")) {
+                    assembly.add("MOV A, " + srcLoc);
+                    assembly.add("MOV " + targetLoc + ", A");
+                } else {
+                    assembly.add("MOV " + targetLoc + ", " + srcLoc);
+                }
             }
         }
     }
@@ -664,62 +688,123 @@ public class NExpressionCompiler {
         String left = expr.substring(0, opIdx).trim();
         String right = expr.substring(opIdx + opLen).trim();
         compileAssignment(targetLoc, left, varMap, tableMap, assembly);
-        String rightLoc = resolveLocation(right, varMap, tableMap, assembly);
-        if (targetLoc.startsWith("[") && rightLoc.startsWith("[")) {
-            assembly.add("MOV A, " + rightLoc);
-            assembly.add(opInstruction + " " + targetLoc + ", A");
+
+        if (isSimpleLocation(right, varMap, tableMap)) {
+            String rightLoc = resolveLocation(right, varMap, tableMap, assembly);
+            if (targetLoc.startsWith("[") && rightLoc.startsWith("[")) {
+                assembly.add("MOV A, " + rightLoc);
+                assembly.add(opInstruction + " " + targetLoc + ", A");
+            } else {
+                assembly.add(opInstruction + " " + targetLoc + ", " + rightLoc);
+            }
         } else {
-            assembly.add(opInstruction + " " + targetLoc + ", " + rightLoc);
+            if (isRegister(targetLoc)) {
+                String tempReg = targetLoc.equalsIgnoreCase("C") ? "A" : "C";
+                assembly.add("PUSH " + targetLoc);
+                compileAssignment(tempReg, right, varMap, tableMap, assembly);
+                assembly.add("POP " + targetLoc);
+                assembly.add(opInstruction + " " + targetLoc + ", " + tempReg);
+            } else {
+                compileAssignment("C", right, varMap, tableMap, assembly);
+                assembly.add(opInstruction + " " + targetLoc + ", C");
+            }
         }
     }
 
     public static void compileBinaryOp(String targetLoc, String left, String right, String op,
                                        Map<String, String> varMap, Map<String, NType.TableInfo> tableMap, List<String> assembly) {
         String leftLoc = resolveLocation(left, varMap, tableMap, assembly);
-        String rightLoc = resolveLocation(right, varMap, tableMap, assembly);
-
-        if (targetLoc.equalsIgnoreCase(leftLoc)) {
-            if (targetLoc.startsWith("[") && rightLoc.startsWith("[")) {
-                assembly.add("MOV A, " + rightLoc);
-                assembly.add(op + " " + targetLoc + ", A");
+        if (targetLoc.equalsIgnoreCase(leftLoc) || targetLoc.equalsIgnoreCase(left)) {
+            if (isSimpleLocation(right, varMap, tableMap)) {
+                String rightLoc = resolveLocation(right, varMap, tableMap, assembly);
+                if (targetLoc.startsWith("[") && rightLoc.startsWith("[")) {
+                    assembly.add("MOV A, " + rightLoc);
+                    assembly.add(op + " " + targetLoc + ", A");
+                } else {
+                    assembly.add(op + " " + targetLoc + ", " + rightLoc);
+                }
             } else {
-                assembly.add(op + " " + targetLoc + ", " + rightLoc);
+                if (isRegister(targetLoc)) {
+                    String tempReg = targetLoc.equalsIgnoreCase("C") ? "A" : "C";
+                    assembly.add("PUSH " + targetLoc);
+                    compileAssignment(tempReg, right, varMap, tableMap, assembly);
+                    assembly.add("POP " + targetLoc);
+                    assembly.add(op + " " + targetLoc + ", " + tempReg);
+                } else {
+                    compileAssignment("C", right, varMap, tableMap, assembly);
+                    assembly.add(op + " " + targetLoc + ", C");
+                }
             }
         } else {
-            if (targetLoc.startsWith("[") && leftLoc.startsWith("[")) {
-                assembly.add("MOV A, " + leftLoc);
-                assembly.add("MOV " + targetLoc + ", A");
+            compileAssignment(targetLoc, left, varMap, tableMap, assembly);
+            if (isSimpleLocation(right, varMap, tableMap)) {
+                String rightLoc = resolveLocation(right, varMap, tableMap, assembly);
+                if (targetLoc.startsWith("[") && rightLoc.startsWith("[")) {
+                    assembly.add("MOV A, " + rightLoc);
+                    assembly.add(op + " " + targetLoc + ", A");
+                } else {
+                    assembly.add(op + " " + targetLoc + ", " + rightLoc);
+                }
             } else {
-                assembly.add("MOV " + targetLoc + ", " + leftLoc);
-            }
-            if (targetLoc.startsWith("[") && rightLoc.startsWith("[")) {
-                assembly.add("MOV A, " + rightLoc);
-                assembly.add(op + " " + targetLoc + ", A");
-            } else {
-                assembly.add(op + " " + targetLoc + ", " + rightLoc);
+                if (isRegister(targetLoc)) {
+                    String tempReg = targetLoc.equalsIgnoreCase("C") ? "A" : "C";
+                    assembly.add("PUSH " + targetLoc);
+                    compileAssignment(tempReg, right, varMap, tableMap, assembly);
+                    assembly.add("POP " + targetLoc);
+                    assembly.add(op + " " + targetLoc + ", " + tempReg);
+                } else {
+                    compileAssignment("C", right, varMap, tableMap, assembly);
+                    assembly.add(op + " " + targetLoc + ", C");
+                }
             }
         }
     }
 
     public static void compileAdd(String targetLoc, String expr, Map<String, String> varMap,
                                   Map<String, NType.TableInfo> tableMap, List<String> assembly) {
-        String srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
-        if (targetLoc.startsWith("[") && srcLoc.startsWith("[")) {
-            assembly.add("MOV A, " + srcLoc);
-            assembly.add("ADD " + targetLoc + ", A");
+        if (isSimpleLocation(expr, varMap, tableMap)) {
+            String srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
+            if (targetLoc.startsWith("[") && srcLoc.startsWith("[")) {
+                assembly.add("MOV A, " + srcLoc);
+                assembly.add("ADD " + targetLoc + ", A");
+            } else {
+                assembly.add("ADD " + targetLoc + ", " + srcLoc);
+            }
         } else {
-            assembly.add("ADD " + targetLoc + ", " + srcLoc);
+            if (isRegister(targetLoc)) {
+                String tempReg = targetLoc.equalsIgnoreCase("C") ? "A" : "C";
+                assembly.add("PUSH " + targetLoc);
+                compileAssignment(tempReg, expr, varMap, tableMap, assembly);
+                assembly.add("POP " + targetLoc);
+                assembly.add("ADD " + targetLoc + ", " + tempReg);
+            } else {
+                compileAssignment("C", expr, varMap, tableMap, assembly);
+                assembly.add("ADD " + targetLoc + ", C");
+            }
         }
     }
 
     public static void compileSub(String targetLoc, String expr, Map<String, String> varMap,
                                   Map<String, NType.TableInfo> tableMap, List<String> assembly) {
-        String srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
-        if (targetLoc.startsWith("[") && srcLoc.startsWith("[")) {
-            assembly.add("MOV A, " + srcLoc);
-            assembly.add("SUB " + targetLoc + ", A");
+        if (isSimpleLocation(expr, varMap, tableMap)) {
+            String srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
+            if (targetLoc.startsWith("[") && srcLoc.startsWith("[")) {
+                assembly.add("MOV A, " + srcLoc);
+                assembly.add("SUB " + targetLoc + ", A");
+            } else {
+                assembly.add("SUB " + targetLoc + ", " + srcLoc);
+            }
         } else {
-            assembly.add("SUB " + targetLoc + ", " + srcLoc);
+            if (isRegister(targetLoc)) {
+                String tempReg = targetLoc.equalsIgnoreCase("C") ? "A" : "C";
+                assembly.add("PUSH " + targetLoc);
+                compileAssignment(tempReg, expr, varMap, tableMap, assembly);
+                assembly.add("POP " + targetLoc);
+                assembly.add("SUB " + targetLoc + ", " + tempReg);
+            } else {
+                compileAssignment("C", expr, varMap, tableMap, assembly);
+                assembly.add("SUB " + targetLoc + ", C");
+            }
         }
     }
 }

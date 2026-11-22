@@ -194,10 +194,17 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         guiGraphics.drawString(this.font, "NVMe", 220, 165, 0x88CCFF, false);
     }
 
+    private double lastMouseX;
+    private double lastMouseY;
+
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        this.lastMouseX = mouseX;
+        this.lastMouseY = mouseY;
+        clearUnhoveredButtonFocus(mouseX, mouseY);
         this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
         super.render(guiGraphics, mouseX, mouseY, partialTick);
+        clearUnhoveredButtonFocus(mouseX, mouseY);
         this.renderTooltip(guiGraphics, mouseX, mouseY);
 
         // Empty slot tooltip
@@ -208,9 +215,25 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         }
     }
 
+    private void clearUnhoveredButtonFocus(double mouseX, double mouseY) {
+        for (net.minecraft.client.gui.components.events.GuiEventListener child : this.children()) {
+            if (child instanceof Button button) {
+                if (button.isFocused() && !button.isMouseOver(mouseX, mouseY)) {
+                    button.setFocused(false);
+                }
+            }
+        }
+        if (this.getFocused() instanceof Button button && !button.isMouseOver(mouseX, mouseY)) {
+            this.setFocused(null);
+        }
+    }
+
     @Override
     public void mouseMoved(double mouseX, double mouseY) {
+        this.lastMouseX = mouseX;
+        this.lastMouseY = mouseY;
         super.mouseMoved(mouseX, mouseY);
+        clearUnhoveredButtonFocus(mouseX, mouseY);
         if (menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal()) {
             int crtX = (int) (mouseX - (this.leftPos + 8));
             int crtY = (int) (mouseY - (this.topPos + 7));
@@ -222,6 +245,8 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        this.lastMouseX = mouseX;
+        this.lastMouseY = mouseY;
         if (menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal()) {
             int crtX = (int) (mouseX - (this.leftPos + 8));
             int crtY = (int) (mouseY - (this.topPos + 7));
@@ -229,7 +254,14 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
                 PacketDistributor.sendToServer(new ComputerInputPacket(menu.getBlockEntity().getBlockPos(), 2, crtX, crtY, button));
             }
         }
-        return super.mouseClicked(mouseX, mouseY, button);
+        boolean handled = super.mouseClicked(mouseX, mouseY, button);
+        clearUnhoveredButtonFocus(mouseX, mouseY);
+        // Clear focus immediately from computer chassis buttons so they never hold selection or intercept keystrokes
+        if (this.getFocused() instanceof Button b) {
+            b.setFocused(false);
+            this.setFocused(null);
+        }
+        return handled;
     }
 
     @Override
@@ -246,7 +278,7 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == 256) { // Escape
+        if (keyCode == 256) { // Escape: closes the screen
             return super.keyPressed(keyCode, scanCode, modifiers);
         }
         if (menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal()) {
@@ -263,7 +295,11 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
                 PacketDistributor.sendToServer(new ComputerInputPacket(menu.getBlockEntity().getBlockPos(), 0, 9, scanCode, modifiers));
                 return true;
             }
+            // Consume all other keystrokes while running so they are sent to the running computer
+            // and NEVER interact with UI elements (buttons, hotbar swap, inventory close, etc.)
+            return true;
         }
+        clearUnhoveredButtonFocus(this.lastMouseX, this.lastMouseY);
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
@@ -273,6 +309,7 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
             if (heldKeyCodes.remove(keyCode)) {
                 updateAndSendPadState();
             }
+            return true;
         }
         return super.keyReleased(keyCode, scanCode, modifiers);
     }

@@ -880,19 +880,31 @@ public class NCompiler {
                             else if (isShrEq) compileBinaryOp(targetLoc, targetLoc, expr, "SHR", varMap, tableMap, assembly);
                             else compileAssignment(targetLoc, expr, varMap, tableMap, assembly);
                         } else {
-                            String ptrLoc = resolveLocation(ptrExpr, varMap, tableMap, assembly);
                             if (isPlusEq || isMinusEq || isMulEq || isDivEq || isModEq || isAndEq || isOrEq || isXorEq || isShlEq || isShrEq) {
+                                String op = isPlusEq ? "ADD" : isMinusEq ? "SUB" : isMulEq ? "MUL" : isDivEq ? "DIV" : isModEq ? "MOD" : isAndEq ? "AND" : isOrEq ? "OR" : isXorEq ? "XOR" : isShlEq ? "SHL" : "SHR";
+                                String srcLoc;
+                                if (isSimpleLocation(expr, varMap, tableMap)) {
+                                    srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
+                                } else {
+                                    compileAssignment("C", expr, varMap, tableMap, assembly);
+                                    srcLoc = "C";
+                                }
+                                String ptrLoc = resolveLocation(ptrExpr, varMap, tableMap, assembly);
                                 assembly.add("MOV B, " + ptrLoc);
                                 assembly.add("MOV D, [B]");
-                                String op = isPlusEq ? "ADD" : isMinusEq ? "SUB" : isMulEq ? "MUL" : isDivEq ? "DIV" : isModEq ? "MOD" : isAndEq ? "AND" : isOrEq ? "OR" : isXorEq ? "XOR" : isShlEq ? "SHL" : "SHR";
-                                String srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
                                 assembly.add(op + " D, " + srcLoc);
                                 assembly.add("MOV [B], D");
                             } else {
-                                String srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
+                                String srcLoc;
+                                if (isSimpleLocation(expr, varMap, tableMap)) {
+                                    srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
+                                } else {
+                                    compileAssignment("A", expr, varMap, tableMap, assembly);
+                                    srcLoc = "A";
+                                }
+                                String ptrLoc = resolveLocation(ptrExpr, varMap, tableMap, assembly);
                                 assembly.add("MOV B, " + ptrLoc);
-                                assembly.add("MOV A, " + srcLoc);
-                                assembly.add("MOV [B], A");
+                                assembly.add("MOV [B], " + srcLoc);
                             }
                         }
                         continue;
@@ -916,19 +928,31 @@ public class NCompiler {
                             else if (isShrEq) compileBinaryOp(targetLoc, targetLoc, expr, "SHR", varMap, tableMap, assembly);
                             else compileAssignment(targetLoc, expr, varMap, tableMap, assembly);
                         } else {
-                            String addrLoc = resolveLocation(addrExpr, varMap, tableMap, assembly);
                             if (isPlusEq || isMinusEq || isMulEq || isDivEq || isModEq || isAndEq || isOrEq || isXorEq || isShlEq || isShrEq) {
+                                String op = isPlusEq ? "ADD" : isMinusEq ? "SUB" : isMulEq ? "MUL" : isDivEq ? "DIV" : isModEq ? "MOD" : isAndEq ? "AND" : isOrEq ? "OR" : isXorEq ? "XOR" : isShlEq ? "SHL" : "SHR";
+                                String srcLoc;
+                                if (isSimpleLocation(expr, varMap, tableMap)) {
+                                    srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
+                                } else {
+                                    compileAssignment("C", expr, varMap, tableMap, assembly);
+                                    srcLoc = "C";
+                                }
+                                String addrLoc = resolveLocation(addrExpr, varMap, tableMap, assembly);
                                 assembly.add("MOV B, " + addrLoc);
                                 assembly.add("MOV D, [B]");
-                                String op = isPlusEq ? "ADD" : isMinusEq ? "SUB" : isMulEq ? "MUL" : isDivEq ? "DIV" : isModEq ? "MOD" : isAndEq ? "AND" : isOrEq ? "OR" : isXorEq ? "XOR" : isShlEq ? "SHL" : "SHR";
-                                String srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
                                 assembly.add(op + " D, " + srcLoc);
                                 assembly.add("MOV [B], D");
                             } else {
-                                String srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
+                                String srcLoc;
+                                if (isSimpleLocation(expr, varMap, tableMap)) {
+                                    srcLoc = resolveLocation(expr, varMap, tableMap, assembly);
+                                } else {
+                                    compileAssignment("A", expr, varMap, tableMap, assembly);
+                                    srcLoc = "A";
+                                }
+                                String addrLoc = resolveLocation(addrExpr, varMap, tableMap, assembly);
                                 assembly.add("MOV B, " + addrLoc);
-                                assembly.add("MOV A, " + srcLoc);
-                                assembly.add("MOV [B], A");
+                                assembly.add("MOV [B], " + srcLoc);
                             }
                         }
                         continue;
@@ -1083,6 +1107,10 @@ public class NCompiler {
 
     public static Type inferType(String expr, Map<String, Type> typeMap) {
         return NExpressionCompiler.inferType(expr, typeMap);
+    }
+
+    public static boolean isSimpleLocation(String token, Map<String, String> varMap, Map<String, TableInfo> tableMap) {
+        return NExpressionCompiler.isSimpleLocation(token, varMap, tableMap);
     }
 
     public static String resolveLocation(String token, Map<String, String> varMap, Map<String, TableInfo> tableMap, List<String> assembly) {

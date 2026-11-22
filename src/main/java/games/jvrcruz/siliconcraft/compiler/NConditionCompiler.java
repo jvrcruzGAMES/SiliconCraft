@@ -83,8 +83,21 @@ public class NConditionCompiler {
         String leftRaw = parts[0].trim();
         String rightRaw = parts[1].trim();
 
-        String leftLoc = NExpressionCompiler.resolveLocation(leftRaw, varMap, tableMap, assembly);
-        String rightLoc = NExpressionCompiler.resolveLocation(rightRaw, varMap, tableMap, assembly);
+        String leftLoc;
+        if (!NExpressionCompiler.isSimpleLocation(leftRaw, varMap, tableMap)) {
+            NExpressionCompiler.compileAssignment("C", leftRaw, varMap, tableMap, assembly);
+            leftLoc = "C";
+        } else {
+            leftLoc = NExpressionCompiler.resolveLocation(leftRaw, varMap, tableMap, assembly);
+        }
+
+        String rightLoc;
+        if (!NExpressionCompiler.isSimpleLocation(rightRaw, varMap, tableMap)) {
+            NExpressionCompiler.compileAssignment("A", rightRaw, varMap, tableMap, assembly);
+            rightLoc = "A";
+        } else {
+            rightLoc = NExpressionCompiler.resolveLocation(rightRaw, varMap, tableMap, assembly);
+        }
 
         if (leftLoc.startsWith("[") && rightLoc.startsWith("[")) {
             assembly.add("MOV A, " + leftLoc);
