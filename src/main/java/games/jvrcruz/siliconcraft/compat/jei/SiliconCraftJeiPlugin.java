@@ -61,14 +61,14 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
         ItemStack starterWriteup = new ItemStack(ModItems.ARCHITECTURE_WRITEUP.get());
         starterWriteup.set(ModDataComponents.ARCHITECTURE_DATA.get(), new ArchitectureData("Silicon-8", starterArch));
         ItemStack starterChip = new ItemStack(ModItems.CHIP.get());
-        starterChip.set(ModDataComponents.CHIP_DATA.get(), new ChipData(starterArch));
+        starterChip.set(ModDataComponents.CHIP_DATA.get(), new ChipData("Silicon-8", starterArch));
         chipRecipes.add(new ChipForgeJeiRecipe(
                 starterWriteup,
-                new ItemStack(ModItems.SILICON_POWDER.get(), 3),
-                new ItemStack(Items.REDSTONE, 5),
+                new ItemStack(ModItems.SILICON_POWDER.get(), Math.min(12, 1 + (8 / 4))),
+                new ItemStack(Items.REDSTONE, Math.min(16, 1 + (8 / 3))),
                 starterChip,
-                2000,
-                198,
+                200 + (8 * 100),
+                48 + (8 * 16),
                 "Silicon-8 Starter CPU (8 ops)",
                 starterArch
         ));
@@ -79,14 +79,14 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
         ItemStack fullWriteup = new ItemStack(ModItems.ARCHITECTURE_WRITEUP.get());
         fullWriteup.set(ModDataComponents.ARCHITECTURE_DATA.get(), new ArchitectureData("Silicon-" + fullCount, fullArch));
         ItemStack fullChip = new ItemStack(ModItems.CHIP.get());
-        fullChip.set(ModDataComponents.CHIP_DATA.get(), new ChipData(fullArch));
+        fullChip.set(ModDataComponents.CHIP_DATA.get(), new ChipData("Silicon-" + fullCount, fullArch));
         chipRecipes.add(new ChipForgeJeiRecipe(
                 fullWriteup,
-                new ItemStack(ModItems.SILICON_POWDER.get(), 1 + (fullCount / 3)),
-                new ItemStack(Items.REDSTONE, 1 + (fullCount / 2)),
+                new ItemStack(ModItems.SILICON_POWDER.get(), Math.min(12, 1 + (fullCount / 4))),
+                new ItemStack(Items.REDSTONE, Math.min(16, 1 + (fullCount / 3))),
                 fullChip,
-                400 + (fullCount * 200),
-                54 + (fullCount * 18),
+                200 + (fullCount * 100),
+                48 + (fullCount * 16),
                 "Silicon-" + fullCount + " Full RISC CPU (" + fullCount + " ops)",
                 fullArch
         ));
@@ -96,14 +96,14 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
         ItemStack minWriteup = new ItemStack(ModItems.ARCHITECTURE_WRITEUP.get());
         minWriteup.set(ModDataComponents.ARCHITECTURE_DATA.get(), new ArchitectureData("Micro-3", minArch));
         ItemStack minChip = new ItemStack(ModItems.CHIP.get());
-        minChip.set(ModDataComponents.CHIP_DATA.get(), new ChipData(minArch));
+        minChip.set(ModDataComponents.CHIP_DATA.get(), new ChipData("Micro-3", minArch));
         chipRecipes.add(new ChipForgeJeiRecipe(
                 minWriteup,
-                new ItemStack(ModItems.SILICON_POWDER.get(), 2),
-                new ItemStack(Items.REDSTONE, 2),
+                new ItemStack(ModItems.SILICON_POWDER.get(), Math.min(12, 1 + (3 / 4))),
+                new ItemStack(Items.REDSTONE, Math.min(16, 1 + (3 / 3))),
                 minChip,
-                1000,
-                108,
+                200 + (3 * 100),
+                48 + (3 * 16),
                 "Silicon-3 Micro-Controller (3 ops)",
                 minArch
         ));

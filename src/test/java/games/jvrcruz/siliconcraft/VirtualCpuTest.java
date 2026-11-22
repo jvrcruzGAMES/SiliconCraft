@@ -585,4 +585,94 @@ public class VirtualCpuTest {
         assertEquals(777, cpu.getRegA());
         assertEquals(100, cpu.getRegB());
     }
+
+    @Test
+    public void testExample6GraphicsDemo() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("FBMODE", "FBCLR", "FBRECT", "FBLINE", "FBSET", "FBSWAP", "JMP");
+        List<String> code = List.of(
+                "FBMODE 1",
+                "FBCLR 0xFF181824",
+                "FBRECT 10, 10, 220, 16, 0xFF2A4494",
+                "FBLINE 0, 0, 239, 134, 0xFF44AA44",
+                "FBLINE 0, 134, 239, 0, 0xFF44AA44",
+                "FBRECT 110, 57, 20, 20, 0xFFFFCC00",
+                "FBSET 120, 67, 0xFFFFFFFF",
+                "FBSWAP",
+                "loop:",
+                "JMP loop"
+        );
+
+        cpu.configure(isa, 256, code, false, 0);
+        cpu.powerOn();
+        cpu.tick(100);
+
+        assertEquals(VirtualCpu.State.RUNNING, cpu.getState());
+        assertEquals(1, cpu.getDisplayMode());
+        assertTrue(cpu.getErrorMessage().isEmpty());
+        // Verify center pixel
+        assertEquals(0xFFFFFFFF, cpu.getFramebuffer()[67 * VirtualCpu.FB_WIDTH + 120]);
+        // Verify line pixel
+        assertEquals(0xFF44AA44, cpu.getFramebuffer()[0]);
+    }
+
+    @Test
+    public void testSExecBurnedRomProgram() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "ADD", "OUT", "SEXEC", "HLT");
+
+        // Bootloader in ROM
+        List<String> bootloader = List.of(
+                "MOV A, 10",
+                "MOV B, 20",
+                "SEXEC 1",
+                "HLT"
+        );
+
+        // Target OS code burned to Drive 1
+        List<String> osKernel = List.of(
+                "ADD A, B",
+                "OUT A",
+                "HLT"
+        );
+
+        cpu.configure(isa, 256, bootloader, false, 0);
+        cpu.setStorageDrive(1, new byte[512]);
+        cpu.setDriveProgram(1, osKernel);
+
+        cpu.powerOn();
+        cpu.tick(50);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(30, cpu.getRegA(), "Target program should compute A = 10 + 20");
+        assertEquals(1, cpu.getSelectedDrive());
+        assertTrue(cpu.getTerminalOutput().contains("30"));
+    }
+
+    @Test
+    public void testSExecBinaryStorageUtf8() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "INC", "SEXEC", "HLT");
+
+        List<String> bootloader = List.of(
+                "MOV C, 99",
+                "SEXEC 0",
+                "HLT"
+        );
+
+        cpu.configure(isa, 256, bootloader, false, 0);
+
+        // Write UTF-8 assembly program into Drive 0's binary storage
+        String programText = "INC C\nHLT\n";
+        byte[] bytes = programText.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] driveData = new byte[256];
+        System.arraycopy(bytes, 0, driveData, 0, bytes.length);
+        cpu.setStorageDrive(0, driveData);
+
+        cpu.powerOn();
+        cpu.tick(50);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(100, cpu.getRegC(), "Program loaded from UTF-8 binary storage should increment C from 99 to 100");
+    }
 }

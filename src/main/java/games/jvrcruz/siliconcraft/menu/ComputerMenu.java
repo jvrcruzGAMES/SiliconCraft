@@ -33,31 +33,35 @@ public class ComputerMenu extends AbstractContainerMenu {
         this.levelAccess = ContainerLevelAccess.create(blockEntity.getLevel(), blockEntity.getBlockPos());
         this.data = data;
 
-        // Machine Slots (0-1: NVMe Storage, 2-5: RAM Modules)
-        this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 0, 162, 138,
-                ComputerMenu::isNvmeStorage,
-                Component.literal("NVMe Storage Slot 1 (1 Module Max)")));
-        this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 1, 180, 138,
-                ComputerMenu::isNvmeStorage,
-                Component.literal("NVMe Storage Slot 2 (1 Module Max)")));
+        // Machine Slots (0-1: Storage drives max 1 each; 2-5: RAM Modules) - Right side, oriented vertically
+        this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 0, 220, 176,
+                stack -> stack.is(ModItems.STORAGE.get()),
+                Component.literal("Storage Slot 1 (Flash / NVMe)")));
+        this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 1, 220, 194,
+                stack -> stack.is(ModItems.STORAGE.get()),
+                Component.literal("Storage Slot 2 (Flash / NVMe)")));
 
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 3; i++) {
             final int slotNum = i + 1;
-            this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 2 + i, 50 + i * 18, 138,
+            this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 2 + i, 186, 176 + i * 18,
                     stack -> stack.is(ModItems.RAM.get()),
                     Component.literal("RAM Slot " + slotNum + " (1 Module Max)")));
         }
+        // 4th RAM slot aligned with Hotbar row
+        this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 5, 186, 234,
+                stack -> stack.is(ModItems.RAM.get()),
+                Component.literal("RAM Slot 4 (1 Module Max)")));
 
         // Player Inventory (3 rows x 9 columns)
         for (int row = 0; row < 3; ++row) {
             for (int col = 0; col < 9; ++col) {
-                this.addSlot(new Slot(playerInventory, col + row * 9 + 9, 39 + col * 18, 160 + row * 18));
+                this.addSlot(new Slot(playerInventory, col + row * 9 + 9, 10 + col * 18, 176 + row * 18));
             }
         }
 
         // Player Hotbar (9 columns)
         for (int col = 0; col < 9; ++col) {
-            this.addSlot(new Slot(playerInventory, col, 39 + col * 18, 218));
+            this.addSlot(new Slot(playerInventory, col, 10 + col * 18, 234));
         }
 
         this.addDataSlots(data);
@@ -100,7 +104,7 @@ public class ComputerMenu extends AbstractContainerMenu {
                 }
             } else {
                 // Moving from player inventory/hotbar to machine slots
-                if (isNvmeStorage(slotStack)) {
+                if (slotStack.is(ModItems.STORAGE.get())) {
                     if (!this.moveItemStackTo(slotStack, 0, 2, false)) return ItemStack.EMPTY;
                 } else if (slotStack.is(ModItems.RAM.get())) {
                     if (!this.moveItemStackTo(slotStack, 2, 6, false)) return ItemStack.EMPTY;

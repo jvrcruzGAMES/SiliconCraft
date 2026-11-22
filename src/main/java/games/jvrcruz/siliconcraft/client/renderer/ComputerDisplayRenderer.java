@@ -12,8 +12,8 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import org.joml.Matrix4f;
 
 public class ComputerDisplayRenderer {
-    public static final int WIDTH = 228;
-    public static final int HEIGHT = 82;
+    public static final int WIDTH = 240;
+    public static final int HEIGHT = 135;
     private final DynamicTexture dynamicTexture;
     private final NativeImage nativeImage;
 

@@ -33,6 +33,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.network.PacketDistributor;
 import games.jvrcruz.siliconcraft.data.RamData;
+import games.jvrcruz.siliconcraft.data.RomData;
 import games.jvrcruz.siliconcraft.data.StorageData;
 import games.jvrcruz.siliconcraft.init.ModDataComponents;
 import games.jvrcruz.siliconcraft.init.ModItems;
@@ -63,9 +64,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
         @Override
         public boolean isItemValid(int slot, ItemStack stack) {
             if (slot == 0 || slot == 1) {
-                if (!stack.is(ModItems.STORAGE.get())) return false;
-                StorageData sd = stack.get(ModDataComponents.STORAGE_DATA.get());
-                return sd != null && sd.isNvme();
+                return stack.is(ModItems.STORAGE.get());
             } else if (slot >= 2 && slot <= 5) {
                 return stack.is(ModItems.RAM.get());
             }
@@ -198,7 +197,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
             ItemStack stack = itemHandler.getStackInSlot(i);
             if (!stack.isEmpty() && stack.is(ModItems.STORAGE.get())) {
                 StorageData sd = stack.get(ModDataComponents.STORAGE_DATA.get());
-                if (sd != null && sd.isNvme()) {
+                if (sd != null) {
                     cap += sd.capacity();
                 }
             }
@@ -224,20 +223,26 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
             cpu.setStorageDrive(0, new byte[0]);
         }
 
-        // Sync Drive 1: NVMe Slot 1 (itemHandler slot 0)
+        // Sync Drive 1: Storage Slot 1 (itemHandler slot 0)
         ItemStack slot0 = itemHandler.getStackInSlot(0);
         if (!slot0.isEmpty() && slot0.is(ModItems.STORAGE.get())) {
             cpu.setStorageDrive(1, StorageItem.getStorageBytes(slot0));
+            RomData rd = slot0.get(ModDataComponents.ROM_DATA.get());
+            cpu.setDriveProgram(1, rd != null ? rd.lines() : Collections.emptyList());
         } else {
             cpu.setStorageDrive(1, new byte[0]);
+            cpu.setDriveProgram(1, Collections.emptyList());
         }
 
-        // Sync Drive 2: NVMe Slot 2 (itemHandler slot 1)
+        // Sync Drive 2: Storage Slot 2 (itemHandler slot 1)
         ItemStack slot1 = itemHandler.getStackInSlot(1);
         if (!slot1.isEmpty() && slot1.is(ModItems.STORAGE.get())) {
             cpu.setStorageDrive(2, StorageItem.getStorageBytes(slot1));
+            RomData rd = slot1.get(ModDataComponents.ROM_DATA.get());
+            cpu.setDriveProgram(2, rd != null ? rd.lines() : Collections.emptyList());
         } else {
             cpu.setStorageDrive(2, new byte[0]);
+            cpu.setDriveProgram(2, Collections.emptyList());
         }
     }
 
@@ -508,6 +513,10 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
 
     @Override
     public AbstractContainerMenu createMenu(int containerId, Inventory playerInventory, Player player) {
+        if (player instanceof ServerPlayer serverPlayer) {
+            byte[] compressed = SyncFramebufferPacket.compress(cpu.getFramebuffer());
+            PacketDistributor.sendToPlayer(serverPlayer, new SyncFramebufferPacket(worldPosition, cpu.getDisplayMode(), compressed));
+        }
         return new ComputerMenu(containerId, playerInventory, this, this.dataAccess);
     }
 }

@@ -97,25 +97,25 @@ public class ChipForgeBlockEntity extends BaseMachineBlockEntity {
     public int getRequiredSilicon() {
         ArchitectureData arch = getInstalledArchitecture();
         int count = (arch != null) ? arch.instructions().size() : 3;
-        return 1 + (count / 3);
+        return Math.min(12, 1 + (count / 4));
     }
 
     public int getRequiredRedstone() {
         ArchitectureData arch = getInstalledArchitecture();
         int count = (arch != null) ? arch.instructions().size() : 3;
-        return 1 + (count / 2);
+        return Math.min(16, 1 + (count / 3));
     }
 
     public int getRequiredEnergy() {
         ArchitectureData arch = getInstalledArchitecture();
         int count = (arch != null) ? arch.instructions().size() : 3;
-        return 400 + (count * 200);
+        return 200 + (count * 100);
     }
 
     public int calculateMaxProgress() {
         ArchitectureData arch = getInstalledArchitecture();
         int count = (arch != null) ? arch.instructions().size() : 3;
-        return 54 + (count * 18);
+        return 48 + (count * 16);
     }
 
     public void startForging() {

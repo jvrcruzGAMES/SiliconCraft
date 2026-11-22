@@ -21,12 +21,9 @@ public class ChipItem extends Item {
         if (data == null || data.instructions().isEmpty()) {
             tooltip.add(Component.translatable("tooltip.siliconcraft.chip.empty").withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
         } else {
-            if (data.archName() != null && !data.archName().isEmpty()) {
-                tooltip.add(Component.literal("Architecture: " + data.archName()).withStyle(ChatFormatting.YELLOW));
-            }
-            tooltip.add(Component.translatable("tooltip.siliconcraft.chip.instructions").withStyle(ChatFormatting.GOLD));
-            String joined = String.join(", ", data.instructions());
-            tooltip.add(Component.literal("  " + joined).withStyle(ChatFormatting.AQUA));
+            String archName = (data.archName() != null && !data.archName().isEmpty()) ? data.archName() : "Custom-Arch";
+            tooltip.add(Component.literal("Architecture: " + archName).withStyle(ChatFormatting.YELLOW));
+            tooltip.add(Component.literal("Instructions: " + data.instructions().size()).withStyle(ChatFormatting.GOLD));
         }
         super.appendHoverText(stack, context, tooltip, flag);
     }

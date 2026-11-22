@@ -39,7 +39,7 @@ HLT
 Calculates the first 8 numbers of the Fibonacci sequence, storing each number into RAM addresses `[0]` through `[7]` while displaying them on the terminal.
 
 ### Required CPU Instructions
-- `OUT`, `MOV`, `ADD`, `INC`, `CMP`, `JNZ`, `HLT`
+- `OUT`, `MOV`, `ADD`, `INC`, `DEC`, `JNZ`, `HLT`
 
 ```assembly
 ; ============================================
@@ -58,6 +58,7 @@ MOV D, 0          ; Memory pointer starting at RAM[0]
 MOV [D], A
 INC D
 MOV [D], B
+INC D
 
 ; C will serve as loop counter (compute 6 more terms)
 MOV C, 6
@@ -206,36 +207,42 @@ memory_error:
 
 ## Example 6: Framebuffer Direct Pixel Graphics (`graphics_demo.asm`)
 
-Draws geometric primitives (filled boxes, diagonal lines, and pixels) directly onto the $228 \times 82$ CRT pixel canvas and renders the frame.
+Draw geometric primitives (filled boxes, diagonal lines, and pixels) directly onto the $240 \times 135$ (16:9) CRT pixel canvas and renders the frame in an active display loop.
 
 ### Required CPU Instructions
-- `FBCLR`, `FBRECT`, `FBLINE`, `FBSET`, `FBSWAP`, `HLT`
+- `FBMODE`, `FBCLR`, `FBRECT`, `FBLINE`, `FBSET`, `FBSWAP`, `JMP`
 
 ```assembly
 ; ============================================
 ; Program: graphics_demo.asm
-; Description: Renders 2D geometric shapes on CRT
+; Description: Renders 2D geometric shapes on CRT (240x135 16:9)
 ; ============================================
+
+; Switch CRT display to graphics framebuffer mode (1 = graphics, 0 = text)
+FBMODE 1
 
 ; Clear canvas to dark slate (ARGB: 0xFF181824)
 FBCLR 0xFF181824
 
-; Draw a blue title banner rectangle (x=10, y=10, w=208, h=16)
-FBRECT 10, 10, 208, 16, 0xFF2A4494
+; Draw a blue title banner rectangle (x=10, y=10, w=220, h=16)
+FBRECT 10, 10, 220, 16, 0xFF2A4494
 
 ; Draw diagonal crosshairs across the canvas
-FBLINE 0, 0, 227, 81, 0xFF44AA44
-FBLINE 0, 81, 227, 0, 0xFF44AA44
+FBLINE 0, 0, 239, 134, 0xFF44AA44
+FBLINE 0, 134, 239, 0, 0xFF44AA44
 
 ; Draw an accent gold square in the center
-FBRECT 104, 36, 20, 20, 0xFFFFCC00
+FBRECT 110, 57, 20, 20, 0xFFFFCC00
 
 ; Plot a single white pixel in the center of the gold box
-FBSET 114, 46, 0xFFFFFFFF
+FBSET 120, 67, 0xFFFFFFFF
 
 ; Flip buffer to display on screen
 FBSWAP
-HLT
+
+; Keep display running in an active loop instead of halting
+idle:
+    JMP idle
 ```
 
 ---
@@ -281,7 +288,7 @@ HLT
 Demonstrates registering handlers in the Interrupt Vector Table (IVT) for both fault recovery (`DIV_ZERO`) and real-time user input (`KEYBOARD`).
 
 ### Required CPU Instructions
-- `OUT`, `OUTC`, `MOV`, `DIV`, `IVEC`, `IRET`, `STI`, `JMP`, `HLT`
+- `OUT`, `OUTC`, `MOV`, `DIV`, `IVEC`, `IRET`, `STI`, `JMP`
 
 ```assembly
 ; ============================================
@@ -335,7 +342,7 @@ handle_key:
 Demonstrates writing binary data to persistent Storage Drives (Flash / NVMe) that remain stored in NBT even when the drive is detached.
 
 ### Required CPU Instructions
-- `OUT`, `OUTC`, `MOV`, `CMP`, `JZ`, `SCOUNT`, `SSEL`, `SWRITE`, `SREAD`, `HLT`
+- `OUT`, `OUTC`, `CMP`, `JZ`, `SCOUNT`, `SSEL`, `SWRITE`, `SREAD`, `HLT`
 
 ```assembly
 ; ============================================
@@ -372,4 +379,96 @@ no_drive:
     OUT "[ERROR] No storage drive inserted!"
     HLT
 ```
+
+---
+
+## Example 10: Running Code from Storage Drive (`bootloader.asm` & `os_kernel.asm`)
+
+Demonstrates probing for installed storage drives (Flash or NVMe) and chainloading/executing a program burned to **Storage Drive X** using the `SEXEC` opcode.
+
+Registers and RAM are preserved across `SEXEC`, allowing the bootloader to pass system parameters (such as the boot drive index and handoff signatures) directly into the loaded program.
+
+### Required CPU Instructions
+- `OUT`, `MOV`, `CMP`, `JZ`, `JNZ`, `JMP`, `SSIZE`, `SEXEC`, `HLT`
+
+### Part 1: Bootloader (`bootloader.asm`)
+*Burned into SoC ROM (BIOS)*
+
+```assembly
+; ============================================
+; Program: bootloader.asm
+; Description: BIOS bootloader that launches OS from Storage Drive
+; ============================================
+
+OUT "[BIOS] SiliconCraft Bootloader 1.0"
+OUT "[BIOS] Searching for bootable Storage Drive..."
+
+; Check if Storage Drive 1 (Expansion Slot 1: Flash or NVMe) is installed
+MOV B, 1
+SSIZE C, B
+CMP C, 0
+JNZ boot_selected
+
+; Fallback: Check if Storage Drive 0 (Onboard SoC Flash) is installed
+MOV B, 0
+SSIZE C, B
+CMP C, 0
+JNZ boot_selected
+
+; No bootable drives available
+JMP error_no_drives
+
+boot_selected:
+    OUT "[BIOS] Booting from Storage Drive: ", 0
+    OUT B
+    OUT "[BIOS] Drive capacity (bytes): ", 0
+    OUT C
+
+    OUT "[BIOS] Chainloading program..."
+
+    ; Pass boot parameters to the loaded OS kernel in registers:
+    ; Register A: Boot drive index
+    ; Register B: Handshake magic signature (0x5343 = 'SC')
+    MOV A, B
+    MOV B, 0x5343
+
+    ; Chainload and execute program burned to Drive A (Flash or NVMe)
+    SEXEC A
+
+error_no_drives:
+    OUT "[FATAL] No bootable storage drive detected!"
+    HLT
+```
+
+### Part 2: Operating System Kernel (`os_kernel.asm`)
+*Burned to Storage Drive 1 (Flash or NVMe) using the Programmer*
+
+```assembly
+; ============================================
+; Program: os_kernel.asm
+; Description: OS Kernel burned onto Storage Drive
+; ============================================
+
+OUT "=========================================="
+OUT "       SILICON-OS KERNEL INITIALIZED      "
+OUT "=========================================="
+
+; Inspect boot parameters passed by the bootloader in registers:
+OUT "Booted from Storage Drive: ", 0
+OUT A
+
+CMP B, 0x5343
+JNZ unverified_boot
+OUT "Bootloader handoff signature verified: OK"
+JMP os_main
+
+unverified_boot:
+    OUT "Warning: Bootloader signature mismatch!"
+
+os_main:
+    OUT "Silicon-OS kernel running from Storage Drive."
+    OUT "System ready for commands."
+    HLT
+```
+
 

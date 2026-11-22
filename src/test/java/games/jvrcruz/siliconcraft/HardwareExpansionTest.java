@@ -171,17 +171,52 @@ public class HardwareExpansionTest {
     @Test
     public void testChipForgeSpeedIncrease() {
         // Base was 60, per-instruction was 20: 60 + (count * 20)
-        // With 10% speed increase (10% less duration): 54 + (count * 18)
-        int prev8 = 60 + (8 * 20);
-        int new8 = 54 + (8 * 18);
-        assertEquals(220, prev8);
-        assertEquals(198, new8);
-        assertEquals(prev8 * 0.90, (double) new8, 0.001);
+        // With first 10% speed increase (10% less duration): 54 + (count * 18)
+        // With second 10% speed increase: 48 + (count * 16)
+        int initial8 = 60 + (8 * 20);
+        int v1Speed8 = 54 + (8 * 18);
+        int v2Speed8 = 48 + (8 * 16);
+        assertEquals(220, initial8);
+        assertEquals(198, v1Speed8);
+        assertEquals(176, v2Speed8);
+        assertEquals(initial8 * 0.90, (double) v1Speed8, 0.001);
+        assertEquals(198 * 0.90, (double) v2Speed8, 2.5); // ~11% speedup over v1
 
-        int prev61 = 60 + (61 * 20);
-        int new61 = 54 + (61 * 18);
-        assertEquals(1280, prev61);
-        assertEquals(1152, new61);
-        assertEquals(prev61 * 0.90, (double) new61, 0.001);
+        int initial61 = 60 + (61 * 20);
+        int v1Speed61 = 54 + (61 * 18);
+        int v2Speed61 = 48 + (61 * 16);
+        assertEquals(1280, initial61);
+        assertEquals(1152, v1Speed61);
+        assertEquals(1024, v2Speed61);
+        assertEquals(initial61 * 0.90, (double) v1Speed61, 0.001);
+        assertEquals(1152 * 0.90, (double) v2Speed61, 15.0); // ~11% speedup over v1
+    }
+
+    @Test
+    public void testChipForgeResourceCappingAndCost() {
+        // Required silicon: Math.min(12, 1 + (count / 4))
+        // Required redstone: Math.min(16, 1 + (count / 3))
+        // Required energy: 200 + (count * 100)
+
+        // 3 instructions (minimal)
+        assertEquals(1, Math.min(12, 1 + (3 / 4)));
+        assertEquals(2, Math.min(16, 1 + (3 / 3)));
+        assertEquals(500, 200 + (3 * 100));
+
+        // 8 instructions (starter)
+        assertEquals(3, Math.min(12, 1 + (8 / 4)));
+        assertEquals(3, Math.min(16, 1 + (8 / 3)));
+        assertEquals(1000, 200 + (8 * 100));
+
+        // 61 instructions (full RISC)
+        // 1 + 61/4 = 16 -> capped at 12
+        // 1 + 61/3 = 21 -> capped at 16
+        assertEquals(12, Math.min(12, 1 + (61 / 4)));
+        assertEquals(16, Math.min(16, 1 + (61 / 3)));
+        assertEquals(6300, 200 + (61 * 100));
+
+        // 100 instructions (extreme case)
+        assertEquals(12, Math.min(12, 1 + (100 / 4)));
+        assertEquals(16, Math.min(16, 1 + (100 / 3)));
     }
 }

@@ -115,17 +115,18 @@ The CPU provides four 32-bit integer registers:
 | **`SWRITE`** | `SWRITE [drive,] addr, val` | Writes single byte `val` to drive at `addr`. |
 | **`SBLKR`** | `SBLKR ramAddr, drvAddr, len` | Fast block read: copies `len` bytes from drive to RAM. |
 | **`SBLKW`** | `SBLKW drvAddr, ramAddr, len` | Fast block write: copies `len` bytes from RAM to drive. |
+| **`SEXEC`** | `SEXEC drive` | Chainloads and executes the program burned to (or UTF-8 code stored on) `drive`. Resets PC to 0, preserves registers & RAM. |
 
 ---
 
 ### 6. Framebuffer Graphics
 
-The CRT display features a $228 \times 82$ direct pixel renderer canvas:
+The CRT display features a $240 \times 135$ (16:9 aspect ratio) direct pixel renderer canvas:
 
 | Opcode | Syntax | Description |
 |---|---|---|
-| **`FBWIDTH`** | `FBWIDTH dest` | Stores screen width in pixels (228) into `dest`. |
-| **`FBHEIGHT`** | `FBHEIGHT dest` | Stores screen height in pixels (82) into `dest`. |
+| **`FBWIDTH`** | `FBWIDTH dest` | Stores screen width in pixels (240) into `dest`. |
+| **`FBHEIGHT`** | `FBHEIGHT dest` | Stores screen height in pixels (135) into `dest`. |
 | **`FBSET`** | `FBSET x, y, color` | Sets pixel at `(x, y)` to 32-bit ARGB `color`. |
 | **`FBGET`** | `FBGET dest, x, y` | Reads 32-bit ARGB pixel color at `(x, y)` into `dest`. |
 | **`FBLINE`** | `FBLINE x0, y0, x1, y1, color` | Draws line using Bresenham's algorithm. |

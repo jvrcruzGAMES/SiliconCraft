@@ -1,5 +1,7 @@
 package games.jvrcruz.siliconcraft.vm;
 
+import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
+
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
@@ -33,6 +35,7 @@ public class VirtualCpu {
     private final Set<String> supportedInstructions = new HashSet<>();
     private final List<String> program = new ArrayList<>();
     private final Map<String, Integer> labels = new HashMap<>();
+    private final Map<Integer, List<String>> drivePrograms = new HashMap<>();
     private final List<String> terminalOutput = new ArrayList<>();
     private final StringBuilder lineBuffer = new StringBuilder();
     private final ByteArrayOutputStream utf8ByteBuf = new ByteArrayOutputStream();
@@ -50,8 +53,8 @@ public class VirtualCpu {
     private int selectedDrive = 0;
     private BiConsumer<Integer, byte[]> driveWriteListener;
 
-    public static final int FB_WIDTH = 228;
-    public static final int FB_HEIGHT = 82;
+    public static final int FB_WIDTH = 240;
+    public static final int FB_HEIGHT = 135;
     private int displayMode = 0; // 0 = text mode, 1 = framebuffer mode
     private final int[] framebuffer = new int[FB_WIDTH * FB_HEIGHT];
     private boolean fbDirty = false;
@@ -353,6 +356,7 @@ public class VirtualCpu {
                 case "SCOUNT" -> execSCount(args);
                 case "SSEL" -> execSSel(args);
                 case "SDRV" -> execSDrv(args);
+                case "SEXEC", "SBOOT" -> execSExec(args);
                 case "FBMODE" -> execFbMode(args);
                 case "FBSET" -> execFbSet(args);
                 case "FBGET" -> execFbGet(args);
@@ -360,7 +364,10 @@ public class VirtualCpu {
                 case "FBRECT" -> execFbRect(args);
                 case "FBLINE" -> execFbLine(args);
                 case "FBLIT" -> execFbLit(args);
-                case "FBSWAP" -> fbDirty = true;
+                case "FBSWAP" -> {
+                    displayMode = 1;
+                    fbDirty = true;
+                }
                 case "FBWIDTH" -> setDestination(args.trim(), FB_WIDTH);
                 case "FBHEIGHT" -> setDestination(args.trim(), FB_HEIGHT);
                 case "APUSH" -> execAPush(args);
@@ -929,6 +936,60 @@ public class VirtualCpu {
         setDestination(dest.trim(), selectedDrive);
         flagZ = (selectedDrive == 0);
         flagS = false;
+    }
+
+    private void execSExec(String args) {
+        int drive = resolveValue(args.trim());
+        if (drive < 0 || drive >= MAX_DRIVES) {
+            triggerException(VEC_OUT_OF_BOUNDS, "Drive index " + drive + " out of bounds", pc - 1, "SEXEC " + args);
+            return;
+        }
+
+        List<String> targetProgram = drivePrograms.get(drive);
+        if (targetProgram == null || targetProgram.isEmpty()) {
+            // Check if binary storage on drive contains plain UTF-8 text lines
+            byte[] bytes = storageDrives[drive];
+            if (bytes != null && bytes.length > 0) {
+                int len = 0;
+                while (len < bytes.length && bytes[len] != 0) {
+                    len++;
+                }
+                if (len > 0) {
+                    String src = new String(bytes, 0, len, StandardCharsets.UTF_8).trim();
+                    if (!src.isEmpty()) {
+                        String[] lines = src.split("\\r?\\n");
+                        targetProgram = new ArrayList<>();
+                        for (String l : lines) {
+                            targetProgram.add(l);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (targetProgram == null || targetProgram.isEmpty()) {
+            triggerException(VEC_GENERAL_EXCEPTION, "No executable program on storage drive " + drive, pc - 1, "SEXEC " + args);
+            return;
+        }
+
+        // Validate that all instructions in target program are supported by this CPU
+        Set<String> req = InstructionValidator.getRequiredInstructions(targetProgram);
+        List<String> missing = InstructionValidator.getMissingInstructions(req, new ArrayList<>(supportedInstructions));
+        if (!missing.isEmpty()) {
+            triggerException(VEC_ILLEGAL_OPCODE, "Target drive program uses unsupported instructions: " + missing, pc - 1, "SEXEC " + args);
+            return;
+        }
+
+        // Load new program image
+        this.program.clear();
+        this.program.addAll(targetProgram);
+        preprocessLabels();
+        this.callStack.clear();
+        this.pc = 0;
+        this.selectedDrive = drive;
+        this.flagZ = false;
+        this.flagS = false;
+        flushLineBuffer();
     }
 
     // --- Framebuffer Instructions ---
@@ -1507,5 +1568,17 @@ public class VirtualCpu {
 
     public void setDriveWriteListener(BiConsumer<Integer, byte[]> listener) {
         this.driveWriteListener = listener;
+    }
+
+    public void setDriveProgram(int drive, List<String> lines) {
+        if (lines != null && !lines.isEmpty()) {
+            this.drivePrograms.put(drive, new ArrayList<>(lines));
+        } else {
+            this.drivePrograms.remove(drive);
+        }
+    }
+
+    public List<String> getDriveProgram(int drive) {
+        return this.drivePrograms.getOrDefault(drive, Collections.emptyList());
     }
 }

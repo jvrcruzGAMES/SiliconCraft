@@ -13,7 +13,7 @@ public class InstructionValidator {
             // I/O & System / BIOS
             "OUT", "OUTC", "OUTH", "CLS", "SLEEP", "TIME", "RAND",
             // Storage (multi-drive)
-            "SSIZE", "SREAD", "SWRITE", "SBLKR", "SBLKW", "SCOUNT", "SSEL", "SDRV",
+            "SSIZE", "SREAD", "SWRITE", "SBLKR", "SBLKW", "SCOUNT", "SSEL", "SDRV", "SEXEC",
             // Framebuffer / Graphics
             "FBMODE", "FBSET", "FBGET", "FBCLR", "FBRECT", "FBLINE", "FBLIT", "FBSWAP", "FBWIDTH", "FBHEIGHT",
             // Audio Buffer & Sound

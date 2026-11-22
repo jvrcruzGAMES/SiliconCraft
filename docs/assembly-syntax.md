@@ -129,20 +129,22 @@ SSIZE B, 0                    ; Get size in bytes of drive 0 into B
 SWRITE 0, 0x10, 0xAA          ; Write byte 0xAA to drive 0, address 0x10
 SREAD A, 0, 0x10              ; Read byte from drive 0, address 0x10 into A
 SBLKR 100, 0, 16              ; Fast block read: copy 16 bytes from drive into RAM [100..115]
+SEXEC 1                       ; Chainload / execute program burned to Drive 1 (Flash or NVMe)
 ```
 
 ---
 
 ## 8. Framebuffer Operations (`FB*`)
 
-The CRT screen features a direct $228 \times 82$ hardware pixel canvas:
+The CRT screen features a direct $240 \times 135$ (16:9) hardware pixel canvas:
 
 ```assembly
-FBCLR 0xFF000000                 ; Clear canvas to black
-FBSET 10, 10, 0xFFFF0000         ; Draw red pixel at (10, 10)
-FBLINE 0, 0, 227, 81, 0xFF00FF00 ; Draw green diagonal line across CRT
-FBRECT 20, 20, 40, 20, 0xFF0000FF; Draw blue filled rectangle
-FBSWAP                           ; Swap / flip buffer to display canvas
+FBMODE 1                          ; Switch CRT display to graphics mode (1 = graphics, 0 = text)
+FBCLR 0xFF000000                  ; Clear canvas to black
+FBSET 10, 10, 0xFFFF0000          ; Draw red pixel at (10, 10)
+FBLINE 0, 0, 239, 134, 0xFF00FF00 ; Draw green diagonal line across CRT
+FBRECT 20, 20, 40, 20, 0xFF0000FF ; Draw blue filled rectangle
+FBSWAP                            ; Swap / flip buffer to display canvas
 ```
 
 ---

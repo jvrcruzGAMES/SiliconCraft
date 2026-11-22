@@ -46,6 +46,7 @@ The **Chip Forge** manufactures custom microchips according to an Architecture W
 5. Click **Forge**.
 6. Retrieve the forged **Chip**.
    > **Note**: The **Architecture Writeup is NEVER consumed** during fabrication! You can reuse it indefinitely to forge as many identical CPU chips as needed.
+   > **Resource Efficiency**: Material costs scale with instruction set size, capped at a maximum of **16 Redstone Dust** and **12 Silicon Powder** per chip operation.
 
 ---
 

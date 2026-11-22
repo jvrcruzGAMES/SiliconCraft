@@ -21,11 +21,9 @@ public class ArchitectureWriteupItem extends Item {
         if (data == null || (data.name().isEmpty() && data.instructions().isEmpty())) {
             tooltip.add(Component.translatable("tooltip.siliconcraft.writeup.empty").withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
         } else {
-            String archName = data.name().isEmpty() ? "Custom-Arch" : data.name();
+            String archName = (data.name() != null && !data.name().isEmpty()) ? data.name() : "Custom-Arch";
             tooltip.add(Component.literal("Architecture: " + archName).withStyle(ChatFormatting.YELLOW));
-            tooltip.add(Component.literal("Instructions (" + data.instructions().size() + "):").withStyle(ChatFormatting.GOLD));
-            String joined = String.join(", ", data.instructions());
-            tooltip.add(Component.literal("  " + joined).withStyle(ChatFormatting.AQUA));
+            tooltip.add(Component.literal("Instructions: " + data.instructions().size()).withStyle(ChatFormatting.GOLD));
         }
         super.appendHoverText(stack, context, tooltip, flag);
     }

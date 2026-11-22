@@ -21,8 +21,8 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
 
     public ComputerScreen(ComputerMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
-        this.imageWidth = 240;
-        this.imageHeight = 242;
+        this.imageWidth = 256;
+        this.imageHeight = 256;
     }
 
     @Override
@@ -52,19 +52,19 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
                     PacketDistributor.sendToServer(new ComputerActionPacket(menu.getBlockEntity().getBlockPos(), 0));
                     b.setMessage(Component.literal(!isRunning ? "⏻ OFF" : "⏻ ON"));
                 }
-        ).bounds(this.leftPos + 8, this.topPos + 116, 54, 18).build());
+        ).bounds(this.leftPos + 8, this.topPos + 145, 48, 16).build());
 
         // Reset button
         this.addRenderableWidget(Button.builder(
                 Component.literal("↺ RST"),
                 b -> PacketDistributor.sendToServer(new ComputerActionPacket(menu.getBlockEntity().getBlockPos(), 1))
-        ).bounds(this.leftPos + 64, this.topPos + 116, 42, 18).build());
+        ).bounds(this.leftPos + 58, this.topPos + 145, 36, 16).build());
 
         // Step button
         this.addRenderableWidget(Button.builder(
                 Component.literal("⏯ STEP"),
                 b -> PacketDistributor.sendToServer(new ComputerActionPacket(menu.getBlockEntity().getBlockPos(), 2))
-        ).bounds(this.leftPos + 108, this.topPos + 116, 42, 18).build());
+        ).bounds(this.leftPos + 96, this.topPos + 145, 38, 16).build());
     }
 
     @Override
@@ -74,11 +74,11 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         guiGraphics.fill(this.leftPos, this.topPos, this.leftPos + this.imageWidth, this.topPos + this.imageHeight, 0xFF1C1E22);
         guiGraphics.fill(this.leftPos + 2, this.topPos + 2, this.leftPos + this.imageWidth - 2, this.topPos + this.imageHeight - 2, 0xFF2B2E36);
 
-        // CRT phosphor screen
-        int screenLeft = this.leftPos + 6;
-        int screenTop = this.topPos + 6;
-        int screenRight = this.leftPos + this.imageWidth - 6;
-        int screenBottom = this.topPos + 88;
+        // CRT phosphor screen (240x135 - 16:9 aspect ratio)
+        int screenLeft = this.leftPos + 8;
+        int screenTop = this.topPos + 7;
+        int screenRight = this.leftPos + 248;
+        int screenBottom = this.topPos + 142;
         guiGraphics.fill(screenLeft, screenTop, screenRight, screenBottom, 0xFF051009);
 
         // Direct OpenGL Framebuffer rendering (bypassing Minecraft UI engine)
@@ -90,12 +90,9 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         // Scanlines effect / inner border
         guiGraphics.fill(screenLeft + 1, screenTop + 1, screenRight - 1, screenTop + 2, 0x33103318);
 
-        // Hardware registers bar background
-        guiGraphics.fill(this.leftPos + 6, this.topPos + 91, this.leftPos + this.imageWidth - 6, this.topPos + 113, 0xFF14171C);
-
         // Status LED
-        int ledX = this.leftPos + this.imageWidth - 18;
-        int ledY = this.topPos + 120;
+        int ledX = this.leftPos + 242;
+        int ledY = this.topPos + 149;
         int ledColor = switch (state) {
             case 1 -> 0xFF00E676; // RUNNING (Green)
             case 3 -> 0xFFFFB300; // HALTED (Amber)
@@ -105,31 +102,32 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         guiGraphics.fill(ledX - 1, ledY - 1, ledX + 9, ledY + 9, 0xFF000000);
         guiGraphics.fill(ledX, ledY, ledX + 8, ledY + 8, ledColor);
 
-        // Expansion Slots Panels
-        // RAM panel
-        guiGraphics.fill(this.leftPos + 48, this.topPos + 136, this.leftPos + 124, this.topPos + 158, 0xFF16181D);
-        for (int i = 0; i < 4; i++) {
-            renderSlotFrame(guiGraphics, this.leftPos + 50 + i * 18, this.topPos + 138);
-        }
-
-        // NVMe panel
-        guiGraphics.fill(this.leftPos + 160, this.topPos + 136, this.leftPos + 200, this.topPos + 158, 0xFF16181D);
-        for (int i = 0; i < 2; i++) {
-            renderSlotFrame(guiGraphics, this.leftPos + 162 + i * 18, this.topPos + 138);
-        }
-
-        // Player Inventory Panel
-        guiGraphics.fill(this.leftPos + 37, this.topPos + 158, this.leftPos + 203, this.topPos + 214, 0xFF181A20);
+        // Player Inventory Panel (Left side)
+        guiGraphics.fill(this.leftPos + 8, this.topPos + 174, this.leftPos + 174, this.topPos + 232, 0xFF181A20);
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
-                renderSlotFrame(guiGraphics, this.leftPos + 39 + col * 18, this.topPos + 160 + row * 18);
+                renderSlotFrame(guiGraphics, this.leftPos + 10 + col * 18, this.topPos + 176 + row * 18);
             }
         }
 
         // Player Hotbar Panel
-        guiGraphics.fill(this.leftPos + 37, this.topPos + 216, this.leftPos + 203, this.topPos + 238, 0xFF181A20);
+        guiGraphics.fill(this.leftPos + 8, this.topPos + 232, this.leftPos + 174, this.topPos + 252, 0xFF181A20);
         for (int col = 0; col < 9; col++) {
-            renderSlotFrame(guiGraphics, this.leftPos + 39 + col * 18, this.topPos + 218);
+            renderSlotFrame(guiGraphics, this.leftPos + 10 + col * 18, this.topPos + 234);
+        }
+
+        // Expansion Slots Panels (Right side, oriented vertically)
+        // RAM panel (4 vertical slots: 3 matching main inv rows + 1 matching hotbar row)
+        guiGraphics.fill(this.leftPos + 182, this.topPos + 174, this.leftPos + 208, this.topPos + 252, 0xFF16181D);
+        for (int i = 0; i < 3; i++) {
+            renderSlotFrame(guiGraphics, this.leftPos + 186, this.topPos + 176 + i * 18);
+        }
+        renderSlotFrame(guiGraphics, this.leftPos + 186, this.topPos + 234);
+
+        // NVMe panel (2 vertical slots)
+        guiGraphics.fill(this.leftPos + 216, this.topPos + 174, this.leftPos + 242, this.topPos + 214, 0xFF16181D);
+        for (int i = 0; i < 2; i++) {
+            renderSlotFrame(guiGraphics, this.leftPos + 220, this.topPos + 176 + i * 18);
         }
     }
 
@@ -145,13 +143,13 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
 
         // Render CRT Terminal Text (only when in text console mode)
         if (isOff) {
-            guiGraphics.drawString(this.font, "[PERSONAL COMPUTER POWERED OFF]", 12, 12, 0x447755, false);
-            guiGraphics.drawString(this.font, "Press the Power Button below to boot.", 12, 24, 0x336644, false);
+            guiGraphics.drawString(this.font, "[PERSONAL COMPUTER POWERED OFF]", 14, 14, 0x447755, false);
+            guiGraphics.drawString(this.font, "Press the Power Button below to boot.", 14, 26, 0x336644, false);
         } else if (menu.getBlockEntity().getCpu().getDisplayMode() == 0) {
             List<String> output = menu.getBlockEntity().getCpu().getTerminalOutput();
-            int maxLines = 8;
+            int maxLines = 13;
             int start = Math.max(0, output.size() - maxLines);
-            int y = 9;
+            int y = 10;
             for (int i = start; i < output.size(); i++) {
                 String line = output.get(i);
                 int color = 0x33FF66;
@@ -160,12 +158,12 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
                 } else if (line.contains("BIOS") || line.contains("OK")) {
                     color = 0x66DDFF;
                 }
-                guiGraphics.drawString(this.font, line, 10, y, color, false);
+                guiGraphics.drawString(this.font, line, 12, y, color, false);
                 y += 10;
             }
         }
 
-        // Render Registers Bar
+        // Row 1: CPU State (next to buttons, clearly separated from status LED)
         String stateStr = switch (state) {
             case 1 -> "RUNNING";
             case 2 -> "PAUSED";
@@ -173,26 +171,27 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
             case 4 -> "ERROR";
             default -> "OFF";
         };
+        guiGraphics.drawString(this.font, "CPU: " + stateStr, 140, 149, 0xDDDDDD, false);
 
-        guiGraphics.drawString(this.font, "CPU: " + stateStr + " | PC: " + menu.getPc() + " | CYCLES: " + menu.getCycles(), 10, 94, 0xDDDDDD, false);
-        guiGraphics.drawString(this.font, "A:" + menu.getRegA() + " B:" + menu.getRegB() + " C:" + menu.getRegC() + " D:" + menu.getRegD()
-                + " [Z:" + (menu.getFlagZ() ? 1 : 0) + " S:" + (menu.getFlagS() ? 1 : 0) + "]", 10, 103, 0x88CCFF, false);
-
-        // Hardware Controls Info (RAM and NVMe status)
+        // Row 2: Runtime RAM & Storage capacities (above inventory, capped to avoid ever touching RAM column)
         int totalRam = menu.getTotalRam();
         int socRam = menu.getSocRam();
         int slotsRam = Math.max(0, totalRam - socRam);
-        String ramStr = "RAM: " + totalRam + "B" + (slotsRam > 0 ? " (+" + slotsRam + "B)" : "");
-        guiGraphics.drawString(this.font, ramStr, 153, 117, 0x66EE88, false);
+        String ramStr = totalRam + "B" + (slotsRam > 0 ? " (+" + slotsRam + "B)" : "");
 
         int storage = menu.getTotalStorage();
         boolean hasNvme = menu.hasNvme();
-        String storageStr = hasNvme ? "NVMe: " + storage + "KB" : (storage > 0 ? "Flash: " + storage + "KB" : "NVMe: None");
-        guiGraphics.drawString(this.font, storageStr, 153, 126, 0x66DDFF, false);
+        String storageStr = hasNvme ? storage + "KB" : (storage > 0 ? storage + "KB" : "None");
 
-        // Slot Labels
-        guiGraphics.drawString(this.font, "RAM", 26, 143, 0x88CC88, false);
-        guiGraphics.drawString(this.font, "NVMe", 132, 143, 0x88CCFF, false);
+        String statusText = "RAM: " + ramStr + " | " + (hasNvme ? "NVMe: " : "Drive: ") + storageStr;
+        if (this.font.width(statusText) > 165) {
+            statusText = "RAM: " + totalRam + "B | " + (hasNvme ? "NVMe: " : "Drive: ") + storageStr;
+        }
+        guiGraphics.drawString(this.font, statusText, 10, 165, 0x88CCFF, false);
+
+        // Dedicated slot column header labels (at x=188 and x=220, completely free of any text collision)
+        guiGraphics.drawString(this.font, "RAM", 188, 165, 0x88CC88, false);
+        guiGraphics.drawString(this.font, "NVMe", 220, 165, 0x88CCFF, false);
     }
 
     @Override
@@ -213,8 +212,8 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
     public void mouseMoved(double mouseX, double mouseY) {
         super.mouseMoved(mouseX, mouseY);
         if (menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal()) {
-            int crtX = (int) (mouseX - (this.leftPos + 6));
-            int crtY = (int) (mouseY - (this.topPos + 6));
+            int crtX = (int) (mouseX - (this.leftPos + 8));
+            int crtY = (int) (mouseY - (this.topPos + 7));
             if (crtX >= 0 && crtX < VirtualCpu.FB_WIDTH && crtY >= 0 && crtY < VirtualCpu.FB_HEIGHT) {
                 PacketDistributor.sendToServer(new ComputerInputPacket(menu.getBlockEntity().getBlockPos(), 1, crtX, crtY, 0));
             }
@@ -224,8 +223,8 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal()) {
-            int crtX = (int) (mouseX - (this.leftPos + 6));
-            int crtY = (int) (mouseY - (this.topPos + 6));
+            int crtX = (int) (mouseX - (this.leftPos + 8));
+            int crtY = (int) (mouseY - (this.topPos + 7));
             if (crtX >= 0 && crtX < VirtualCpu.FB_WIDTH && crtY >= 0 && crtY < VirtualCpu.FB_HEIGHT) {
                 PacketDistributor.sendToServer(new ComputerInputPacket(menu.getBlockEntity().getBlockPos(), 2, crtX, crtY, button));
             }
