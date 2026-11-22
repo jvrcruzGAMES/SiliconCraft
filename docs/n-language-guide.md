@@ -283,12 +283,13 @@ import utils.string               // Resolves to utils/string.n
 
 The `.n` language provides native event-hooking and exception handling primitives that map directly to the CPU's Interrupt Vector Table (IVT):
 
-### Input Event Handlers
+### Input & Hardware Event Handlers
 ```text
 on_key(handle_key)              // Vector 10: Keyboard input
 on_mouse_move(handle_mouse)     // Vector 11: Mouse movement in CRT canvas
 on_mouse_click(handle_click)    // Vector 12: Mouse click in CRT canvas
 on_vblank(handle_frame)         // Vector 13: 60 Hz V-Blank / periodic timer
+on_reset(handle_reset)          // Vector 14: Executed right after CPU reset or power-on
 
 fn handle_key() {
     // Register A holds the typed character code
@@ -309,7 +310,21 @@ fn handle_click() {
     fb.flip()
     IRET
 }
+
+fn handle_reset() {
+    // Executed immediately after CPU reset or power-on
+    // RAM contents are NOT wiped on reset/shutdown!
+    println "[SYSTEM] Reset detected. Restoring state from RAM..."
+    var magic = mem[0x100]
+    if magic == 0xCAFE {
+        println "Previous session recovered!"
+    }
+    IRET
+}
 ```
+
+> **Non-Volatile RAM Across Resets & Shutdown**:
+> Neither CPU reset (`cpu.reset()`) nor power-off (`powerOff()`) clears RAM. Registered interrupt vector handlers also persist across resets. Registering `on_reset(handler)` (or `catch(RESET, handler)`) allows programs to inspect RAM, repair corrupted data, or recover session state when a computer boots or recovers from a reset.
 
 ### Frame Synchronization & Timer
 ```text
@@ -324,6 +339,7 @@ Register custom handlers for hardware and runtime exceptions:
 ```text
 catch(DIV_ZERO, handle_div_zero)
 catch(OUT_OF_BOUNDS, handle_out_of_bounds)
+catch(RESET, handle_reset)
 
 fn handle_div_zero() {
     println "[ERROR] Division by zero caught!"

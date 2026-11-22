@@ -192,6 +192,9 @@ IVEC 0, div_zero_handler
 ; Register handler for vector 10 (KEYBOARD)
 IVEC 10, key_handler
 
+; Register handler for vector 14 (RESET / RST)
+IVEC RESET, reset_handler
+
 ; Enable hardware interrupts
 STI
 
@@ -209,7 +212,17 @@ div_zero_handler:
     OUT "[EXCEPTION] Division by zero intercepted!"
     MOV B, 1                     ; Recover by setting divisor to 1
     IRET                         ; Resume execution after faulting instruction
+
+reset_handler:
+    ; Executed immediately after CPU reset or power-on!
+    ; RAM is NOT cleared on reset or power off, allowing state recovery.
+    OUT "[RESET] CPU was reset or powered on. Inspecting RAM..."
+    ; Inspect or fix variables in RAM here
+    IRET                         ; Return to pc = 0 to resume normal program
 ```
+
+> **RAM Preservation on Reset & Power Off**:
+> Resetting the computer (`cpu.reset()`) or turning it off (`powerOff()`) **does not wipe RAM**. The Interrupt Vector Table (`ivt`) also remains registered. Registering a handler for `RESET` (Vector 14) allows the program to run custom initialization or state recovery routines directly after a reset occurs.
 
 ---
 

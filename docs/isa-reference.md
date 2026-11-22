@@ -178,9 +178,15 @@ The SiliconCraft CPU features an Interrupt Vector Table (IVT), hardware event qu
 | **`11`** | `MOUSE_MOVE` | Interrupt | `A = x, B = y` | Mouse motion inside CRT monitor canvas. |
 | **`12`** | `MOUSE_CLICK` | Interrupt | `A = x, B = y, C = button` | Mouse click inside CRT monitor canvas (`0`=left, `1`=right). |
 | **`13`** | `TIMER` / `VBLANK` | Interrupt | `A = 13` | Periodic hardware timer / 60 Hz V-Blank interrupt. |
+| **`14`** | `RESET` / `RST` | Interrupt | `A = 14` | Dispatched right after CPU reset or power-on. |
 
 > **Unhandled Exceptions**: If an exception occurs on a vector with no registered handler in the IVT, the CPU halts with state `ERROR` and displays:
 > `[CPU EXCEPTION] Exception not handled: <description> at line <line>: '<lineCode>'`
+
+#### Reset & Power-On Lifecycle
+- **RAM Non-Volatility**: CPU reset (`reset()`) and power shutdown (`powerOff()`) **do not clear RAM**. Memory buffers, application state, and heap variables remain preserved in physical RAM across reboots and power cycles.
+- **IVT Persistence**: The Interrupt Vector Table persists across resets. Handlers registered with `IVEC` remain registered when the CPU resets.
+- **Reset Interrupt (`VEC_RESET = 14`)**: Immediately following a reset or power-on, the CPU places a `VEC_RESET` interrupt at the head of the interrupt queue. If a handler is registered (via `IVEC RESET, handler` or `IVEC 14, handler`), the CPU jumps directly to it on the first cycle with `pc = 0` saved on the interrupt stack. This enables software to inspect preserved RAM buffers, verify data integrity, repair corrupted state, and resume with `IRET` or `JMP`. If no handler is registered, execution begins at `pc = 0` normally.
 
 ---
 

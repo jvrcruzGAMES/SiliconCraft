@@ -454,3 +454,45 @@ audio.play()
 
 println "Jingle Bells dispatched to audio buffer!"
 ```
+
+---
+
+## Example 12: CPU Reset Interrupt & Non-Volatile RAM Recovery (`reset_recovery.n`)
+
+Demonstrates registering `on_reset` (Vector 14). Because the CPU does not clear RAM upon reset or power-off, this program inspects a session counter and magic signature preserved in memory, repairs state, and continues execution.
+
+```text
+// ============================================
+// Program: reset_recovery.n
+// Description: Demonstrates Vector 14 RESET handling & RAM persistence in .n
+// ============================================
+
+on_reset(handle_cpu_reset)
+
+// Check magic signature at RAM[100] (0xCAFE = 51966)
+var magic = mem[100]
+
+if magic == 51966 {
+    println "Normal execution running after reset recovery..."
+    var count = mem[101]
+    print "Current session counter: "
+    println count
+}
+if magic != 51966 {
+    println "Cold boot detected. Initializing RAM state..."
+    mem[100] = 51966
+    mem[101] = 1
+    println "Session counter initialized to: 1"
+}
+
+fn handle_cpu_reset() {
+    println "[RESET INTERRUPT] CPU reset caught!"
+    var sig = mem[100]
+    if sig == 51966 {
+        var old = mem[101]
+        mem[101] = old + 1
+        println "[RESET INTERRUPT] Preserved RAM verified. Incremented boot count."
+    }
+    IRET
+}
+```

@@ -530,4 +530,64 @@ OUT "Jingle Bells dispatched to audio buffer!"
 HLT
 ```
 
+---
+
+## Example 12: CPU Reset Interrupt & Non-Volatile RAM Recovery (`reset_recovery.asm`)
+
+Demonstrates registering a `RESET` interrupt handler (Vector 14). Because the CPU does not clear RAM upon reset or power-off, this program detects warm reboots, inspects a session counter and magic signature preserved in memory, repairs state, and continues execution.
+
+### Required CPU Instructions
+- `OUT`, `MOV`, `CMP`, `JZ`, `JNZ`, `INC`, `IVEC`, `IRET`, `STI`, `HLT`
+
+```assembly
+; ============================================
+; Program: reset_recovery.asm
+; Description: Demonstrates Vector 14 RESET handling & RAM persistence
+; ============================================
+
+; Register IVEC 14 (RESET / RST) handler
+IVEC RESET, handle_cpu_reset
+
+; Enable hardware interrupts
+STI
+
+; Check magic signature at RAM[100] (0xCAFE = 51966)
+MOV A, [100]
+CMP A, 51966
+JZ warm_boot
+
+cold_boot:
+    OUT "Cold boot detected. Initializing RAM state..."
+    MOV [100], 51966          ; Store magic signature in RAM[100]
+    MOV [101], 1              ; Initialize session boot counter at RAM[101]
+    OUT "Session counter initialized to: 1"
+    HLT
+
+warm_boot:
+    OUT "Normal execution running after reset recovery..."
+    OUT "Current session counter: ", 0
+    MOV A, [101]
+    OUT A
+    HLT
+
+; --- Reset Handler (Vector 14) ---
+handle_cpu_reset:
+    OUT "[RESET INTERRUPT] CPU reset or power-on caught!"
+    ; Verify that previous RAM contents persisted
+    MOV A, [100]
+    CMP A, 51966
+    JNZ cold_boot_reset
+
+    ; State intact: increment session counter
+    MOV A, [101]
+    INC A
+    MOV [101], A
+    OUT "[RESET INTERRUPT] Preserved RAM verified. Incremented boot count."
+    IRET                      ; Return to pc = 0 to execute main logic
+
+cold_boot_reset:
+    OUT "[RESET INTERRUPT] RAM uninitialized."
+    IRET
+```
+
 

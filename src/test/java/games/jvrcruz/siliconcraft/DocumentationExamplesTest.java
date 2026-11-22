@@ -990,5 +990,123 @@ public class DocumentationExamplesTest {
         assertTrue(terminal.contains("Synthesizing Jingle Bells melody..."));
         assertTrue(terminal.contains("Jingle Bells dispatched to audio buffer!"));
     }
+
+    @Test
+    public void testExample12ResetRecoveryAsm() {
+        Set<String> documentedIsa = Set.of("OUT", "MOV", "CMP", "JZ", "JNZ", "INC", "IVEC", "IRET", "STI", "HLT");
+        List<String> code = List.of(
+                "IVEC RESET, handle_cpu_reset",
+                "STI",
+                "MOV A, [100]",
+                "CMP A, 51966",
+                "JZ warm_boot",
+                "cold_boot:",
+                "    OUT \"Cold boot detected. Initializing RAM state...\"",
+                "    MOV [100], 51966",
+                "    MOV [101], 1",
+                "    OUT \"Session counter initialized to: 1\"",
+                "    HLT",
+                "warm_boot:",
+                "    OUT \"Normal execution running after reset recovery...\"",
+                "    OUT \"Current session counter: \", 0",
+                "    MOV A, [101]",
+                "    OUT A",
+                "    HLT",
+                "handle_cpu_reset:",
+                "    OUT \"[RESET INTERRUPT] CPU reset or power-on caught!\"",
+                "    MOV A, [100]",
+                "    CMP A, 51966",
+                "    JNZ cold_boot_reset",
+                "    MOV A, [101]",
+                "    INC A",
+                "    MOV [101], A",
+                "    OUT \"[RESET INTERRUPT] Preserved RAM verified. Incremented boot count.\"",
+                "    IRET",
+                "cold_boot_reset:",
+                "    OUT \"[RESET INTERRUPT] RAM uninitialized.\"",
+                "    IRET"
+        );
+
+        Set<String> required = InstructionValidator.getRequiredInstructions(code);
+        List<String> missing = InstructionValidator.getMissingInstructions(required, new ArrayList<>(documentedIsa));
+        assertTrue(missing.isEmpty(), "Missing instructions in documented ISA: " + missing);
+
+        VirtualCpu cpu = new VirtualCpu();
+        cpu.configure(documentedIsa, 256, code, false, 0);
+
+        // Cold boot
+        cpu.powerOn();
+        cpu.tick(50);
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(51966, cpu.getRam()[100]);
+        assertEquals(1, cpu.getRam()[101]);
+
+        // Reset CPU (simulating reset button or power cycle)
+        cpu.reset();
+        assertEquals(51966, cpu.getRam()[100], "RAM should persist across reset");
+
+        // Execute ticks: reset handler triggers, increments count to 2, and warm_boot runs
+        cpu.tick(50);
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(2, cpu.getRam()[101]);
+
+        String terminal = String.join("\n", cpu.getTerminalOutput());
+        assertTrue(terminal.contains("Preserved RAM verified. Incremented boot count."));
+        assertTrue(terminal.contains("Current session counter: 2"));
+    }
+
+    @Test
+    public void testExample12ResetRecoveryN() {
+        List<String> nSource = List.of(
+                "on_reset(handle_cpu_reset)",
+                "var magic = mem[100]",
+                "if magic == 51966 {",
+                "    println \"Normal execution running after reset recovery...\"",
+                "    var count = mem[101]",
+                "    print \"Current session counter: \"",
+                "    println count",
+                "}",
+                "if magic != 51966 {",
+                "    println \"Cold boot detected. Initializing RAM state...\"",
+                "    mem[100] = 51966",
+                "    mem[101] = 1",
+                "    println \"Session counter initialized to: 1\"",
+                "}",
+                "fn handle_cpu_reset() {",
+                "    println \"[RESET INTERRUPT] CPU reset caught!\"",
+                "    var sig = mem[100]",
+                "    if sig == 51966 {",
+                "        var old = mem[101]",
+                "        mem[101] = old + 1",
+                "        println \"[RESET INTERRUPT] Preserved RAM verified. Incremented boot count.\"",
+                "    }",
+                "    IRET",
+                "}"
+        );
+
+        NCompiler.CompileResult result = NCompiler.compile(nSource);
+        assertTrue(result.success(), "N compilation failed: " + result.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        cpu.configure(result.requiredInstructions(), 256, result.assembly(), false, 0);
+
+        // Cold boot
+        cpu.powerOn();
+        cpu.tick(100);
+        assertEquals(51966, cpu.getRam()[100]);
+        assertEquals(1, cpu.getRam()[101]);
+
+        // Reset
+        cpu.reset();
+        assertEquals(51966, cpu.getRam()[100]);
+
+        // Run post-reset
+        cpu.tick(100);
+        assertEquals(2, cpu.getRam()[101]);
+
+        String terminal = String.join("\n", cpu.getTerminalOutput());
+        assertTrue(terminal.contains("Preserved RAM verified. Incremented boot count."));
+        assertTrue(terminal.contains("Current session counter: 2"));
+    }
 }
 
