@@ -49,8 +49,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class ComputerBlockEntity extends BlockEntity implements MenuProvider, ComputerHost {
@@ -414,6 +416,16 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
     }
 
     @Override
+    public void onLoad() {
+        super.onLoad();
+        if (level != null && !level.isClientSide) {
+            if (cpu.getState() == VirtualCpu.State.RUNNING) {
+                ComputerThreadManager.register(this);
+            }
+        }
+    }
+
+    @Override
     public void setRemoved() {
         super.setRemoved();
         ComputerThreadManager.unregister(this);
@@ -482,14 +494,171 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         }
     }
 
+    private void saveCpuStateToNbt(CompoundTag cpuTag) {
+        cpuTag.putInt("State", cpu.getState().ordinal());
+        cpuTag.putInt("Pc", cpu.getPc());
+        cpuTag.putInt("RegA", cpu.getRegA());
+        cpuTag.putInt("RegB", cpu.getRegB());
+        cpuTag.putInt("RegC", cpu.getRegC());
+        cpuTag.putInt("RegD", cpu.getRegD());
+        cpuTag.putBoolean("FlagZ", cpu.isFlagZ());
+        cpuTag.putBoolean("FlagS", cpu.isFlagS());
+        cpuTag.putInt("Cycles", cpu.getCycles());
+        cpuTag.putString("ErrorMessage", cpu.getErrorMessage() != null ? cpu.getErrorMessage() : "");
+        cpuTag.putBoolean("InterruptsEnabled", cpu.isInterruptsEnabled());
+        cpuTag.putBoolean("InInterruptHandler", cpu.isInInterruptHandler());
+        cpuTag.putInt("TimerHz", cpu.getTimerHz());
+        cpuTag.putInt("TimerIntervalCycles", cpu.getTimerIntervalCycles());
+        cpuTag.putInt("SleepTicksRemaining", cpu.getSleepTicksRemaining());
+
+        ListTag callStackTag = new ListTag();
+        for (int v : cpu.getCallStack()) {
+            CompoundTag elem = new CompoundTag();
+            elem.putInt("V", v);
+            callStackTag.add(elem);
+        }
+        cpuTag.put("CallStack", callStackTag);
+
+        ListTag dataStackTag = new ListTag();
+        for (int v : cpu.getDataStack()) {
+            CompoundTag elem = new CompoundTag();
+            elem.putInt("V", v);
+            dataStackTag.add(elem);
+        }
+        cpuTag.put("DataStack", dataStackTag);
+
+        ListTag intStackTag = new ListTag();
+        for (VirtualCpu.CpuContext ctx : cpu.getInterruptStack()) {
+            CompoundTag ctxTag = new CompoundTag();
+            ctxTag.putInt("Pc", ctx.pc());
+            ctxTag.putInt("RegA", ctx.regA());
+            ctxTag.putInt("RegB", ctx.regB());
+            ctxTag.putInt("RegC", ctx.regC());
+            ctxTag.putInt("RegD", ctx.regD());
+            ctxTag.putBoolean("FlagZ", ctx.flagZ());
+            ctxTag.putBoolean("FlagS", ctx.flagS());
+            ctxTag.putBoolean("RestoreRegs", ctx.restoreRegs());
+            intStackTag.add(ctxTag);
+        }
+        cpuTag.put("InterruptStack", intStackTag);
+
+        CompoundTag ivtTag = new CompoundTag();
+        for (Map.Entry<Integer, Integer> entry : cpu.getIvt().entrySet()) {
+            ivtTag.putInt(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        cpuTag.put("IVT", ivtTag);
+
+        ListTag progTag = new ListTag();
+        for (String line : cpu.getProgram()) {
+            progTag.add(StringTag.valueOf(line));
+        }
+        cpuTag.put("Program", progTag);
+
+        byte[] compressedRam = cpu.getCompressedRam();
+        if (compressedRam != null && compressedRam.length > 0) {
+            cpuTag.putByteArray("Ram", compressedRam);
+        }
+    }
+
+    private void loadCpuStateFromNbt(CompoundTag cpuTag) {
+        if (cpuTag.contains("Program")) {
+            List<String> prog = new ArrayList<>();
+            ListTag progTag = cpuTag.getList("Program", Tag.TAG_STRING);
+            for (int i = 0; i < progTag.size(); i++) {
+                prog.add(progTag.getString(i));
+            }
+            cpu.loadProgramImage(prog);
+        }
+
+        if (cpuTag.contains("Ram", Tag.TAG_BYTE_ARRAY)) {
+            cpu.loadCompressedRam(cpuTag.getByteArray("Ram"));
+        }
+
+        if (cpuTag.contains("Pc")) cpu.setPc(cpuTag.getInt("Pc"));
+        if (cpuTag.contains("RegA")) cpu.setRegA(cpuTag.getInt("RegA"));
+        if (cpuTag.contains("RegB")) cpu.setRegB(cpuTag.getInt("RegB"));
+        if (cpuTag.contains("RegC")) cpu.setRegC(cpuTag.getInt("RegC"));
+        if (cpuTag.contains("RegD")) cpu.setRegD(cpuTag.getInt("RegD"));
+        if (cpuTag.contains("FlagZ")) cpu.setFlagZ(cpuTag.getBoolean("FlagZ"));
+        if (cpuTag.contains("FlagS")) cpu.setFlagS(cpuTag.getBoolean("FlagS"));
+        if (cpuTag.contains("Cycles")) cpu.setCycles(cpuTag.getInt("Cycles"));
+        if (cpuTag.contains("ErrorMessage")) cpu.setErrorMessage(cpuTag.getString("ErrorMessage"));
+        if (cpuTag.contains("InterruptsEnabled")) cpu.setInterruptsEnabled(cpuTag.getBoolean("InterruptsEnabled"));
+        if (cpuTag.contains("InInterruptHandler")) cpu.setInInterruptHandler(cpuTag.getBoolean("InInterruptHandler"));
+        if (cpuTag.contains("TimerHz")) cpu.setTimerHz(cpuTag.getInt("TimerHz"));
+        if (cpuTag.contains("TimerIntervalCycles")) cpu.setTimerIntervalCycles(cpuTag.getInt("TimerIntervalCycles"));
+        if (cpuTag.contains("SleepTicksRemaining")) cpu.setSleepTicksRemaining(cpuTag.getInt("SleepTicksRemaining"));
+
+        if (cpuTag.contains("CallStack")) {
+            List<Integer> list = new ArrayList<>();
+            ListTag callTag = cpuTag.getList("CallStack", Tag.TAG_COMPOUND);
+            for (int i = 0; i < callTag.size(); i++) {
+                list.add(callTag.getCompound(i).getInt("V"));
+            }
+            cpu.setCallStack(list);
+        }
+
+        if (cpuTag.contains("DataStack")) {
+            List<Integer> list = new ArrayList<>();
+            ListTag dataTag = cpuTag.getList("DataStack", Tag.TAG_COMPOUND);
+            for (int i = 0; i < dataTag.size(); i++) {
+                list.add(dataTag.getCompound(i).getInt("V"));
+            }
+            cpu.setDataStack(list);
+        }
+
+        if (cpuTag.contains("InterruptStack")) {
+            List<VirtualCpu.CpuContext> list = new ArrayList<>();
+            ListTag intTag = cpuTag.getList("InterruptStack", Tag.TAG_COMPOUND);
+            for (int i = 0; i < intTag.size(); i++) {
+                CompoundTag c = intTag.getCompound(i);
+                list.add(new VirtualCpu.CpuContext(
+                        c.getInt("Pc"),
+                        c.getInt("RegA"),
+                        c.getInt("RegB"),
+                        c.getInt("RegC"),
+                        c.getInt("RegD"),
+                        c.getBoolean("FlagZ"),
+                        c.getBoolean("FlagS"),
+                        c.getBoolean("RestoreRegs")
+                ));
+            }
+            cpu.setInterruptStack(list);
+        }
+
+        if (cpuTag.contains("IVT")) {
+            CompoundTag ivtTag = cpuTag.getCompound("IVT");
+            Map<Integer, Integer> map = new HashMap<>();
+            for (String key : ivtTag.getAllKeys()) {
+                try {
+                    map.put(Integer.parseInt(key), ivtTag.getInt(key));
+                } catch (NumberFormatException ignored) {}
+            }
+            cpu.setIvt(map);
+        }
+
+        if (cpuTag.contains("State")) {
+            int stateOrd = cpuTag.getInt("State");
+            VirtualCpu.State[] states = VirtualCpu.State.values();
+            if (stateOrd >= 0 && stateOrd < states.length) {
+                cpu.setState(states[stateOrd]);
+            }
+        }
+    }
+
     @Override
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
         synchronized (cpu.getExecutionLock()) {
             tag.put("Inventory", itemHandler.serializeNBT(registries));
             tag.putInt("DisplayMode", cpu.getDisplayMode());
-            tag.putIntArray("Framebuffer", cpu.getFramebuffer());
-            if (socData != null) {
+
+            byte[] compressedFb = SyncFramebufferPacket.compress(cpu.getFramebuffer());
+            if (compressedFb != null && compressedFb.length > 0) {
+                tag.putByteArray("FramebufferCompressed", compressedFb);
+            }
+
+            if (socData != null && !socData.instructions().isEmpty()) {
                 CompoundTag socTag = new CompoundTag();
                 ListTag instTag = new ListTag();
                 for (String s : socData.instructions()) instTag.add(StringTag.valueOf(s));
@@ -512,67 +681,101 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
             if (onboardStorage != null && onboardStorage.length > 0) {
                 tag.putByteArray("OnboardStorage", onboardStorage);
             }
+
+            CompoundTag cpuTag = new CompoundTag();
+            saveCpuStateToNbt(cpuTag);
+            tag.put("CpuData", cpuTag);
         }
     }
 
     @Override
     protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
-        if (tag.contains("Inventory")) {
-            itemHandler.deserializeNBT(registries, tag.getCompound("Inventory"));
-        }
+        synchronized (cpu.getExecutionLock()) {
+            if (tag.contains("Inventory")) {
+                itemHandler.deserializeNBT(registries, tag.getCompound("Inventory"));
+                if (itemHandler.getSlots() < 6) {
+                    itemHandler.setSize(6);
+                }
+            }
 
-        if (tag.contains("OnboardStorage", Tag.TAG_BYTE_ARRAY)) {
-            onboardStorage = tag.getByteArray("OnboardStorage");
-        } else if (tag.contains("BinaryStorage", Tag.TAG_BYTE_ARRAY)) {
-            onboardStorage = tag.getByteArray("BinaryStorage");
-        }
+            if (tag.contains("OnboardStorage", Tag.TAG_BYTE_ARRAY)) {
+                onboardStorage = tag.getByteArray("OnboardStorage");
+            } else if (tag.contains("BinaryStorage", Tag.TAG_BYTE_ARRAY)) {
+                onboardStorage = tag.getByteArray("BinaryStorage");
+            }
 
-        if (tag.contains("SocData")) {
-            CompoundTag socTag = tag.getCompound("SocData");
-            List<String> instructions = new ArrayList<>();
-            ListTag instTag = socTag.getList("Instructions", Tag.TAG_STRING);
-            for (int i = 0; i < instTag.size(); i++) instructions.add(instTag.getString(i));
+            if (tag.contains("SocData")) {
+                CompoundTag socTag = tag.getCompound("SocData");
+                List<String> instructions = new ArrayList<>();
+                ListTag instTag = socTag.getList("Instructions", Tag.TAG_STRING);
+                for (int i = 0; i < instTag.size(); i++) instructions.add(instTag.getString(i));
 
-            int ramCap = socTag.getInt("RamCapacity");
-            List<String> bios = new ArrayList<>();
-            ListTag biosTag = socTag.getList("Bios", Tag.TAG_STRING);
-            for (int i = 0; i < biosTag.size(); i++) bios.add(biosTag.getString(i));
+                int ramCap = socTag.getInt("RamCapacity");
+                List<String> bios = new ArrayList<>();
+                ListTag biosTag = socTag.getList("Bios", Tag.TAG_STRING);
+                for (int i = 0; i < biosTag.size(); i++) bios.add(biosTag.getString(i));
 
-            boolean hasNvme = socTag.getBoolean("HasNvme");
-            int storageCap = socTag.getInt("StorageCapacity");
+                boolean hasNvme = socTag.getBoolean("HasNvme");
+                int storageCap = socTag.getInt("StorageCapacity");
 
-            installSoc(new SocData(instructions, ramCap, bios, hasNvme, storageCap));
-        } else {
+                this.socData = new SocData(instructions, ramCap, bios, hasNvme, storageCap);
+                this.cpu.setSupportedInstructions(instructions);
+            } else {
+                this.socData = SocData.EMPTY;
+                this.cpu.setSupportedInstructions(Collections.emptyList());
+            }
+
             recalculateHardwareCapabilities();
-        }
 
-        if (tag.contains("TerminalOutput")) {
-            List<String> lines = new ArrayList<>();
-            ListTag terminalTag = tag.getList("TerminalOutput", Tag.TAG_STRING);
-            for (int i = 0; i < terminalTag.size(); i++) {
-                lines.add(terminalTag.getString(i));
+            if (tag.contains("CpuData")) {
+                loadCpuStateFromNbt(tag.getCompound("CpuData"));
+            } else {
+                if (tag.contains("CpuState")) {
+                    int stateOrd = tag.getInt("CpuState");
+                    VirtualCpu.State[] states = VirtualCpu.State.values();
+                    if (stateOrd >= 0 && stateOrd < states.length) {
+                        cpu.setState(states[stateOrd]);
+                    }
+                }
+                if (socData != null && !socData.instructions().isEmpty() && cpu.getProgram().isEmpty()) {
+                    cpu.loadProgramImage(socData.bios());
+                }
             }
-            cpu.setTerminalOutput(lines);
-            lastSyncedOutput = new ArrayList<>(lines);
-        }
 
-        if (tag.contains("DisplayMode")) {
-            cpu.setDisplayMode(tag.getInt("DisplayMode"));
-        }
-        if (tag.contains("Framebuffer", Tag.TAG_INT_ARRAY)) {
-            int[] fb = tag.getIntArray("Framebuffer");
-            if (fb.length == cpu.getFramebuffer().length) {
-                System.arraycopy(fb, 0, cpu.getFramebuffer(), 0, fb.length);
-                cpu.setFbDirty(true);
+            if (tag.contains("TerminalOutput")) {
+                List<String> lines = new ArrayList<>();
+                ListTag terminalTag = tag.getList("TerminalOutput", Tag.TAG_STRING);
+                for (int i = 0; i < terminalTag.size(); i++) {
+                    lines.add(terminalTag.getString(i));
+                }
+                cpu.setTerminalOutput(lines);
+                lastSyncedOutput = new ArrayList<>(lines);
             }
-        }
 
-        if (tag.contains("CpuState")) {
-            int stateOrd = tag.getInt("CpuState");
-            if (stateOrd == VirtualCpu.State.RUNNING.ordinal() && socData != null && !socData.instructions().isEmpty()) {
-                cpu.powerOn();
-                ComputerThreadManager.register(this);
+            if (tag.contains("DisplayMode")) {
+                cpu.setDisplayMode(tag.getInt("DisplayMode"));
+            }
+            if (tag.contains("FramebufferCompressed", Tag.TAG_BYTE_ARRAY)) {
+                int[] fb = SyncFramebufferPacket.decompress(tag.getByteArray("FramebufferCompressed"));
+                if (fb != null && fb.length == cpu.getFramebuffer().length) {
+                    System.arraycopy(fb, 0, cpu.getFramebuffer(), 0, fb.length);
+                    cpu.setFbDirty(true);
+                }
+            } else if (tag.contains("Framebuffer", Tag.TAG_INT_ARRAY)) {
+                int[] fb = tag.getIntArray("Framebuffer");
+                if (fb.length == cpu.getFramebuffer().length) {
+                    System.arraycopy(fb, 0, cpu.getFramebuffer(), 0, fb.length);
+                    cpu.setFbDirty(true);
+                }
+            }
+
+            if (level != null && !level.isClientSide) {
+                if (cpu.getState() == VirtualCpu.State.RUNNING) {
+                    ComputerThreadManager.register(this);
+                } else {
+                    ComputerThreadManager.unregister(this);
+                }
             }
         }
     }
@@ -580,7 +783,31 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
     @Override
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
         CompoundTag tag = new CompoundTag();
-        saveAdditional(tag, registries);
+        tag.put("Inventory", itemHandler.serializeNBT(registries));
+        tag.putInt("DisplayMode", cpu.getDisplayMode());
+        tag.putInt("CpuState", cpu.getState().ordinal());
+        tag.putString("ErrorMessage", cpu.getErrorMessage() != null ? cpu.getErrorMessage() : "");
+
+        if (socData != null && !socData.instructions().isEmpty()) {
+            CompoundTag socTag = new CompoundTag();
+            ListTag instTag = new ListTag();
+            for (String s : socData.instructions()) instTag.add(StringTag.valueOf(s));
+            socTag.put("Instructions", instTag);
+            socTag.putInt("RamCapacity", socData.ramCapacity());
+            ListTag biosTag = new ListTag();
+            for (String s : socData.bios()) biosTag.add(StringTag.valueOf(s));
+            socTag.put("Bios", biosTag);
+            socTag.putBoolean("HasNvme", socData.hasNvme());
+            socTag.putInt("StorageCapacity", socData.storageCapacity());
+            tag.put("SocData", socTag);
+        }
+
+        ListTag terminalTag = new ListTag();
+        for (String line : cpu.getTerminalOutput()) {
+            terminalTag.add(StringTag.valueOf(line));
+        }
+        tag.put("TerminalOutput", terminalTag);
+
         return tag;
     }
 
@@ -600,7 +827,54 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
 
     @Override
     public void handleUpdateTag(CompoundTag tag, HolderLookup.Provider lookupProvider) {
-        loadAdditional(tag, lookupProvider);
+        if (tag.contains("Inventory")) {
+            itemHandler.deserializeNBT(lookupProvider, tag.getCompound("Inventory"));
+            if (itemHandler.getSlots() < 6) {
+                itemHandler.setSize(6);
+            }
+        }
+        if (tag.contains("SocData")) {
+            CompoundTag socTag = tag.getCompound("SocData");
+            List<String> instructions = new ArrayList<>();
+            ListTag instTag = socTag.getList("Instructions", Tag.TAG_STRING);
+            for (int i = 0; i < instTag.size(); i++) instructions.add(instTag.getString(i));
+
+            int ramCap = socTag.getInt("RamCapacity");
+            List<String> bios = new ArrayList<>();
+            ListTag biosTag = socTag.getList("Bios", Tag.TAG_STRING);
+            for (int i = 0; i < biosTag.size(); i++) bios.add(biosTag.getString(i));
+
+            boolean hasNvme = socTag.getBoolean("HasNvme");
+            int storageCap = socTag.getInt("StorageCapacity");
+
+            this.socData = new SocData(instructions, ramCap, bios, hasNvme, storageCap);
+        } else {
+            this.socData = SocData.EMPTY;
+        }
+        recalculateHardwareCapabilities();
+
+        if (tag.contains("TerminalOutput")) {
+            List<String> lines = new ArrayList<>();
+            ListTag terminalTag = tag.getList("TerminalOutput", Tag.TAG_STRING);
+            for (int i = 0; i < terminalTag.size(); i++) {
+                lines.add(terminalTag.getString(i));
+            }
+            cpu.setTerminalOutput(lines);
+            lastSyncedOutput = new ArrayList<>(lines);
+        }
+        if (tag.contains("DisplayMode")) {
+            cpu.setDisplayMode(tag.getInt("DisplayMode"));
+        }
+        if (tag.contains("CpuState")) {
+            int stateOrd = tag.getInt("CpuState");
+            VirtualCpu.State[] states = VirtualCpu.State.values();
+            if (stateOrd >= 0 && stateOrd < states.length) {
+                cpu.setState(states[stateOrd]);
+            }
+        }
+        if (tag.contains("ErrorMessage")) {
+            cpu.setErrorMessage(tag.getString("ErrorMessage"));
+        }
     }
 
     @Override

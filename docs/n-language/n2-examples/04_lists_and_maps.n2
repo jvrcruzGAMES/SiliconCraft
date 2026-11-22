@@ -1,0 +1,21 @@
+-- ============================================
+-- Program: 04_lists_and_maps.n2 (N2 Standard)
+-- Description: Dynamic lists and key-value maps
+-- ============================================
+
+import <std>
+
+func main()
+    -- Dynamic lists
+    local inventory = [10, 20, 30]
+    print(inventory[0])
+    print(inventory[1])
+    inventory.push(40)
+    print(inventory[3])
+    print(#inventory)
+
+    -- Key-value maps
+    local scores = {1: 100, 2: 250}
+    print(scores[1])
+    print(scores[2])
+end

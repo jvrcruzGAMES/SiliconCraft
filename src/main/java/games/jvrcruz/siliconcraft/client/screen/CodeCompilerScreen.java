@@ -2,7 +2,8 @@ package games.jvrcruz.siliconcraft.client.screen;
 
 import games.jvrcruz.siliconcraft.Siliconcraft;
 import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
-import games.jvrcruz.siliconcraft.compiler.NCompiler;
+import games.jvrcruz.siliconcraft.compiler.n1.NCompiler;
+import games.jvrcruz.siliconcraft.compiler.n2.N2Compiler;
 import games.jvrcruz.siliconcraft.data.ArchitectureData;
 import games.jvrcruz.siliconcraft.menu.CodeCompilerMenu;
 import games.jvrcruz.siliconcraft.network.CompileProgramPacket;
@@ -10,6 +11,7 @@ import games.jvrcruz.siliconcraft.network.RequestProgramsPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
@@ -32,9 +34,11 @@ public class CodeCompilerScreen extends BaseMachineScreen<CodeCompilerMenu> {
 
     private List<String> loadedLines = new ArrayList<>();
     private String loadedFileName = "";
-    private String statusText = "No .n file chosen";
+    private String statusText = "No file chosen";
     private boolean isChoosing = false;
+    private int standard = 2; // 2 = N2 (default), 1 = N1 (legacy)
     private Button compileButton;
+    private Button standardButton;
 
     public CodeCompilerScreen(CodeCompilerMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
@@ -47,15 +51,23 @@ public class CodeCompilerScreen extends BaseMachineScreen<CodeCompilerMenu> {
         // Request latest program library from server
         PacketDistributor.sendToServer(new RequestProgramsPacket());
 
+        // Standard Switch Button
+        standardButton = Button.builder(Component.literal(standard == 2 ? "§a[N2]" : "§e[N1]"), b -> {
+            standard = (standard == 2 ? 1 : 2);
+            updateStandardButton();
+        }).bounds(this.leftPos + 128, this.topPos + 3, 38, 12).build();
+        updateStandardButton();
+        this.addRenderableWidget(standardButton);
+
         // File selection button
-        this.addRenderableWidget(Button.builder(Component.literal("📁 Choose .n File"), b -> {
+        this.addRenderableWidget(Button.builder(Component.literal("📁 Choose File"), b -> {
             chooseFileAsync();
         }).bounds(this.leftPos + 72, this.topPos + 16, 96, 16).build());
 
         // Compile & Add button
         compileButton = Button.builder(Component.literal("+ Compile & Add"), b -> {
             if (loadedLines == null || loadedLines.isEmpty()) {
-                statusText = "Load a .n file first!";
+                statusText = "Load a file first!";
                 return;
             }
 
@@ -65,13 +77,24 @@ public class CodeCompilerScreen extends BaseMachineScreen<CodeCompilerMenu> {
                 return;
             }
 
-            NCompiler.CompileResult result = NCompiler.compile(loadedLines);
-            if (!result.success()) {
+            boolean success;
+            Set<String> req;
+            if (standard == 1) {
+                NCompiler.CompileResult result = NCompiler.compile(loadedLines);
+                success = result.success();
+                req = result.requiredInstructions();
+            } else {
+                N2Compiler.CompileResult result = N2Compiler.compile(loadedLines);
+                success = result.success();
+                req = result.requiredInstructions();
+            }
+
+            if (!success) {
                 statusText = "Compile error in code!";
                 return;
             }
 
-            List<String> missing = InstructionValidator.getMissingInstructions(result.requiredInstructions(), arch.instructions());
+            List<String> missing = InstructionValidator.getMissingInstructions(req, arch.instructions());
             if (!missing.isEmpty()) {
                 statusText = "Missing: " + missing;
                 return;
@@ -79,8 +102,9 @@ public class CodeCompilerScreen extends BaseMachineScreen<CodeCompilerMenu> {
 
             PacketDistributor.sendToServer(new CompileProgramPacket(
                     menu.getBlockEntity().getBlockPos(),
-                    loadedFileName.isEmpty() ? "program.n" : loadedFileName,
-                    new ArrayList<>(loadedLines)
+                    loadedFileName.isEmpty() ? (standard == 2 ? "program.n2" : "program.n") : loadedFileName,
+                    new ArrayList<>(loadedLines),
+                    standard
             ));
             statusText = "Compiled & Added!";
         }).bounds(this.leftPos + 72, this.topPos + 64, 96, 15).build();
@@ -88,28 +112,40 @@ public class CodeCompilerScreen extends BaseMachineScreen<CodeCompilerMenu> {
         this.addRenderableWidget(compileButton);
     }
 
+    private void updateStandardButton() {
+        if (standardButton == null) return;
+        standardButton.setMessage(Component.literal(standard == 2 ? "§a[N2]" : "§e[N1]"));
+        standardButton.setTooltip(Tooltip.create(Component.literal(
+                standard == 2
+                        ? "Compiler Standard: N2 (OOP, Classes, <lib/*>)\nClick to switch to N1 (Legacy)"
+                        : "Compiler Standard: N1 (Legacy Procedural)\nClick to switch to N2 (OOP)"
+        )));
+    }
+
     private void chooseFileAsync() {
         if (isChoosing) return;
         isChoosing = true;
-        statusText = "Selecting .n file...";
+        statusText = "Selecting source file...";
 
         CompletableFuture.supplyAsync(() -> {
             try (MemoryStack stack = MemoryStack.stackPush()) {
-                PointerBuffer filterPatterns = stack.mallocPointer(2);
+                PointerBuffer filterPatterns = stack.mallocPointer(4);
+                filterPatterns.put(stack.UTF8("*.n2"));
                 filterPatterns.put(stack.UTF8("*.n"));
+                filterPatterns.put(stack.UTF8("*.N2"));
                 filterPatterns.put(stack.UTF8("*.N"));
                 filterPatterns.flip();
 
                 return TinyFileDialogs.tinyfd_openFileDialog(
-                        "Select .n Language File",
+                        "Select N / N2 Language File",
                         "",
                         filterPatterns,
-                        ".n Source files (*.n)",
+                        "N / N2 Source files (*.n2, *.n)",
                         false
                 );
             } catch (Throwable t) {
                 return TinyFileDialogs.tinyfd_openFileDialog(
-                        "Select .n Language File",
+                        "Select N / N2 Language File",
                         "",
                         null,
                         null,
@@ -132,6 +168,10 @@ public class CodeCompilerScreen extends BaseMachineScreen<CodeCompilerMenu> {
                         }
                         this.loadedLines = cleaned;
                         this.loadedFileName = file.getName();
+                        if (file.getName().toLowerCase().endsWith(".n2")) {
+                            this.standard = 2;
+                            updateStandardButton();
+                        }
                         this.statusText = file.getName() + " (" + cleaned.size() + " lines)";
                     } else {
                         this.statusText = "File not found";
@@ -140,7 +180,7 @@ public class CodeCompilerScreen extends BaseMachineScreen<CodeCompilerMenu> {
                     this.statusText = "Error reading file";
                 }
             } else {
-                this.statusText = loadedLines.isEmpty() ? "No .n file chosen" : loadedFileName;
+                this.statusText = loadedLines.isEmpty() ? "No file chosen" : loadedFileName;
             }
         }, Minecraft.getInstance()::execute);
     }
@@ -156,14 +196,28 @@ public class CodeCompilerScreen extends BaseMachineScreen<CodeCompilerMenu> {
         ArchitectureData arch = menu.getInstalledArchitecture();
 
         if (loadedLines == null || loadedLines.isEmpty()) {
-            guiGraphics.drawString(this.font, "No .n file chosen", boxX, boxY + 2, 0x888888, false);
+            guiGraphics.drawString(this.font, "No file chosen", boxX, boxY + 2, 0x888888, false);
             guiGraphics.drawString(this.font, "Click Choose File", boxX, boxY + 12, 0x555555, false);
             compileButton.active = false;
         } else {
-            // First check N compiler validity
-            NCompiler.CompileResult result = NCompiler.compile(loadedLines);
-            if (!result.success()) {
-                String error = result.errors().isEmpty() ? "Syntax error" : result.errors().get(0);
+            boolean success;
+            List<String> errors;
+            Set<String> requiredInstructions;
+
+            if (standard == 1) {
+                NCompiler.CompileResult result = NCompiler.compile(loadedLines);
+                success = result.success();
+                errors = result.errors();
+                requiredInstructions = result.requiredInstructions();
+            } else {
+                N2Compiler.CompileResult result = N2Compiler.compile(loadedLines);
+                success = result.success();
+                errors = result.errors();
+                requiredInstructions = result.requiredInstructions();
+            }
+
+            if (!success) {
+                String error = (errors == null || errors.isEmpty()) ? "Syntax error" : errors.get(0);
                 if (this.font.width(error) > 90) error = error.substring(0, Math.min(error.length(), 14)) + "..";
                 guiGraphics.drawString(this.font, "Compile Error!", boxX, boxY + 1, 0xFF4444, false);
                 guiGraphics.drawString(this.font, error, boxX, boxY + 12, 0xCC3333, false);
@@ -179,7 +233,7 @@ public class CodeCompilerScreen extends BaseMachineScreen<CodeCompilerMenu> {
                     guiGraphics.drawString(this.font, "Insert Writeup!", boxX, boxY + 12, 0xCC5555, false);
                     compileButton.active = false;
                 } else {
-                    List<String> missing = InstructionValidator.getMissingInstructions(result.requiredInstructions(), arch.instructions());
+                    List<String> missing = InstructionValidator.getMissingInstructions(requiredInstructions, arch.instructions());
                     if (!missing.isEmpty()) {
                         String missStr = "Missing: " + missing;
                         if (this.font.width(missStr) > 90) missStr = missStr.substring(0, Math.min(missStr.length(), 14)) + "..";

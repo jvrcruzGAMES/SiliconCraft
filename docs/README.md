@@ -9,7 +9,7 @@ Welcome to the **SiliconCraft** documentation. SiliconCraft is a Minecraft 1.21.
 | File | Description |
 | :--- | :--- |
 | **[getting-started.md](getting-started.md)** | Step-by-step walkthrough from mining silicon and deepslate ore to assembling SoCs, expanding PC hardware, and booting your first computer. |
-| **[n-language-guide.md](n-language-guide.md)** | Complete guide to the `.n` language: syntax, variables, tables, pointers, hex numbers, storage, framebuffer graphics, audio, and multi-file project compilation. |
+| **[n-language/README.md](n-language/README.md)** | Complete guide to the N language family (N1 classic standard & N2 object-oriented standard), syntax, libraries, and compilation. |
 | **[isa-reference.md](isa-reference.md)** | Complete Instruction Set Architecture (ISA) reference detailing registers, status flags, and all 46+ opcodes (control, math, storage, framebuffer, and audio). |
 | **[assembly-syntax.md](assembly-syntax.md)** | Guide to writing `.s` and `.asm` files: syntax rules, labels, comments, number formats, RAM/storage addressing, and device operations. |
 | **[examples.md](examples.md)** | Ready-to-use assembly and `.n` programs (Fibonacci, Counters, Array processing, Framebuffer graphics, and Audio synthesis). |

@@ -10,7 +10,7 @@ import net.minecraft.resources.ResourceLocation;
 
 import java.util.List;
 
-public record CompileProgramPacket(BlockPos pos, String name, List<String> sourceLines) implements CustomPacketPayload {
+public record CompileProgramPacket(BlockPos pos, String name, List<String> sourceLines, int standard) implements CustomPacketPayload {
     public static final CustomPacketPayload.Type<CompileProgramPacket> TYPE =
             new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(Siliconcraft.MODID, "compile_program"));
 
@@ -18,6 +18,7 @@ public record CompileProgramPacket(BlockPos pos, String name, List<String> sourc
             BlockPos.STREAM_CODEC, CompileProgramPacket::pos,
             ByteBufCodecs.STRING_UTF8, CompileProgramPacket::name,
             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list()), CompileProgramPacket::sourceLines,
+            ByteBufCodecs.VAR_INT, CompileProgramPacket::standard,
             CompileProgramPacket::new
     );
 

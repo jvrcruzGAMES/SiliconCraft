@@ -2,15 +2,22 @@ package games.jvrcruz.siliconcraft.vm;
 
 import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.BiConsumer;
 import java.util.function.LongSupplier;
+import java.util.zip.DeflaterOutputStream;
+import java.util.zip.InflaterInputStream;
 
 public class VirtualCpu {
     public enum State {
@@ -98,6 +105,7 @@ public class VirtualCpu {
     public static final int PAD_R      = 1 << 11; // 0x0800 (Shoulder R)
 
     private final int[] padStates = new int[4];
+    private final ConcurrentLinkedQueue<Integer> keyBuffer = new ConcurrentLinkedQueue<>();
 
     // Hardware frame / periodic timer
     private int timerHz = 0;
@@ -709,6 +717,7 @@ public class VirtualCpu {
         this.timerHz = 0;
         this.timerIntervalCycles = 0;
         Arrays.fill(this.padStates, 0);
+        this.keyBuffer.clear();
         loadStaticData();
         this.displayMode = 0;
         Arrays.fill(this.framebuffer, 0xFF051009);
@@ -1461,6 +1470,9 @@ public class VirtualCpu {
     }
 
     public void queueKeyboardInterrupt(int keyChar) {
+        if (keyBuffer.size() < 64) {
+            keyBuffer.offer(keyChar);
+        }
         synchronized (interruptQueue) {
             if (interruptQueue.size() < 64) {
                 interruptQueue.add(new InterruptEvent(VEC_KEYBOARD, keyChar, 0, 0));
@@ -1553,6 +1565,14 @@ public class VirtualCpu {
     }
 
     public int getPadState(int padId) {
+        if (padId == -1) {
+            Integer k = keyBuffer.poll();
+            return k != null ? k : -1;
+        }
+        if (padId == -2) {
+            Integer k = keyBuffer.peek();
+            return k != null ? k : -1;
+        }
         if (padId >= 0 && padId < padStates.length) {
             return padStates[padId];
         }
@@ -2522,15 +2542,107 @@ public class VirtualCpu {
 
     // Getters
     public State getState() { return state; }
+    public void setState(State state) { this.state = state; }
     public int getPc() { return pc; }
+    public void setPc(int pc) { this.pc = pc; }
     public int getRegA() { return regA; }
+    public void setRegA(int regA) { this.regA = regA; }
     public int getRegB() { return regB; }
+    public void setRegB(int regB) { this.regB = regB; }
     public int getRegC() { return regC; }
+    public void setRegC(int regC) { this.regC = regC; }
     public int getRegD() { return regD; }
+    public void setRegD(int regD) { this.regD = regD; }
     public boolean isFlagZ() { return flagZ; }
+    public void setFlagZ(boolean flagZ) { this.flagZ = flagZ; }
     public boolean isFlagS() { return flagS; }
+    public void setFlagS(boolean flagS) { this.flagS = flagS; }
     public int getCycles() { return cycles; }
+    public void setCycles(int cycles) { this.cycles = cycles; }
     public String getErrorMessage() { return errorMessage; }
+    public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
+
+    public Deque<Integer> getCallStack() { return callStack; }
+    public void setCallStack(Collection<Integer> stack) {
+        this.callStack.clear();
+        if (stack != null) this.callStack.addAll(stack);
+    }
+
+    public Deque<Integer> getDataStack() { return dataStack; }
+    public void setDataStack(Collection<Integer> stack) {
+        this.dataStack.clear();
+        if (stack != null) this.dataStack.addAll(stack);
+    }
+
+    public Deque<CpuContext> getInterruptStack() { return interruptStack; }
+    public void setInterruptStack(Collection<CpuContext> stack) {
+        this.interruptStack.clear();
+        if (stack != null) this.interruptStack.addAll(stack);
+    }
+
+    public void setIvt(Map<Integer, Integer> table) {
+        this.ivt.clear();
+        if (table != null) this.ivt.putAll(table);
+    }
+
+    public void setInterruptsEnabled(boolean enabled) { this.interruptsEnabled = enabled; }
+
+    public void setInInterruptHandler(boolean inHandler) { this.inInterruptHandler = inHandler; }
+
+    public int getTimerIntervalCycles() { return timerIntervalCycles; }
+    public void setTimerIntervalCycles(int cycles) { this.timerIntervalCycles = cycles; }
+
+    public void setSupportedInstructions(Collection<String> instructions) {
+        this.supportedInstructions.clear();
+        if (instructions != null) {
+            for (String instr : instructions) {
+                this.supportedInstructions.add(instr.toUpperCase(Locale.ROOT).trim());
+            }
+        }
+    }
+
+    public void loadProgramImage(List<String> lines) {
+        this.program.clear();
+        if (lines != null) {
+            this.program.addAll(lines);
+        }
+        preprocessLabels();
+        compileBytecode();
+    }
+
+    public byte[] getCompressedRam() {
+        if (ram == null || ram.length == 0) return new byte[0];
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            DataOutputStream dos = new DataOutputStream(new DeflaterOutputStream(baos));
+            dos.writeInt(ram.length);
+            for (int val : ram) {
+                dos.writeInt(val);
+            }
+            dos.close();
+            return baos.toByteArray();
+        } catch (IOException e) {
+            return new byte[0];
+        }
+    }
+
+    public void loadCompressedRam(byte[] data) {
+        if (data == null || data.length == 0) return;
+        try {
+            ByteArrayInputStream bais = new ByteArrayInputStream(data);
+            DataInputStream dis = new DataInputStream(new InflaterInputStream(bais));
+            int len = dis.readInt();
+            if (len > 0 && len <= 64 * 1024 * 1024) {
+                int targetLen = Math.max(this.ram.length, len);
+                if (this.ram.length != targetLen) {
+                    this.ram = new int[targetLen];
+                }
+                for (int i = 0; i < len; i++) {
+                    this.ram[i] = dis.readInt();
+                }
+            }
+        } catch (IOException ignored) {}
+    }
 
     public List<String> getTerminalOutput() {
         if (lineBuffer.length() > 0) {

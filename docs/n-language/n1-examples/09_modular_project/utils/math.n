@@ -1,0 +1,18 @@
+// ============================================
+// File: utils/math.n (N1 Module)
+// Description: Math helper utilities
+// ============================================
+
+func square(n) {
+    return n * n
+}
+
+func clamp_val(v, min_v, max_v) {
+    if v < min_v {
+        return min_v
+    }
+    if v > max_v {
+        return max_v
+    }
+    return v
+}

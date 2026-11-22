@@ -2,7 +2,8 @@ package games.jvrcruz.siliconcraft.blockentity;
 
 import games.jvrcruz.siliconcraft.compiler.Assembler;
 import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
-import games.jvrcruz.siliconcraft.compiler.NCompiler;
+import games.jvrcruz.siliconcraft.compiler.n1.NCompiler;
+import games.jvrcruz.siliconcraft.compiler.n2.N2Compiler;
 import games.jvrcruz.siliconcraft.data.ArchitectureData;
 import games.jvrcruz.siliconcraft.data.ProgramEntry;
 import games.jvrcruz.siliconcraft.data.ProgramSavedData;
@@ -72,6 +73,10 @@ public class CodeCompilerBlockEntity extends BlockEntity implements MenuProvider
     }
 
     public boolean compileAndAddProgram(ServerPlayer player, String programName, List<String> sourceLines) {
+        return compileAndAddProgram(player, programName, sourceLines, 2);
+    }
+
+    public boolean compileAndAddProgram(ServerPlayer player, String programName, List<String> sourceLines, int standard) {
         if (sourceLines == null || sourceLines.isEmpty()) {
             player.displayClientMessage(Component.literal("Source code is empty!").withStyle(ChatFormatting.RED), false);
             return false;
@@ -83,14 +88,29 @@ public class CodeCompilerBlockEntity extends BlockEntity implements MenuProvider
             return false;
         }
 
-        NCompiler.CompileResult result = NCompiler.compile(sourceLines);
-        if (!result.success()) {
-            String firstError = result.errors().isEmpty() ? "Unknown syntax error" : result.errors().get(0);
+        List<String> assembly;
+        boolean success;
+        List<String> errors;
+
+        if (standard == 1) {
+            NCompiler.CompileResult result = NCompiler.compile(sourceLines);
+            success = result.success();
+            assembly = result.assembly();
+            errors = result.errors();
+        } else {
+            N2Compiler.CompileResult result = N2Compiler.compile(sourceLines);
+            success = result.success();
+            assembly = result.assembly();
+            errors = result.errors();
+        }
+
+        if (!success) {
+            String firstError = (errors == null || errors.isEmpty()) ? "Unknown syntax error" : errors.get(0);
             player.displayClientMessage(Component.literal("Compile Error: " + firstError).withStyle(ChatFormatting.RED), false);
             return false;
         }
 
-        Assembler.AssemblerResult asmResult = Assembler.assemble(result.assembly());
+        Assembler.AssemblerResult asmResult = Assembler.assemble(assembly);
         if (!asmResult.success()) {
             String firstError = asmResult.errors().isEmpty() ? "Unknown assembly error" : asmResult.errors().get(0);
             player.displayClientMessage(Component.literal("Assemble Error: " + firstError).withStyle(ChatFormatting.RED), false);
@@ -106,7 +126,8 @@ public class CodeCompilerBlockEntity extends BlockEntity implements MenuProvider
 
         if (level instanceof ServerLevel serverLevel) {
             String baseName = (programName == null || programName.trim().isEmpty()) ? "compiled" : programName.trim();
-            if (baseName.endsWith(".n")) baseName = baseName.substring(0, baseName.length() - 2);
+            if (baseName.endsWith(".n2")) baseName = baseName.substring(0, baseName.length() - 3);
+            else if (baseName.endsWith(".n")) baseName = baseName.substring(0, baseName.length() - 2);
             else if (baseName.endsWith(".asm")) baseName = baseName.substring(0, baseName.length() - 4);
             else if (baseName.endsWith(".s")) baseName = baseName.substring(0, baseName.length() - 2);
             else if (baseName.endsWith(".o")) baseName = baseName.substring(0, baseName.length() - 2);

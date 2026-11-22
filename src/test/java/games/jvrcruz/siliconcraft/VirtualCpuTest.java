@@ -786,4 +786,71 @@ public class VirtualCpuTest {
         // on_reset handler must have read [100] (42) and stored it into [101]
         assertEquals(42, cpu.getRam()[101], "Reset handler should run right after reset and see previous RAM contents");
     }
+
+    @Test
+    void testCompressedRamPersistence() {
+        VirtualCpu cpu = new VirtualCpu();
+        int ramSize = 1024 * 1024; // 1M ints = 4MB
+        cpu.configure(Set.of("MOV", "HLT"), ramSize, List.of("HLT"), false, 0);
+
+        int[] ram = cpu.getRam();
+        ram[0] = 0x12345678;
+        ram[42] = 0x7FFFFFFF;
+        ram[1000] = -42;
+        ram[500_000] = 0xCAFEBABE;
+        ram[ramSize - 1] = 0x55AA55AA;
+
+        byte[] compressed = cpu.getCompressedRam();
+        assertNotNull(compressed);
+        assertTrue(compressed.length > 0);
+        // Sparse 4MB RAM compresses drastically (< 1000 bytes)
+        assertTrue(compressed.length < 5000, "Compressed sparse 4MB RAM should be under 5KB, was " + compressed.length);
+
+        VirtualCpu targetCpu = new VirtualCpu();
+        targetCpu.configure(Set.of("MOV", "HLT"), 256, List.of("HLT"), false, 0);
+        targetCpu.loadCompressedRam(compressed);
+
+        assertEquals(ramSize, targetCpu.getRam().length);
+        assertEquals(0x12345678, targetCpu.getRam()[0]);
+        assertEquals(0x7FFFFFFF, targetCpu.getRam()[42]);
+        assertEquals(-42, targetCpu.getRam()[1000]);
+        assertEquals(0xCAFEBABE, targetCpu.getRam()[500_000]);
+        assertEquals(0x55AA55AA, targetCpu.getRam()[ramSize - 1]);
+        assertEquals(0, targetCpu.getRam()[1]);
+    }
+
+    @Test
+    void testLoadProgramImageAndStatePreservation() {
+        VirtualCpu cpu = new VirtualCpu();
+        cpu.configure(Set.of("MOV", "ADD", "HLT"), 1024, List.of("MOV A, 1", "HLT"), false, 0);
+        cpu.getRam()[50] = 999;
+        cpu.setPc(5);
+        cpu.setRegA(111);
+        cpu.setRegB(222);
+        cpu.setRegC(333);
+        cpu.setRegD(444);
+        cpu.setFlagZ(true);
+        cpu.setFlagS(false);
+        cpu.setCycles(150);
+        cpu.setCallStack(List.of(2, 4));
+        cpu.setDataStack(List.of(77, 88));
+        cpu.setIvt(java.util.Map.of(14, 10));
+
+        // Load new program image without reset
+        cpu.loadProgramImage(List.of("start:", "ADD A, 1", "HLT"));
+
+        // All state, registers, stacks, and RAM must remain intact
+        assertEquals(999, cpu.getRam()[50]);
+        assertEquals(5, cpu.getPc());
+        assertEquals(111, cpu.getRegA());
+        assertEquals(222, cpu.getRegB());
+        assertEquals(333, cpu.getRegC());
+        assertEquals(444, cpu.getRegD());
+        assertTrue(cpu.isFlagZ());
+        assertFalse(cpu.isFlagS());
+        assertEquals(150, cpu.getCycles());
+        assertEquals(List.of(2, 4), List.copyOf(cpu.getCallStack()));
+        assertEquals(List.of(77, 88), List.copyOf(cpu.getDataStack()));
+        assertEquals(10, cpu.getIvt().get(14));
+    }
 }

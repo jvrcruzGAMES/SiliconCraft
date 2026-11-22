@@ -1,4 +1,4 @@
-package games.jvrcruz.siliconcraft.compiler;
+package games.jvrcruz.siliconcraft.compiler.n1;
 
 public class NNumberParser {
 

@@ -67,7 +67,7 @@ public class ModMessages {
             if (player instanceof ServerPlayer serverPlayer && serverPlayer.level().isLoaded(packet.pos())) {
                 BlockEntity be = serverPlayer.level().getBlockEntity(packet.pos());
                 if (be instanceof CodeCompilerBlockEntity compilerBe) {
-                    compilerBe.compileAndAddProgram(serverPlayer, packet.name(), packet.sourceLines());
+                    compilerBe.compileAndAddProgram(serverPlayer, packet.name(), packet.sourceLines(), packet.standard());
                 }
             }
         });
@@ -79,7 +79,7 @@ public class ModMessages {
             if (player instanceof ServerPlayer serverPlayer && serverPlayer.level().isLoaded(packet.pos())) {
                 BlockEntity be = serverPlayer.level().getBlockEntity(packet.pos());
                 if (be instanceof ProjectCompilerBlockEntity compilerBe) {
-                    compilerBe.compileAndAddProject(serverPlayer, packet.projectName(), packet.files());
+                    compilerBe.compileAndAddProject(serverPlayer, packet.projectName(), packet.files(), packet.standard());
                 }
             }
         });

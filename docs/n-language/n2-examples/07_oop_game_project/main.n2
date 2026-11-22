@@ -1,0 +1,20 @@
+-- ============================================
+-- Program: 07_oop_game_project/main.n2 (N2 Standard)
+-- Description: Multi-file OOP game project entrypoint
+-- ============================================
+
+import <std>
+import "entities/player.n2"
+
+func main()
+    print("Initializing Game...")
+
+    local hero = GamePlayer("Alex", 10, 20)
+    hero.display()
+
+    print("Moving player...")
+    hero.move(5, -2)
+    hero.display()
+
+    print("Game session complete.")
+end

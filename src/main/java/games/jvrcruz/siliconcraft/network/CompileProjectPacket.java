@@ -12,7 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public record CompileProjectPacket(BlockPos pos, String projectName, Map<String, List<String>> files) implements CustomPacketPayload {
+public record CompileProjectPacket(BlockPos pos, String projectName, Map<String, List<String>> files, int standard) implements CustomPacketPayload {
     public static final CustomPacketPayload.Type<CompileProjectPacket> TYPE =
             new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(Siliconcraft.MODID, "compile_project"));
 
@@ -20,6 +20,7 @@ public record CompileProjectPacket(BlockPos pos, String projectName, Map<String,
             BlockPos.STREAM_CODEC, CompileProjectPacket::pos,
             ByteBufCodecs.STRING_UTF8, CompileProjectPacket::projectName,
             ByteBufCodecs.map(HashMap::new, ByteBufCodecs.STRING_UTF8, ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list())), CompileProjectPacket::files,
+            ByteBufCodecs.VAR_INT, CompileProjectPacket::standard,
             CompileProjectPacket::new
     );
 

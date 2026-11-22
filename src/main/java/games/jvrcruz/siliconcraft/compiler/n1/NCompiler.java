@@ -1,11 +1,13 @@
-package games.jvrcruz.siliconcraft.compiler;
+package games.jvrcruz.siliconcraft.compiler.n1;
 
-import games.jvrcruz.siliconcraft.compiler.NConditionCompiler.FuncContext;
-import games.jvrcruz.siliconcraft.compiler.NConditionCompiler.IfContext;
-import games.jvrcruz.siliconcraft.compiler.NConditionCompiler.LoopContext;
-import games.jvrcruz.siliconcraft.compiler.NType.FieldInfo;
-import games.jvrcruz.siliconcraft.compiler.NType.TableInfo;
-import games.jvrcruz.siliconcraft.compiler.NType.Type;
+import games.jvrcruz.siliconcraft.compiler.Assembler;
+import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
+import games.jvrcruz.siliconcraft.compiler.n1.NConditionCompiler.FuncContext;
+import games.jvrcruz.siliconcraft.compiler.n1.NConditionCompiler.IfContext;
+import games.jvrcruz.siliconcraft.compiler.n1.NConditionCompiler.LoopContext;
+import games.jvrcruz.siliconcraft.compiler.n1.NType.FieldInfo;
+import games.jvrcruz.siliconcraft.compiler.n1.NType.TableInfo;
+import games.jvrcruz.siliconcraft.compiler.n1.NType.Type;
 import games.jvrcruz.siliconcraft.vm.VirtualCpu;
 
 import java.nio.charset.StandardCharsets;

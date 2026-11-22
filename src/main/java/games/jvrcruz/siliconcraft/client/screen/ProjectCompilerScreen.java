@@ -2,7 +2,8 @@ package games.jvrcruz.siliconcraft.client.screen;
 
 import games.jvrcruz.siliconcraft.Siliconcraft;
 import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
-import games.jvrcruz.siliconcraft.compiler.NCompiler;
+import games.jvrcruz.siliconcraft.compiler.n1.NCompiler;
+import games.jvrcruz.siliconcraft.compiler.n2.N2Compiler;
 import games.jvrcruz.siliconcraft.data.ArchitectureData;
 import games.jvrcruz.siliconcraft.menu.ProjectCompilerMenu;
 import games.jvrcruz.siliconcraft.network.CompileProjectPacket;
@@ -10,6 +11,7 @@ import games.jvrcruz.siliconcraft.network.RequestProgramsPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
@@ -17,8 +19,6 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.util.tinyfd.TinyFileDialogs;
-
-import net.minecraft.client.gui.components.Tooltip;
 
 import java.io.File;
 import java.util.*;
@@ -32,7 +32,9 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
     private String loadedProjectName = "";
     private String statusText = "No project chosen";
     private boolean isChoosing = false;
+    private int standard = 2; // 2 = N2 (default), 1 = N1 (legacy)
     private Button compileButton;
+    private Button standardButton;
 
     public ProjectCompilerScreen(ProjectCompilerMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
@@ -45,16 +47,24 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
         // Request latest program library from server
         PacketDistributor.sendToServer(new RequestProgramsPacket());
 
+        // Standard Switch Button
+        standardButton = Button.builder(Component.literal(standard == 2 ? "§a[N2]" : "§e[N1]"), b -> {
+            standard = (standard == 2 ? 1 : 2);
+            updateStandardButton();
+        }).bounds(this.leftPos + 128, this.topPos + 3, 38, 12).build();
+        updateStandardButton();
+        this.addRenderableWidget(standardButton);
+
         // Zip selection button
         this.addRenderableWidget(Button.builder(Component.literal("📁 .zip"), b -> {
             chooseFileAsync();
-        }).tooltip(Tooltip.create(Component.literal("Select project .zip archive (.n, .asm, .s)")))
+        }).tooltip(Tooltip.create(Component.literal("Select project .zip archive (.n2, .n, .asm, .s)")))
           .bounds(this.leftPos + 72, this.topPos + 16, 47, 16).build());
 
         // Folder selection button
         this.addRenderableWidget(Button.builder(Component.literal("📂 Folder"), b -> {
             chooseFolderAsync();
-        }).tooltip(Tooltip.create(Component.literal("Select root folder containing main.n or main.asm / main.s")))
+        }).tooltip(Tooltip.create(Component.literal("Select root folder containing main.n2 or main.n / main.asm")))
           .bounds(this.leftPos + 121, this.topPos + 16, 47, 16).build());
 
         // Compile & Add button
@@ -70,13 +80,24 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
                 return;
             }
 
-            NCompiler.CompileResult result = NCompiler.compileProject(projectFiles, null);
-            if (!result.success()) {
+            boolean success;
+            Set<String> req;
+            if (standard == 1) {
+                NCompiler.CompileResult result = NCompiler.compileProject(projectFiles, null);
+                success = result.success();
+                req = result.requiredInstructions();
+            } else {
+                N2Compiler.CompileResult result = N2Compiler.compileProject(projectFiles, null);
+                success = result.success();
+                req = result.requiredInstructions();
+            }
+
+            if (!success) {
                 statusText = "Compile error in project!";
                 return;
             }
 
-            List<String> missing = InstructionValidator.getMissingInstructions(result.requiredInstructions(), arch.instructions());
+            List<String> missing = InstructionValidator.getMissingInstructions(req, arch.instructions());
             if (!missing.isEmpty()) {
                 statusText = "Missing: " + missing;
                 return;
@@ -85,12 +106,33 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
             PacketDistributor.sendToServer(new CompileProjectPacket(
                     menu.getBlockEntity().getBlockPos(),
                     loadedProjectName.isEmpty() ? "project" : loadedProjectName,
-                    new LinkedHashMap<>(projectFiles)
+                    new LinkedHashMap<>(projectFiles),
+                    standard
             ));
             statusText = "Compiled & Added!";
         }).bounds(this.leftPos + 72, this.topPos + 64, 96, 15).build();
 
         this.addRenderableWidget(compileButton);
+    }
+
+    private void updateStandardButton() {
+        if (standardButton == null) return;
+        standardButton.setMessage(Component.literal(standard == 2 ? "§a[N2]" : "§e[N1]"));
+        standardButton.setTooltip(Tooltip.create(Component.literal(
+                standard == 2
+                        ? "Compiler Standard: N2 (OOP, Classes, <lib/*>)\nClick to switch to N1 (Legacy)"
+                        : "Compiler Standard: N1 (Legacy Procedural)\nClick to switch to N2 (OOP)"
+        )));
+    }
+
+    private void detectStandardFromFiles(Map<String, List<String>> files) {
+        for (String path : files.keySet()) {
+            if (path.toLowerCase(Locale.ROOT).endsWith(".n2")) {
+                this.standard = 2;
+                updateStandardButton();
+                return;
+            }
+        }
     }
 
     private void chooseFileAsync() {
@@ -106,7 +148,7 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
                 filterPatterns.flip();
 
                 return TinyFileDialogs.tinyfd_openFileDialog(
-                        "Select Project Zip Archive (.zip with .n, .asm, .s)",
+                        "Select Project Zip Archive (.zip with .n2, .n, .asm, .s)",
                         "",
                         filterPatterns,
                         "Zip Archive (*.zip)",
@@ -114,7 +156,7 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
                 );
             } catch (Throwable t) {
                 return TinyFileDialogs.tinyfd_openFileDialog(
-                        "Select Project Zip Archive (.zip with .n, .asm, .s)",
+                        "Select Project Zip Archive (.zip with .n2, .n, .asm, .s)",
                         "",
                         null,
                         null,
@@ -130,10 +172,11 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
                         Map<String, List<String>> extracted = NCompiler.loadProjectFromZip(file);
 
                         if (extracted.isEmpty()) {
-                            this.statusText = "No project files (.n, .asm, .s) found in zip!";
+                            this.statusText = "No project files (.n2, .n, .asm, .s) found in zip!";
                         } else {
                             this.projectFiles = extracted;
                             this.loadedProjectName = file.getName();
+                            detectStandardFromFiles(extracted);
                             this.statusText = file.getName() + " (" + extracted.size() + " files)";
                         }
                     } else {
@@ -156,7 +199,7 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
         CompletableFuture.supplyAsync(() -> {
             try {
                 return TinyFileDialogs.tinyfd_selectFolderDialog(
-                        "Select Project Folder (root containing main.n or main.asm / main.s)",
+                        "Select Project Folder (root containing main.n2 or main.n / main.asm)",
                         ""
                 );
             } catch (Throwable t) {
@@ -171,10 +214,11 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
                         Map<String, List<String>> extracted = NCompiler.loadProjectFromFolder(folder);
 
                         if (extracted.isEmpty()) {
-                            this.statusText = "No project files (.n, .asm, .s) found in folder!";
+                            this.statusText = "No project files (.n2, .n, .asm, .s) found in folder!";
                         } else {
                             this.projectFiles = extracted;
                             this.loadedProjectName = folder.getName();
+                            detectStandardFromFiles(extracted);
                             this.statusText = folder.getName() + " (" + extracted.size() + " files)";
                         }
                     } else {
@@ -204,10 +248,24 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
             guiGraphics.drawString(this.font, "Choose .zip / Folder", boxX, boxY + 12, 0x555555, false);
             compileButton.active = false;
         } else {
-            // First check N compiler validity
-            NCompiler.CompileResult result = NCompiler.compileProject(projectFiles, null);
-            if (!result.success()) {
-                String error = result.errors().isEmpty() ? "Syntax error" : result.errors().get(0);
+            boolean success;
+            List<String> errors;
+            Set<String> requiredInstructions;
+
+            if (standard == 1) {
+                NCompiler.CompileResult result = NCompiler.compileProject(projectFiles, null);
+                success = result.success();
+                errors = result.errors();
+                requiredInstructions = result.requiredInstructions();
+            } else {
+                N2Compiler.CompileResult result = N2Compiler.compileProject(projectFiles, null);
+                success = result.success();
+                errors = result.errors();
+                requiredInstructions = result.requiredInstructions();
+            }
+
+            if (!success) {
+                String error = (errors == null || errors.isEmpty()) ? "Syntax error" : errors.get(0);
                 if (this.font.width(error) > 90) error = error.substring(0, Math.min(error.length(), 14)) + "..";
                 guiGraphics.drawString(this.font, "Compile Error!", boxX, boxY + 1, 0xFF4444, false);
                 guiGraphics.drawString(this.font, error, boxX, boxY + 12, 0xCC3333, false);
@@ -223,7 +281,7 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
                     guiGraphics.drawString(this.font, "Insert Writeup!", boxX, boxY + 12, 0xCC5555, false);
                     compileButton.active = false;
                 } else {
-                    List<String> missing = InstructionValidator.getMissingInstructions(result.requiredInstructions(), arch.instructions());
+                    List<String> missing = InstructionValidator.getMissingInstructions(requiredInstructions, arch.instructions());
                     if (!missing.isEmpty()) {
                         String missStr = "Missing: " + missing;
                         if (this.font.width(missStr) > 90) missStr = missStr.substring(0, Math.min(missStr.length(), 14)) + "..";

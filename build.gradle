@@ -25,6 +25,10 @@ repositories {
             includeGroup "maven.modrinth"
         }
     }
+    maven {
+        name = "isXander Maven"
+        url = "https://maven.isxander.dev/releases"
+    }
 }
 
 base {
@@ -116,6 +120,9 @@ dependencies {
     runtimeOnly "curse.maven:mezzconfiggui-1700987:9701162"
 
     implementation "maven.modrinth:jade:15.10.3+neoforge"
+    implementation("dev.isxander:controlify:2.4.4+1.21.1-neoforge") {
+        transitive = false
+    }
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

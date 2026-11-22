@@ -1,7 +1,7 @@
 package games.jvrcruz.siliconcraft;
 
 import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
-import games.jvrcruz.siliconcraft.compiler.NCompiler;
+import games.jvrcruz.siliconcraft.compiler.n1.NCompiler;
 import games.jvrcruz.siliconcraft.vm.VirtualCpu;
 import org.junit.jupiter.api.Test;
 

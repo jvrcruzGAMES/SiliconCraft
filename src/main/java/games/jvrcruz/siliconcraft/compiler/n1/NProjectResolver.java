@@ -1,5 +1,6 @@
-package games.jvrcruz.siliconcraft.compiler;
+package games.jvrcruz.siliconcraft.compiler.n1;
 
+import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
 import java.util.*;
 
 public class NProjectResolver {
@@ -33,7 +34,8 @@ public class NProjectResolver {
 
     public static boolean isNFile(String path) {
         if (path == null) return false;
-        return path.toLowerCase(Locale.ROOT).endsWith(".n");
+        String p = path.toLowerCase(Locale.ROOT);
+        return p.endsWith(".n") || p.endsWith(".n2");
     }
 
     public static boolean isSupportedSourceFile(String path) {

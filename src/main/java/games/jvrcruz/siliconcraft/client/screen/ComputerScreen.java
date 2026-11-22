@@ -13,6 +13,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
+import games.jvrcruz.siliconcraft.compat.controlify.ExternalControllerManager;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.List;
@@ -204,6 +205,9 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        if (menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal() && ExternalControllerManager.isControllerSupportEnabled()) {
+            updateAndSendPadState();
+        }
         this.lastMouseX = mouseX;
         this.lastMouseY = mouseY;
         clearUnhoveredButtonFocus(mouseX, mouseY);
@@ -351,6 +355,11 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
             // R: E (69) or I (73)
             if (k == 69 || k == 73) mask |= VirtualCpu.PAD_R;
         }
+
+        // External Controller Support (Active if Controlify is installed)
+        int controllerMask = ExternalControllerManager.pollControllerMask();
+        mask |= controllerMask;
+
         if (mask != lastSentPadMask) {
             lastSentPadMask = mask;
             PacketDistributor.sendToServer(new ComputerInputPacket(menu.getBlockEntity().getBlockPos(), 3, 0, mask, 0));

@@ -1,4 +1,4 @@
-package games.jvrcruz.siliconcraft.compiler;
+package games.jvrcruz.siliconcraft.compiler.n1;
 
 import java.util.List;
 import java.util.Locale;

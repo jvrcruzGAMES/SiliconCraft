@@ -68,7 +68,7 @@ The **Memory Forge** manufactures system memory modules:
 SiliconCraft separates program writing and compilation from physical ROM/Storage burning, ensuring your CPU hardware matches your software instructions before spending resources.
 
 ### Option A: High-Level Programming with the Code Compiler
-1. Write a single `.n` file (e.g. `main.n`) on your computer (see [n-language-guide.md](n-language-guide.md)).
+1. Write an `.n` or `.n2` file on your computer (see [n-language/README.md](n-language/README.md)).
 2. Place and open the **Code Compiler** block.
 3. Insert your **Architecture Writeup** into the slot.
 4. Click **📁 Choose .n File** to select your `.n` source.
