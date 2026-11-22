@@ -752,6 +752,16 @@ public class VirtualCpu {
             flushLineBuffer();
             this.state = State.OFF;
             this.terminalOutput.add("[POWER OFF]");
+            clearAudioQueue();
+        }
+    }
+
+    public void clearAudioQueue() {
+        synchronized (audioQueue) {
+            this.audioHead = 0;
+            this.audioTail = 0;
+            this.audioCount = 0;
+            this.audioTriggered = false;
         }
     }
 

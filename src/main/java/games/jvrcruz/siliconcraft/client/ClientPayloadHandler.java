@@ -3,6 +3,7 @@ package games.jvrcruz.siliconcraft.client;
 import games.jvrcruz.siliconcraft.blockentity.ComputerBlockEntity;
 import games.jvrcruz.siliconcraft.client.audio.ComputerAudioPlayer;
 import games.jvrcruz.siliconcraft.network.PlayAudioPacket;
+import games.jvrcruz.siliconcraft.network.StopAudioPacket;
 import games.jvrcruz.siliconcraft.network.SyncFramebufferPacket;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.world.entity.player.Player;
@@ -34,15 +35,21 @@ public class ClientPayloadHandler {
             Player player = context.player();
             if (player == null) return;
             if (packet.isWorldAudio()) {
-                ComputerAudioPlayer.playWorldAudio(packet.pos(), packet.pcmSamples(), packet.sampleRate());
+                ComputerAudioPlayer.playWorldAudio(packet.computerPos(), packet.audioPos(), packet.pcmSamples(), packet.sampleRate());
                 if (player.level() != null) {
                     player.level().addParticle(ParticleTypes.NOTE,
-                            packet.pos().getX() + 0.5, packet.pos().getY() + 1.2, packet.pos().getZ() + 0.5,
+                            packet.audioPos().getX() + 0.5, packet.audioPos().getY() + 1.2, packet.audioPos().getZ() + 0.5,
                             (player.level().random.nextDouble() * 24.0) / 24.0, 0.0, 0.0);
                 }
             } else {
-                ComputerAudioPlayer.playScreenAudio(packet.pcmSamples(), packet.sampleRate());
+                ComputerAudioPlayer.playScreenAudio(packet.computerPos(), packet.pcmSamples(), packet.sampleRate());
             }
+        });
+    }
+
+    public static void handleStopAudio(StopAudioPacket packet, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ComputerAudioPlayer.stopAudio(packet.computerPos());
         });
     }
 }

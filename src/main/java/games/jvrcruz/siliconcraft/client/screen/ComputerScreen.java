@@ -1,5 +1,7 @@
 package games.jvrcruz.siliconcraft.client.screen;
 
+import games.jvrcruz.siliconcraft.client.audio.ComputerAudioPlayer;
+
 import games.jvrcruz.siliconcraft.client.renderer.ComputerDisplayRenderer;
 import games.jvrcruz.siliconcraft.menu.ComputerMenu;
 import games.jvrcruz.siliconcraft.menu.slot.FilteredSlot;
@@ -357,5 +359,8 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         heldKeyCodes.clear();
         updateAndSendPadState();
         displayRenderer.close();
+        if (menu != null && menu.getBlockEntity() != null) {
+            ComputerAudioPlayer.stopScreenAudio(menu.getBlockEntity().getBlockPos());
+        }
     }
 }

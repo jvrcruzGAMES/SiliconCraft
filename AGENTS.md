@@ -79,6 +79,9 @@ Agents must adhere to these thread-safety requirements:
 - **Speaker vs. Screen Routing**:
   - **No Speaker Connected**: Audio plays **only** to players who have the computer screen GUI open (`player.containerMenu instanceof ComputerMenu`).
   - **Speaker Connected** (adjacent `SpeakerBlock`): Audio is broadcast to nearby players within a 32-block radius (`distanceToSqr <= 32 * 32`) and anyone with the screen GUI open.
+- **Audio Cutoff on Power Off**:
+  - When a computer powers off, is dismantled, its SoC removed, or unloads, all active playback (both screen and world/speaker audio) must immediately stop (`StopAudioPacket`).
+  - CPU audio queues are purged immediately on `powerOff()` / `clearAudioQueue()`.
 
 ---
 

@@ -1,5 +1,10 @@
 package games.jvrcruz.siliconcraft.block;
 
+import games.jvrcruz.siliconcraft.network.StopAudioPacket;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
+import net.neoforged.neoforge.network.PacketDistributor;
+
 import games.jvrcruz.siliconcraft.init.ModBlocks;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -68,4 +73,16 @@ public class SpeakerBlock extends Block {
         }
         return InteractionResult.sidedSuccess(level.isClientSide);
     }
+
+    @Override
+    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
+        if (!state.is(newState.getBlock())) {
+            if (!level.isClientSide && level instanceof ServerLevel serverLevel) {
+                StopAudioPacket packet = new StopAudioPacket(pos);
+                PacketDistributor.sendToPlayersTrackingChunk(serverLevel, new ChunkPos(pos), packet);
+            }
+            super.onRemove(state, level, pos, newState, isMoving);
+        }
+    }
+
 }

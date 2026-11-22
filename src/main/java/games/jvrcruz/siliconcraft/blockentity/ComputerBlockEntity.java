@@ -1,5 +1,7 @@
 package games.jvrcruz.siliconcraft.blockentity;
 
+import games.jvrcruz.siliconcraft.network.StopAudioPacket;
+
 import games.jvrcruz.siliconcraft.block.ComputerBlock;
 import games.jvrcruz.siliconcraft.data.SocData;
 import games.jvrcruz.siliconcraft.init.ModBlockEntities;
@@ -281,6 +283,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
     public void removeSoc() {
         this.socData = SocData.EMPTY;
         this.cpu.powerOff();
+        stopAudio();
         this.onboardStorage = new byte[0];
         recalculateHardwareCapabilities();
         setChanged();
@@ -306,6 +309,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
     public void togglePower() {
         if (socData == null || socData.instructions().isEmpty()) {
             cpu.powerOff();
+            stopAudio();
             cpu.setTerminalOutput(List.of("[SYSTEM ERROR]", "No bootable SoC architecture installed!"));
             setChanged();
             if (level != null) {
@@ -319,6 +323,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
             ComputerThreadManager.register(this);
         } else {
             ComputerThreadManager.unregister(this);
+            stopAudio();
         }
 
         if (level != null) {
@@ -347,6 +352,42 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         }
     }
 
+
+    public void stopAudio() {
+        synchronized (cpu.getExecutionLock()) {
+            cpu.clearAudioQueue();
+        }
+        if (level == null || level.isClientSide || !(level instanceof ServerLevel serverLevel)) return;
+
+        BlockPos speakerPos = null;
+        for (Direction dir : Direction.values()) {
+            BlockPos neighbor = worldPosition.relative(dir);
+            if (level.getBlockState(neighbor).is(ModBlocks.SPEAKER.get())) {
+                speakerPos = neighbor;
+                break;
+            }
+        }
+
+        StopAudioPacket packet = new StopAudioPacket(worldPosition);
+
+        for (ServerPlayer player : serverLevel.players()) {
+            if (player.containerMenu instanceof ComputerMenu cMenu && cMenu.getBlockEntity() == this) {
+                PacketDistributor.sendToPlayer(player, packet);
+            }
+        }
+
+        PacketDistributor.sendToPlayersTrackingChunk(serverLevel, new ChunkPos(worldPosition), packet);
+        if (speakerPos != null) {
+            PacketDistributor.sendToPlayersTrackingChunk(serverLevel, new ChunkPos(speakerPos), packet);
+            double maxDistSq = 36.0 * 36.0;
+            for (ServerPlayer player : serverLevel.players()) {
+                if (player.distanceToSqr(speakerPos.getX() + 0.5, speakerPos.getY() + 0.5, speakerPos.getZ() + 0.5) <= maxDistSq) {
+                    PacketDistributor.sendToPlayer(player, packet);
+                }
+            }
+        }
+    }
+
     public void tick(Level level, BlockPos pos, BlockState state) {
         this.lastGameTime = level.getGameTime();
         if (cpu.getState() == VirtualCpu.State.RUNNING) {
@@ -358,6 +399,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
             ComputerThreadManager.unregister(this);
             if (state.getValue(ComputerBlock.POWERED)) {
                 level.setBlock(pos, state.setValue(ComputerBlock.POWERED, false), 3);
+                stopAudio();
             }
         }
         syncTerminal(level, pos, state);
@@ -375,12 +417,14 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
     public void setRemoved() {
         super.setRemoved();
         ComputerThreadManager.unregister(this);
+        stopAudio();
     }
 
     @Override
     public void onChunkUnloaded() {
         super.onChunkUnloaded();
         ComputerThreadManager.unregister(this);
+        stopAudio();
     }
 
     private void syncDisplayAndAudio(Level level, BlockPos pos) {
@@ -425,13 +469,13 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
                     }
                 }
                 for (ServerPlayer player : targets) {
-                    PacketDistributor.sendToPlayer(player, new PlayAudioPacket(speakerPos, audioSamples, 8000, true));
+                    PacketDistributor.sendToPlayer(player, new PlayAudioPacket(pos, speakerPos, audioSamples, 8000, true));
                 }
             } else {
                 // No speaker: Audio plays ONLY on computer screen (players with screen open)
                 for (ServerPlayer player : serverLevel.players()) {
                     if (player.containerMenu instanceof ComputerMenu cMenu && cMenu.getBlockEntity() == this) {
-                        PacketDistributor.sendToPlayer(player, new PlayAudioPacket(pos, audioSamples, 8000, false));
+                        PacketDistributor.sendToPlayer(player, new PlayAudioPacket(pos, pos, audioSamples, 8000, false));
                     }
                 }
             }

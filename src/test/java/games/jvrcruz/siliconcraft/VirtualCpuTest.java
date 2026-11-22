@@ -728,4 +728,25 @@ public class VirtualCpuTest {
         assertEquals(42, cpu.getRam()[1000000], "RAM[1000000] should be 42");
         assertEquals(42, cpu.getRam()[2000000], "RAM[2000000] should be 42 via SBLKR");
     }
+
+    @Test
+    void testAudioStoppedOnPowerOff() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("ATONE", "APLAY", "HLT");
+        List<String> code = List.of(
+                "ATONE 440, 500",
+                "APLAY",
+                "HLT"
+        );
+
+        cpu.configure(isa, 1024 * 1024, code, true, 0);
+        cpu.powerOn();
+        cpu.tick(10);
+
+        // Powering off must clear any pending or playing audio
+        cpu.powerOff();
+
+        assertEquals(VirtualCpu.State.OFF, cpu.getState());
+        assertNull(cpu.pollAudioSamples(), "Audio queue must be empty when powered off");
+    }
 }
