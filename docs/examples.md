@@ -471,4 +471,53 @@ os_main:
     HLT
 ```
 
+---
+
+## Example 11: Audio Buffer – Jingle Bells (`jingle_bells.asm`)
+
+Plays the opening melody of *Jingle Bells* ("Jingle bells, jingle bells, jingle all the way") using the CPU's audio tone buffer, outputting sound through the personal computer and adjacent Speaker blocks.
+
+### Required CPU Instructions
+- `OUT`, `ACLR`, `ATONE`, `APLAY`, `HLT`
+
+```assembly
+; ============================================
+; Program: jingle_bells.asm
+; Description: Plays the opening of Jingle Bells
+; Notes: E4, E4, E4 | E4, E4, E4 | E4, G4, C4, D4, E4
+; ============================================
+
+OUT "=========================================="
+OUT "       SILICON AUDIO: JINGLE BELLS        "
+OUT "=========================================="
+OUT "Synthesizing Jingle Bells melody..."
+
+; Flush any existing audio queue
+ACLR
+
+; Phrase 1: "Jin-gle bells" (E4 = 330 Hz)
+ATONE 330, 70
+ATONE 330, 70
+ATONE 330, 140
+
+; Phrase 2: "Jin-gle bells" (E4 = 330 Hz)
+ATONE 330, 70
+ATONE 330, 70
+ATONE 330, 140
+
+; Phrase 3: "Jin-gle all the way" (E4, G4, C4, D4, E4)
+; E4 (330 Hz), G4 (392 Hz), C4 (262 Hz), D4 (294 Hz), E4 (330 Hz)
+ATONE 330, 70
+ATONE 392, 70
+ATONE 262, 70
+ATONE 294, 70
+ATONE 330, 160
+
+; Trigger audio playback through computer/speaker
+APLAY
+
+OUT "Jingle Bells dispatched to audio buffer!"
+HLT
+```
+
 

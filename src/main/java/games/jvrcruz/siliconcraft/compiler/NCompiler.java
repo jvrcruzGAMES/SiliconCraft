@@ -272,6 +272,15 @@ public class NCompiler {
                     continue;
                 }
 
+                // Storage execute / boot: storage.exec(d) / storage.boot(d)
+                if ((line.startsWith("storage.exec(") || line.startsWith("storage.boot(") ||
+                     line.startsWith("storage.exec ") || line.startsWith("storage.boot ")) && line.endsWith(")")) {
+                    String dExpr = extractParenthesesOrRest(line);
+                    String dLoc = resolveLocation(dExpr, varMap, tableMap, assembly);
+                    assembly.add("SEXEC " + dLoc);
+                    continue;
+                }
+
                 // Storage drive indexing statements: storage[d].write(addr, val), storage[d].set, storage[d].write_bytes, etc.
                 if (line.startsWith("storage[") && line.contains("].") && line.endsWith(")")) {
                     int closeBracket = line.indexOf("].");
