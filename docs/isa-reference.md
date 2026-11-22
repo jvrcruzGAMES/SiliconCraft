@@ -146,7 +146,7 @@ SiliconCraft provides a bare-bones hardware audio queue (8000 Hz, 8-bit unsigned
 |---|---|---|
 | **`APUSH`** | `APUSH sample` | Pushes single 8-bit unsigned PCM sample (0..255) into the audio queue. |
 | **`ABUFW`** | `ABUFW ramSrc, count` | Fast block write: copies `count` samples from RAM into audio queue. |
-| **`ATONE`** | `ATONE freq, dur` | Generates a tone of `freq` Hz for `dur` Minecraft ticks. |
+| **`ATONE`** | `ATONE freq, dur` | Generates square wave tone of `freq` Hz for `dur` milliseconds (`freq = 0` queues silence/pause). |
 | **`ACLR`** | `ACLR` | Clears and flushes all pending samples from audio buffer. |
 | **`ASTAT`** | `ASTAT dest` | Stores remaining queued sample count into `dest`. |
 | **`APLAY`** | `APLAY` | Triggers playback of the queued audio buffer. |

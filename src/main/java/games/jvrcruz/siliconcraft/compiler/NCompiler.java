@@ -596,6 +596,14 @@ public class NCompiler {
                     }
                 }
 
+                // Audio pause / rest: audio.pause(ms) / audio.rest(ms) / audio.silence(ms)
+                if ((line.startsWith("audio.pause(") || line.startsWith("audio.rest(") || line.startsWith("audio.silence(")) && line.endsWith(")")) {
+                    String pExpr = extractParenthesesOrRest(line);
+                    String pLoc = resolveLocation(pExpr, varMap, tableMap, assembly);
+                    assembly.add("ATONE 0, " + pLoc);
+                    continue;
+                }
+
                 // Audio clear: audio.clear() / audio.flush()
                 if (line.equalsIgnoreCase("audio.clear()") || line.equalsIgnoreCase("audio.flush()")) {
                     assembly.add("ACLR");

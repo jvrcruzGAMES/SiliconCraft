@@ -84,7 +84,7 @@ public class ComputerAudioPlayer {
 
             // Wait for sound to finish and cleanup
             long durationMs = (long) ((pcmSamples.length / (double) sampleRate) * 1000) + 100;
-            Thread.sleep(Math.min(durationMs, 5000));
+            Thread.sleep(Math.min(durationMs, 60000));
 
             AL10.alSourceStop(source);
             AL10.alDeleteSources(source);

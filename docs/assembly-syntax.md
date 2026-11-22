@@ -167,8 +167,9 @@ FBSWAP                            ; Swap / flip buffer to display canvas
 Synthesize audio directly through the computer's sound buffer (8000 Hz, 8-bit unsigned PCM):
 
 ```assembly
-; Generate a tone directly (freqHz, durationTicks)
-ATONE 440, 20                    ; 440 Hz (A4) tone for 20 ticks (1 second)
+; Generate a tone directly (freqHz, durationMs)
+ATONE 440, 500                   ; 440 Hz (A4) tone for 500 ms (0.5 seconds)
+ATONE 0, 100                     ; 100 ms silence / pause between notes
 APLAY                            ; Start audio playback
 
 ; Or push raw 8-bit unsigned PCM samples (0..255)

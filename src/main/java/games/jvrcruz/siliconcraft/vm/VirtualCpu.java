@@ -60,7 +60,7 @@ public class VirtualCpu {
     private boolean fbDirty = false;
 
     // Bare-bones audio buffer (8000 Hz, 8-bit unsigned PCM samples)
-    private final byte[] audioQueue = new byte[8192];
+    private byte[] audioQueue = new byte[65536];
     private int audioHead = 0;
     private int audioTail = 0;
     private int audioCount = 0;
@@ -1387,13 +1387,25 @@ public class VirtualCpu {
     }
 
     // --- Audio Instructions ---
+    private void ensureAudioQueueCapacity(int minCapacity) {
+        if (minCapacity > audioQueue.length) {
+            int newCap = Math.max(audioQueue.length * 2, minCapacity);
+            byte[] newQueue = new byte[newCap];
+            for (int i = 0; i < audioCount; i++) {
+                newQueue[i] = audioQueue[(audioHead + i) % audioQueue.length];
+            }
+            audioQueue = newQueue;
+            audioHead = 0;
+            audioTail = audioCount;
+        }
+    }
+
     private synchronized void execAPush(String args) {
         int sample = resolveValue(args.trim()) & 0xFF;
-        if (audioCount < audioQueue.length) {
-            audioQueue[audioTail] = (byte) sample;
-            audioTail = (audioTail + 1) % audioQueue.length;
-            audioCount++;
-        }
+        ensureAudioQueueCapacity(audioCount + 1);
+        audioQueue[audioTail] = (byte) sample;
+        audioTail = (audioTail + 1) % audioQueue.length;
+        audioCount++;
     }
 
     private synchronized void execABufw(String args) {
@@ -1401,8 +1413,8 @@ public class VirtualCpu {
         if (parts.length != 2) throw new IllegalArgumentException("ABUFW requires ram_src, count");
         int ramSrc = resolveValue(parts[0].trim());
         int count = resolveValue(parts[1].trim());
+        ensureAudioQueueCapacity(audioCount + count);
         for (int i = 0; i < count; i++) {
-            if (audioCount >= audioQueue.length) break;
             int rAddr = ramSrc + i;
             if (rAddr >= 0 && rAddr < ram.length) {
                 audioQueue[audioTail] = (byte) (ram[rAddr] & 0xFF);
@@ -1424,16 +1436,25 @@ public class VirtualCpu {
         if (parts.length != 2) throw new IllegalArgumentException("ATONE requires freq, duration_ms");
         int freq = resolveValue(parts[0].trim());
         int ms = resolveValue(parts[1].trim());
-        if (freq > 0 && ms > 0) {
-            int numSamples = Math.min(8000, (int) ((8000L * ms) / 1000L));
-            int period = Math.max(1, 8000 / freq);
-            int half = Math.max(1, period / 2);
-            for (int i = 0; i < numSamples; i++) {
-                if (audioCount >= audioQueue.length) break;
-                byte s = (byte) ((i % period < half) ? 200 : 50);
-                audioQueue[audioTail] = s;
-                audioTail = (audioTail + 1) % audioQueue.length;
-                audioCount++;
+        if (ms > 0) {
+            int numSamples = (int) ((8000L * ms) / 1000L);
+            ensureAudioQueueCapacity(audioCount + numSamples);
+            if (freq <= 0) {
+                // Pause / silence: 128 is center (silence) in 8-bit unsigned PCM
+                for (int i = 0; i < numSamples; i++) {
+                    audioQueue[audioTail] = (byte) 128;
+                    audioTail = (audioTail + 1) % audioQueue.length;
+                    audioCount++;
+                }
+            } else {
+                int period = Math.max(1, 8000 / freq);
+                int half = Math.max(1, period / 2);
+                for (int i = 0; i < numSamples; i++) {
+                    byte s = (byte) ((i % period < half) ? 200 : 50);
+                    audioQueue[audioTail] = s;
+                    audioTail = (audioTail + 1) % audioQueue.length;
+                    audioCount++;
+                }
             }
             audioTriggered = true;
         }

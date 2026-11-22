@@ -216,11 +216,11 @@ Queues musical note frequencies into the hardware audio buffer and initiates pla
 
 println "Synthesizing chime chord..."
 
-// Queue musical notes: frequency (Hz), duration (ticks)
-audio.tone(440, 8)    // A4
-audio.tone(554, 8)    // C#5
-audio.tone(659, 8)    // E5
-audio.tone(880, 16)   // A5
+// Queue musical notes: frequency (Hz), duration (ms)
+audio.tone(440, 300)   // A4 (300 ms)
+audio.tone(554, 300)   // C#5 (300 ms)
+audio.tone(659, 300)   // E5 (300 ms)
+audio.tone(880, 600)   // A5 (600 ms)
 
 // Fire audio playback
 audio.play()
@@ -422,22 +422,32 @@ println "Synthesizing Jingle Bells melody..."
 audio.clear()
 
 // Phrase 1: "Jin-gle bells" (E4 = 330 Hz)
-audio.tone(330, 70)
-audio.tone(330, 70)
-audio.tone(330, 140)
+audio.tone(330, 250)
+audio.pause(50)
+audio.tone(330, 250)
+audio.pause(50)
+audio.tone(330, 500)
+audio.pause(200)
 
 // Phrase 2: "Jin-gle bells" (E4 = 330 Hz)
-audio.tone(330, 70)
-audio.tone(330, 70)
-audio.tone(330, 140)
+audio.tone(330, 250)
+audio.pause(50)
+audio.tone(330, 250)
+audio.pause(50)
+audio.tone(330, 500)
+audio.pause(200)
 
-// Phrase 3: "Jin-gle all the way" (E4, G4, C4, D4, E4)
+// Phrase 3: "Jin-gle all the way"
 // E4 (330 Hz), G4 (392 Hz), C4 (262 Hz), D4 (294 Hz), E4 (330 Hz)
-audio.tone(330, 70)
-audio.tone(392, 70)
-audio.tone(262, 70)
-audio.tone(294, 70)
-audio.tone(330, 160)
+audio.tone(330, 250)
+audio.pause(50)
+audio.tone(392, 250)
+audio.pause(50)
+audio.tone(262, 250)
+audio.pause(50)
+audio.tone(294, 250)
+audio.pause(50)
+audio.tone(330, 600)
 
 // Trigger audio playback through computer/speaker
 audio.play()

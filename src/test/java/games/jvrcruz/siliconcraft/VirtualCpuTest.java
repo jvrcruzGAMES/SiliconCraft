@@ -305,19 +305,32 @@ public class VirtualCpuTest {
         assertEquals((byte) 100, samples[2]);
         assertEquals((byte) 150, samples[3]);
 
-        // Tone test
+        // Tone test with silence/pause (freq = 0) and long capacity
         List<String> toneCode = List.of(
-                "ATONE 440, 50",
+                "ATONE 440, 50",   // 50ms tone = 400 samples
+                "ATONE 0, 50",     // 50ms silence (value 128) = 400 samples
                 "ASTAT B",
                 "HLT"
         );
         cpu.configure(isa, 256, toneCode, false, 0);
         cpu.powerOn();
         cpu.tick(100);
-        assertTrue(cpu.getRegB() > 0, "Tone should populate audio buffer samples");
+        assertEquals(800, cpu.getRegB(), "Tone + pause should populate 800 audio buffer samples");
         byte[] toneSamples = cpu.pollAudioSamples();
         assertNotNull(toneSamples);
-        assertTrue(toneSamples.length > 0);
+        assertEquals(800, toneSamples.length);
+        // Verify tone samples are wave
+        boolean hasHigh = false;
+        boolean hasLow = false;
+        for (int i = 0; i < 400; i++) {
+            if (toneSamples[i] == (byte) 200) hasHigh = true;
+            if (toneSamples[i] == (byte) 50) hasLow = true;
+        }
+        assertTrue(hasHigh && hasLow, "First 400 samples should be square wave");
+        // Verify pause samples are silence (128)
+        for (int i = 400; i < 800; i++) {
+            assertEquals((byte) 128, toneSamples[i], "Pause samples must be PCM silence (128)");
+        }
     }
 
     @Test

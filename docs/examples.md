@@ -262,17 +262,17 @@ Queues musical note frequencies into the 8000 Hz audio buffer and initiates play
 
 OUT "Synthesizing chime chord..."
 
-; Queue A4 (440 Hz) for 8 ticks (~400ms)
-ATONE 440, 8
+; Queue A4 (440 Hz) for 300 ms
+ATONE 440, 300
 
-; Queue C#5 (554 Hz) for 8 ticks
-ATONE 554, 8
+; Queue C#5 (554 Hz) for 300 ms
+ATONE 554, 300
 
-; Queue E5 (659 Hz) for 8 ticks
-ATONE 659, 8
+; Queue E5 (659 Hz) for 300 ms
+ATONE 659, 300
 
-; Queue A5 (880 Hz) for 16 ticks
-ATONE 880, 16
+; Queue A5 (880 Hz) for 600 ms
+ATONE 880, 600
 
 ; Fire audio playback
 APLAY
@@ -496,22 +496,32 @@ OUT "Synthesizing Jingle Bells melody..."
 ACLR
 
 ; Phrase 1: "Jin-gle bells" (E4 = 330 Hz)
-ATONE 330, 70
-ATONE 330, 70
-ATONE 330, 140
+ATONE 330, 250
+ATONE 0, 50                      ; Short pause between identical notes
+ATONE 330, 250
+ATONE 0, 50
+ATONE 330, 500
+ATONE 0, 200                     ; Phrase breath pause
 
 ; Phrase 2: "Jin-gle bells" (E4 = 330 Hz)
-ATONE 330, 70
-ATONE 330, 70
-ATONE 330, 140
+ATONE 330, 250
+ATONE 0, 50
+ATONE 330, 250
+ATONE 0, 50
+ATONE 330, 500
+ATONE 0, 200
 
-; Phrase 3: "Jin-gle all the way" (E4, G4, C4, D4, E4)
+; Phrase 3: "Jin-gle all the way"
 ; E4 (330 Hz), G4 (392 Hz), C4 (262 Hz), D4 (294 Hz), E4 (330 Hz)
-ATONE 330, 70
-ATONE 392, 70
-ATONE 262, 70
-ATONE 294, 70
-ATONE 330, 160
+ATONE 330, 250
+ATONE 0, 50
+ATONE 392, 250
+ATONE 0, 50
+ATONE 262, 250
+ATONE 0, 50
+ATONE 294, 250
+ATONE 0, 50
+ATONE 330, 600
 
 ; Trigger audio playback through computer/speaker
 APLAY
