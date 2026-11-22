@@ -240,8 +240,10 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         super.mouseMoved(mouseX, mouseY);
         clearUnhoveredButtonFocus(mouseX, mouseY);
         if (menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal()) {
-            int crtX = (int) (mouseX - (this.leftPos + 8));
-            int crtY = (int) (mouseY - (this.topPos + 7));
+            double relX = (mouseX - (this.leftPos + 8)) / 240.0;
+            double relY = (mouseY - (this.topPos + 7)) / 135.0;
+            int crtX = (int) (relX * VirtualCpu.FB_WIDTH);
+            int crtY = (int) (relY * VirtualCpu.FB_HEIGHT);
             if (crtX >= 0 && crtX < VirtualCpu.FB_WIDTH && crtY >= 0 && crtY < VirtualCpu.FB_HEIGHT) {
                 PacketDistributor.sendToServer(new ComputerInputPacket(menu.getBlockEntity().getBlockPos(), 1, crtX, crtY, 0));
             }
@@ -253,8 +255,10 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         this.lastMouseX = mouseX;
         this.lastMouseY = mouseY;
         if (menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal()) {
-            int crtX = (int) (mouseX - (this.leftPos + 8));
-            int crtY = (int) (mouseY - (this.topPos + 7));
+            double relX = (mouseX - (this.leftPos + 8)) / 240.0;
+            double relY = (mouseY - (this.topPos + 7)) / 135.0;
+            int crtX = (int) (relX * VirtualCpu.FB_WIDTH);
+            int crtY = (int) (relY * VirtualCpu.FB_HEIGHT);
             if (crtX >= 0 && crtX < VirtualCpu.FB_WIDTH && crtY >= 0 && crtY < VirtualCpu.FB_HEIGHT) {
                 PacketDistributor.sendToServer(new ComputerInputPacket(menu.getBlockEntity().getBlockPos(), 2, crtX, crtY, button));
             }

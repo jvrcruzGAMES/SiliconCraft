@@ -7,13 +7,14 @@ import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import games.jvrcruz.siliconcraft.vm.VirtualCpu;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import org.joml.Matrix4f;
 
 public class ComputerDisplayRenderer {
-    public static final int WIDTH = 240;
-    public static final int HEIGHT = 135;
+    public static final int WIDTH = VirtualCpu.FB_WIDTH;
+    public static final int HEIGHT = VirtualCpu.FB_HEIGHT;
     private final DynamicTexture dynamicTexture;
     private final NativeImage nativeImage;
 

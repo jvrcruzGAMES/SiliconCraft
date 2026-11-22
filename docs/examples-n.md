@@ -167,12 +167,12 @@ println "[SYSTEM] SiliconCraft Personal Computer Ready."
 
 ## Example 6: Framebuffer Direct Pixel Graphics (`graphics_demo.n`)
 
-Draw geometric primitives (filled rectangles, diagonal lines, and pixels) directly onto the $240 \times 135$ (16:9) CRT pixel canvas and renders the frame in an active display loop.
+Draw geometric primitives (filled rectangles, diagonal lines, and pixels) directly onto the $480 \times 270$ (16:9) CRT pixel canvas and renders the frame in an active display loop.
 
 ```text
 // ============================================
 // Program: graphics_demo.n
-// Description: Renders 2D geometric shapes on CRT (240x135 16:9)
+// Description: Renders 2D geometric shapes on CRT (480x270 16:9)
 // ============================================
 
 // Switch CRT display to graphics framebuffer mode (1 = graphics, 0 = text)

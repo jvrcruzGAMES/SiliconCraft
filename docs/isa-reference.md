@@ -121,12 +121,12 @@ The CPU provides four 32-bit integer registers:
 
 ### 6. Framebuffer Graphics
 
-The CRT display features a $240 \times 135$ (16:9 aspect ratio) direct pixel renderer canvas:
+The CRT display features a $480 \times 270$ (16:9 aspect ratio) direct pixel renderer canvas:
 
 | Opcode | Syntax | Description |
 |---|---|---|
-| **`FBWIDTH`** | `FBWIDTH dest` | Stores screen width in pixels (240) into `dest`. |
-| **`FBHEIGHT`** | `FBHEIGHT dest` | Stores screen height in pixels (135) into `dest`. |
+| **`FBWIDTH`** | `FBWIDTH dest` | Stores screen width in pixels (480) into `dest`. |
+| **`FBHEIGHT`** | `FBHEIGHT dest` | Stores screen height in pixels (270) into `dest`. |
 | **`FBSET`** | `FBSET x, y, color` | Sets pixel at `(x, y)` to 32-bit ARGB `color`. |
 | **`FBGET`** | `FBGET dest, x, y` | Reads 32-bit ARGB pixel color at `(x, y)` into `dest`. |
 | **`FBLINE`** | `FBLINE x0, y0, x1, y1, color` | Draws line using Bresenham's algorithm. |

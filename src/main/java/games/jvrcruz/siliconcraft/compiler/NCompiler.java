@@ -153,6 +153,35 @@ public class NCompiler {
         Deque<IfContext> ifStack = new ArrayDeque<>();
         Deque<FuncContext> funcStack = new ArrayDeque<>();
 
+        // Pre-scan registered interrupt and exception handler function names
+        Set<String> interruptHandlers = new HashSet<>();
+        for (SourceLine sl : sourceLines) {
+            String l = InstructionValidator.stripComments(sl.text).trim();
+            if (l.isEmpty()) continue;
+            if (l.startsWith("on_") && l.endsWith(")")) {
+                String h = extractParenthesesOrRest(l).trim();
+                if (!h.isEmpty()) {
+                    interruptHandlers.add(h.toLowerCase(Locale.ROOT));
+                }
+            } else if ((l.startsWith("catch(") || l.startsWith("catch ")) && l.endsWith(")")) {
+                String inner = extractParenthesesOrRest(l);
+                List<String> cArgs = splitArgs(inner);
+                if (cArgs.size() == 2) {
+                    interruptHandlers.add(cArgs.get(1).trim().toLowerCase(Locale.ROOT));
+                }
+            } else {
+                int space = l.indexOf(' ');
+                String first = (space == -1 ? l : l.substring(0, space)).toUpperCase(Locale.ROOT).trim();
+                if (first.equals("IVEC") && space != -1) {
+                    String rest = l.substring(space + 1).trim();
+                    String[] parts = rest.split(",", 2);
+                    if (parts.length == 2) {
+                        interruptHandlers.add(parts[1].trim().toLowerCase(Locale.ROOT));
+                    }
+                }
+            }
+        }
+
         assembly.add("; === Compiled from SiliconCraft .n source ===");
 
         for (int i = 0; i < sourceLines.size(); i++) {
@@ -176,8 +205,13 @@ public class NCompiler {
                     if (!funcStack.isEmpty() && (loopStack.isEmpty() || funcStack.peek().blockDepth >= loopStack.peek().blockDepth)
                             && (ifStack.isEmpty() || funcStack.peek().blockDepth >= ifStack.peek().blockDepth)) {
                         FuncContext ctx = funcStack.pop();
-                        if (assembly.isEmpty() || !assembly.get(assembly.size() - 1).equals("RET")) {
-                            assembly.add("RET");
+                        String lastAsm = assembly.isEmpty() ? "" : assembly.get(assembly.size() - 1).trim();
+                        if (!lastAsm.equals("RET") && !lastAsm.equals("IRET") && !lastAsm.equals("HLT") && !lastAsm.startsWith("JMP ")) {
+                            if (ctx.isInterrupt) {
+                                assembly.add("IRET");
+                            } else {
+                                assembly.add("RET");
+                            }
                         }
                         assembly.add(ctx.endLabel + ":");
                     } else if (!ifStack.isEmpty() && (loopStack.isEmpty() || ifStack.peek().blockDepth >= loopStack.peek().blockDepth)) {
@@ -697,17 +731,24 @@ public class NCompiler {
 
                 // Return statement: return or return expr
                 if (line.equals("return") || line.startsWith("return ")) {
-                    String retExpr = line.length() > 6 ? line.substring(6).trim() : "";
-                    if (!retExpr.isEmpty()) {
-                        compileAssignment("A", retExpr, varMap, tableMap, assembly);
+                    if (funcStack.isEmpty()) {
+                        // Top-level return: cleanly halt the script
+                        assembly.add("HLT");
+                    } else if (funcStack.peek().isInterrupt) {
+                        assembly.add("IRET");
+                    } else {
+                        String retExpr = line.length() > 6 ? line.substring(6).trim() : "";
+                        if (!retExpr.isEmpty()) {
+                            compileAssignment("A", retExpr, varMap, tableMap, assembly);
+                        }
+                        assembly.add("RET");
                     }
-                    assembly.add("RET");
                     continue;
                 }
 
-                // Function declaration: fn name(...) { or function name(...) {
-                if ((line.startsWith("fn ") || line.startsWith("function ")) && line.endsWith("{")) {
-                    int startIdx = line.startsWith("fn ") ? 3 : 9;
+                // Function declaration: fn name(...) { or func name(...) { or function name(...) {
+                if ((line.startsWith("fn ") || line.startsWith("func ") || line.startsWith("function ") || line.startsWith("def ")) && line.endsWith("{")) {
+                    int startIdx = line.startsWith("fn ") ? 3 : line.startsWith("func ") ? 5 : line.startsWith("def ") ? 4 : 9;
                     int openParen = line.indexOf('(');
                     String funcName = (openParen != -1 ? line.substring(startIdx, openParen) : line.substring(startIdx, line.length() - 1)).trim();
                     int funcId = labelCounter++;
@@ -715,7 +756,8 @@ public class NCompiler {
 
                     assembly.add("JMP " + endLabel);
                     assembly.add(funcName + ":");
-                    funcStack.push(new FuncContext(funcName, endLabel, loopStack.size() + ifStack.size() + funcStack.size()));
+                    boolean isInterrupt = interruptHandlers.contains(funcName.toLowerCase(Locale.ROOT));
+                    funcStack.push(new FuncContext(funcName, endLabel, loopStack.size() + ifStack.size() + funcStack.size(), isInterrupt));
                     continue;
                 }
 

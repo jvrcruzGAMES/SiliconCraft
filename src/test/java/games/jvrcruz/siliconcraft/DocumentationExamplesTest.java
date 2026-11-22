@@ -906,10 +906,10 @@ public class DocumentationExamplesTest {
 
         assertEquals(1, cpu.getDisplayMode());
         int[] fb = cpu.getFramebuffer();
-        assertEquals(0xFFFFFFFF, fb[67 * 240 + 120]);
-        assertEquals(0xFFFFCC00, fb[57 * 240 + 110]);
-        assertEquals(0xFF2A4494, fb[15 * 240 + 20]);
-        assertEquals(0xFF181824, fb[50 * 240 + 5]);
+        assertEquals(0xFFFFFFFF, fb[67 * VirtualCpu.FB_WIDTH + 120]);
+        assertEquals(0xFFFFCC00, fb[57 * VirtualCpu.FB_WIDTH + 110]);
+        assertEquals(0xFF2A4494, fb[15 * VirtualCpu.FB_WIDTH + 20]);
+        assertEquals(0xFF181824, fb[50 * VirtualCpu.FB_WIDTH + 5]);
     }
 
     @Test

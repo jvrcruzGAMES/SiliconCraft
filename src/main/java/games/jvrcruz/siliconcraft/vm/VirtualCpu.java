@@ -56,8 +56,8 @@ public class VirtualCpu {
     private int selectedDrive = 0;
     private BiConsumer<Integer, byte[]> driveWriteListener;
 
-    public static final int FB_WIDTH = 240;
-    public static final int FB_HEIGHT = 135;
+    public static final int FB_WIDTH = 480;
+    public static final int FB_HEIGHT = 270;
     private volatile int displayMode = 0; // 0 = text mode, 1 = framebuffer mode
     private final int[] framebuffer = new int[FB_WIDTH * FB_HEIGHT];
     private volatile boolean fbDirty = false;

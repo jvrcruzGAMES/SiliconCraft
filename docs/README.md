@@ -60,7 +60,7 @@ SiliconCraft features an accessible 4-register architecture with custom instruct
   - Supports Flash drives and ultra-speed NVMe storage drives.
   - Treated individually (drive 0, drive 1, etc.) and retained in item NBT when extracted.
 - **Direct Renderer Framebuffer**:
-  - Hardware pixel graphics on the computer screen CRT canvas ($240 \times 135$ direct pixel operations, 16:9 aspect ratio).
+  - Hardware pixel graphics on the computer screen CRT canvas ($480 \times 270$ direct pixel operations, 16:9 aspect ratio).
   - Fast rectangle drawing, lines, and color buffer flipping.
 - **Hardware Audio Buffer & Speaker Block**:
   - Real-computer audio queue buffer with waveform frequency, duration, type, and volume.

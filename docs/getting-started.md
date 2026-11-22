@@ -136,7 +136,7 @@ Opening the Personal Computer interface provides dedicated hardware expansion sl
   - Storage drives retain their binary content in item NBT when extracted and moved!
 
 ### Framebuffer Graphics (Direct Screen Canvas)
-The Personal Computer includes a dedicated **$240 \times 135$ CRT Framebuffer**:
+The Personal Computer includes a dedicated **$480 \times 270$ CRT Framebuffer**:
 - Programs can draw direct pixels, lines, rectangles, or flip entire color buffers (`FBSET`, `FBLINE`, `FBRECT`, `FBSWAP`, or in N: `fb.set()`, `fb.rect()`, etc.).
 - Rendering executes directly on the computer screen canvas without Minecraft GUI engine overhead.
 

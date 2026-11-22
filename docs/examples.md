@@ -207,7 +207,7 @@ memory_error:
 
 ## Example 6: Framebuffer Direct Pixel Graphics (`graphics_demo.asm`)
 
-Draw geometric primitives (filled boxes, diagonal lines, and pixels) directly onto the $240 \times 135$ (16:9) CRT pixel canvas and renders the frame in an active display loop.
+Draw geometric primitives (filled boxes, diagonal lines, and pixels) directly onto the $480 \times 270$ (16:9) CRT pixel canvas and renders the frame in an active display loop.
 
 ### Required CPU Instructions
 - `FBMODE`, `FBCLR`, `FBRECT`, `FBLINE`, `FBSET`, `FBSWAP`, `JMP`
@@ -215,7 +215,7 @@ Draw geometric primitives (filled boxes, diagonal lines, and pixels) directly on
 ```assembly
 ; ============================================
 ; Program: graphics_demo.asm
-; Description: Renders 2D geometric shapes on CRT (240x135 16:9)
+; Description: Renders 2D geometric shapes on CRT (480x270 16:9)
 ; ============================================
 
 ; Switch CRT display to graphics framebuffer mode (1 = graphics, 0 = text)

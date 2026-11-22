@@ -149,13 +149,13 @@ SEXEC 1                       ; Chainload / execute program burned to Drive 1 (F
 
 ## 8. Framebuffer Operations (`FB*`)
 
-The CRT screen features a direct $240 \times 135$ (16:9) hardware pixel canvas:
+The CRT screen features a direct $480 \times 270$ (16:9) hardware pixel canvas:
 
 ```assembly
 FBMODE 1                          ; Switch CRT display to graphics mode (1 = graphics, 0 = text)
 FBCLR 0xFF000000                  ; Clear canvas to black
 FBSET 10, 10, 0xFFFF0000          ; Draw red pixel at (10, 10)
-FBLINE 0, 0, 239, 134, 0xFF00FF00 ; Draw green diagonal line across CRT
+FBLINE 0, 0, 479, 269, 0xFF00FF00 ; Draw green diagonal line across CRT
 FBRECT 20, 20, 40, 20, 0xFF0000FF ; Draw blue filled rectangle
 FBSWAP                            ; Swap / flip buffer to display canvas
 ```

@@ -29,10 +29,17 @@ public class NConditionCompiler {
         public final String name;
         public final String endLabel;
         public final int blockDepth;
+        public final boolean isInterrupt;
+
         public FuncContext(String name, String endLabel, int blockDepth) {
+            this(name, endLabel, blockDepth, false);
+        }
+
+        public FuncContext(String name, String endLabel, int blockDepth, boolean isInterrupt) {
             this.name = name;
             this.endLabel = endLabel;
             this.blockDepth = blockDepth;
+            this.isInterrupt = isInterrupt;
         }
     }
 

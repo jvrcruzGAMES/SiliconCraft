@@ -6,6 +6,7 @@ import games.jvrcruz.siliconcraft.compiler.NCompiler;
 import games.jvrcruz.siliconcraft.vm.VirtualCpu;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -788,8 +789,8 @@ public class CompilerAndValidatorTest {
         assertEquals(0xFFFF0000, fb[12 * VirtualCpu.FB_WIDTH + 20]); // Inside rectangle
 
         List<String> output = cpu.getTerminalOutput();
-        assertTrue(output.contains("W: 240"), "Output should contain width 240: " + output);
-        assertTrue(output.contains("H: 135"), "Output should contain height 135: " + output);
+        assertTrue(output.contains("W: 480"), "Output should contain width 480: " + output);
+        assertTrue(output.contains("H: 270"), "Output should contain height 270: " + output);
         assertTrue(output.contains("Pix: -16776961"), "Output should contain 0xFF0000FF pixel value: " + output);
         assertTrue(output.contains("ASize: 2"), "Output should contain audio size 2: " + output);
     }
@@ -1164,6 +1165,59 @@ public class CompilerAndValidatorTest {
         assertEquals(16, cpu.getRegC(), "RegC should be 16");
         assertEquals(15, cpu.getRegD(), "RegD should be 15");
         assertEquals(42, cpu.getRam()[18], "RAM[18] should be 42");
+    }
+
+    @Test
+    public void testInterruptHandlerAutoIret() {
+        // High-level N program with on_reset handler that does NOT manually write IRET
+        List<String> nSource = List.of(
+                "on_reset(my_reset_handler)",
+                "var flag = 1",
+                "fn my_reset_handler() {",
+                "    var count = mem[50]",
+                "    mem[50] = count + 1",
+                "}"
+        );
+
+        NCompiler.CompileResult result = NCompiler.compile(nSource);
+        assertTrue(result.success(), "Compilation should succeed: " + result.errors());
+        List<String> asm = result.assembly();
+        assertFalse(asm.contains("RET"), "Interrupt handler should not emit RET: " + asm);
+        assertTrue(asm.contains("IRET"), "Interrupt handler should automatically emit IRET: " + asm);
+
+        // Execute on VirtualCpu: cold boot and reset
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = new HashSet<>(result.requiredInstructions());
+        cpu.configure(isa, 256, asm, false, 0);
+
+        cpu.powerOn();
+        cpu.tick(50);
+        // Reset CPU to fire VEC_RESET
+        cpu.reset();
+        cpu.tick(50);
+
+        // Must NOT throw RET without CALL: Call stack underflow!
+        assertNotEquals(VirtualCpu.State.ERROR, cpu.getState(), "CPU should not error with underflow: " + cpu.getErrorMessage());
+        assertEquals(1, cpu.getRam()[50], "Reset handler should run cleanly once without stack fault");
+
+        cpu.reset();
+        cpu.tick(50);
+        assertEquals(2, cpu.getRam()[50], "Reset handler should run cleanly twice without stack fault");
+    }
+
+    @Test
+    public void testTopLevelReturnCompilesToHlt() {
+        List<String> nSource = List.of(
+                "var a = 10",
+                "return",
+                "var b = 20"
+        );
+
+        NCompiler.CompileResult result = NCompiler.compile(nSource);
+        assertTrue(result.success());
+        List<String> asm = result.assembly();
+        assertTrue(asm.contains("HLT"));
+        assertFalse(asm.contains("RET"));
     }
 }
 

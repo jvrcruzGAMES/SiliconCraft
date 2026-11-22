@@ -113,7 +113,7 @@ Agents must adhere to these thread-safety requirements:
 
 - **RAM Module Capacity**: 1024 KB (1,048,576 Bytes).
 - **Storage Drive Capacity** (Flash & NVMe): 1024 MB (1,048,576 KB / 1,073,741,824 Bytes).
-- **Framebuffer Resolution**: 240 × 135 pixels, 32-bit ARGB.
+- **Framebuffer Resolution**: 480 × 270 pixels, 32-bit ARGB.
 
 ---
 
@@ -129,7 +129,7 @@ Before completing any task:
 
 A standalone, cycle-accurate Rust implementation of the SiliconCraft Virtual CPU architecture is located at `/home/jvrcruz/Documentos/Projects/SiliconCraft-ComputerEmulator`:
 
-- **Vulkan Window Interface**: Runs full CRT text mode and 240x135 framebuffer graphics inside a hardware-accelerated Vulkan window (`pixels` + `wgpu` + `winit`).
+- **Vulkan Window Interface**: Runs full CRT text mode and 480x270 framebuffer graphics inside a hardware-accelerated Vulkan window (`pixels` + `wgpu` + `winit`).
 - **Headless Mode**: Supports `--headless` for automated test suites and benchmarks.
 - **Toolchain Parity**: Features the same `.n` compiler, assembly project resolver, and `.o` bytecode executor as the Minecraft mod.
 - **Standard Preset**: 4 sticks of RAM (4096 KB), NVMe in extension slot 1 (1024 MB), all 71 instructions enabled, and code burned to non-volatile ROM.
