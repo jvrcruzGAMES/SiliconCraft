@@ -386,10 +386,10 @@ no_drive:
 
 Demonstrates probing for installed storage drives (Flash or NVMe) and chainloading/executing a program burned to **Storage Drive X** using the `SEXEC` opcode.
 
-Registers and RAM are preserved across `SEXEC`, allowing the bootloader to pass system parameters (such as the boot drive index and handoff signatures) directly into the loaded program.
+Registers and RAM are preserved across `SEXEC` and CPU resets. The bootloader performs memory sanitization and registers a `RESET` interrupt handler (Vector 14) to clean system RAM upon reboot, ensuring a clean memory state before handing off control to the loaded operating system.
 
 ### Required CPU Instructions
-- `OUT`, `MOV`, `CMP`, `JZ`, `JNZ`, `JMP`, `SSIZE`, `SEXEC`, `HLT`
+- `OUT`, `MOV`, `CMP`, `JZ`, `JNZ`, `JMP`, `INC`, `IVEC`, `IRET`, `SSIZE`, `SEXEC`, `HLT`
 
 ### Part 1: Bootloader (`bootloader.asm`)
 *Burned into SoC ROM (BIOS)*
@@ -400,7 +400,21 @@ Registers and RAM are preserved across `SEXEC`, allowing the bootloader to pass 
 ; Description: BIOS bootloader that launches OS from Storage Drive
 ; ============================================
 
+; Register Vector 14 (RESET) handler to clean memory after a reset
+IVEC RESET, handle_reset
+
 OUT "[BIOS] SiliconCraft Bootloader 1.0"
+
+; Memory cleanup after reset: sanitize system RAM (addresses 0..63)
+OUT "[BIOS] Sanitizing system RAM after reset..."
+MOV D, 0
+clean_mem_loop:
+    MOV [D], 0
+    INC D
+    CMP D, 64
+    JNZ clean_mem_loop
+OUT "[BIOS] RAM sanitized: 64 words cleared."
+
 OUT "[BIOS] Searching for bootable Storage Drive..."
 
 ; Check if Storage Drive 1 (Expansion Slot 1: Flash or NVMe) is installed
@@ -438,6 +452,18 @@ boot_selected:
 error_no_drives:
     OUT "[FATAL] No bootable storage drive detected!"
     HLT
+
+; --- Reset Handler: Memory Cleanup after Reset ---
+handle_reset:
+    OUT "[BIOS] Reset event caught. Sanitizing system RAM..."
+    MOV D, 0
+reset_clean_loop:
+    MOV [D], 0
+    INC D
+    CMP D, 64
+    JNZ reset_clean_loop
+    OUT "[BIOS] Memory sanitized. Resuming boot sequence."
+    IRET
 ```
 
 ### Part 2: Operating System Kernel (`os_kernel.asm`)

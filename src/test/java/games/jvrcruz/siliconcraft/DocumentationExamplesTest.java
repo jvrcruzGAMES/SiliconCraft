@@ -6,6 +6,7 @@ import games.jvrcruz.siliconcraft.vm.VirtualCpu;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -408,11 +409,22 @@ public class DocumentationExamplesTest {
 
     @Test
     public void testExample10StorageDriveChainload() {
-        Set<String> documentedIsa = Set.of("OUT", "MOV", "CMP", "JZ", "JNZ", "JMP", "SSIZE", "SEXEC", "HLT");
+        Set<String> documentedIsa = Set.of("OUT", "MOV", "CMP", "JZ", "JNZ", "JMP", "INC", "IVEC", "IRET", "SSIZE", "SEXEC", "HLT");
 
         // Bootloader program in ROM / BIOS
         List<String> bootloader = List.of(
+                "; Register Vector 14 (RESET) handler to clean memory after a reset",
+                "IVEC RESET, handle_reset",
                 "OUT \"[BIOS] SiliconCraft Bootloader 1.0\"",
+                "; Memory cleanup after reset: sanitize system RAM (addresses 0..63)",
+                "OUT \"[BIOS] Sanitizing system RAM after reset...\"",
+                "MOV D, 0",
+                "clean_mem_loop:",
+                "    MOV [D], 0",
+                "    INC D",
+                "    CMP D, 64",
+                "    JNZ clean_mem_loop",
+                "OUT \"[BIOS] RAM sanitized: 64 words cleared.\"",
                 "OUT \"[BIOS] Searching for bootable Storage Drive...\"",
                 "; Check if Storage Drive 1 (Flash / NVMe) is installed",
                 "MOV B, 1",
@@ -436,7 +448,18 @@ public class DocumentationExamplesTest {
                 "    SEXEC A",
                 "error_no_drives:",
                 "    OUT \"[FATAL] No bootable storage drive detected!\"",
-                "    HLT"
+                "    HLT",
+                "; --- Reset Handler: Memory Cleanup after Reset ---",
+                "handle_reset:",
+                "    OUT \"[BIOS] Reset event caught. Sanitizing system RAM...\"",
+                "    MOV D, 0",
+                "reset_clean_loop:",
+                "    MOV [D], 0",
+                "    INC D",
+                "    CMP D, 64",
+                "    JNZ reset_clean_loop",
+                "    OUT \"[BIOS] Memory sanitized. Resuming boot sequence.\"",
+                "    IRET"
         );
 
         // Target OS code burned to Storage Drive 1 (Flash or NVMe)
@@ -474,19 +497,153 @@ public class DocumentationExamplesTest {
         cpu.setStorageDrive(1, drive1Bytes);
         cpu.setDriveProgram(1, osKernel);
 
+        // Simulate dirty RAM prior to boot
+        cpu.getRam()[10] = 0xDEAD;
+        cpu.getRam()[50] = 0xBEEF;
+
         cpu.powerOn();
-        cpu.tick(100);
+        cpu.tick(400);
 
         assertEquals(VirtualCpu.State.HALTED, cpu.getState());
         assertEquals(1, cpu.getRegA(), "Register A should preserve the boot drive index 1");
         assertEquals(0x5343, cpu.getRegB(), "Register B should preserve the magic word signature");
+        assertEquals(0, cpu.getRam()[10], "RAM[10] should be cleared by bootloader memory sanitization");
+        assertEquals(0, cpu.getRam()[50], "RAM[50] should be cleared by bootloader memory sanitization");
 
         String terminal = String.join("\n", cpu.getTerminalOutput());
         assertTrue(terminal.contains("[BIOS] SiliconCraft Bootloader 1.0"));
+        assertTrue(terminal.contains("[BIOS] Sanitizing system RAM after reset..."));
+        assertTrue(terminal.contains("[BIOS] RAM sanitized: 64 words cleared."));
         assertTrue(terminal.contains("[BIOS] Booting from Storage Drive: 1"));
         assertTrue(terminal.contains("SILICON-OS KERNEL INITIALIZED"));
         assertTrue(terminal.contains("Bootloader handoff signature verified: OK"));
         assertTrue(terminal.contains("Silicon-OS kernel running from Storage Drive."));
+
+        // Verify warm reset handling and memory sanitization by reset handler
+        VirtualCpu cpuReset = new VirtualCpu();
+        cpuReset.configure(documentedIsa, 256, bootloader, false, 0);
+        cpuReset.setStorageDrive(1, drive1Bytes);
+        cpuReset.setDriveProgram(1, osKernel);
+        cpuReset.powerOn();
+        cpuReset.tick(5); // Registers IVEC RESET
+
+        // Stale data left in memory
+        cpuReset.getRam()[25] = 0x5555;
+        // Warm reset
+        cpuReset.reset();
+        assertEquals(0x5555, cpuReset.getRam()[25], "RAM preserved across reset before handler executes");
+        cpuReset.tick(400);
+        assertEquals(0, cpuReset.getRam()[25], "RAM[25] cleaned by reset handler");
+        assertTrue(String.join("\n", cpuReset.getTerminalOutput()).contains("Reset event caught. Sanitizing system RAM..."));
+    }
+
+    @Test
+    public void testExample10StorageDriveChainloadN() {
+        List<String> bootloaderN = List.of(
+                "on_reset(handle_reset)",
+                "println \"[BIOS] SiliconCraft Bootloader 1.0\"",
+                "println \"[BIOS] Sanitizing RAM after reset...\"",
+                "var addr = 64",
+                "while addr < 128 {",
+                "    mem[addr] = 0",
+                "    addr++",
+                "}",
+                "println \"[BIOS] RAM sanitized: 64 words cleared.\"",
+                "println \"[BIOS] Searching for bootable Storage Drive...\"",
+                "var bootDrive = 1",
+                "var cap = storage[1].size()",
+                "if cap == 0 {",
+                "    bootDrive = 0",
+                "    cap = storage[0].size()",
+                "}",
+                "if cap == 0 {",
+                "    println \"[FATAL] No bootable storage drive detected!\"",
+                "    halt",
+                "}",
+                "print \"[BIOS] Booting from Storage Drive: \"",
+                "println bootDrive",
+                "print \"[BIOS] Drive capacity (bytes): \"",
+                "println cap",
+                "println \"[BIOS] Chainloading program...\"",
+                "A = bootDrive",
+                "B = 0x5343",
+                "storage.exec(A)",
+                "fn handle_reset() {",
+                "    println \"[BIOS] Reset event caught. Sanitizing RAM...\"",
+                "    var raddr = 64",
+                "    while raddr < 128 {",
+                "        mem[raddr] = 0",
+                "        raddr++",
+                "    }",
+                "    println \"[BIOS] Memory sanitized. Resuming boot sequence.\"",
+                "    IRET",
+                "}"
+        );
+
+        List<String> osKernelN = List.of(
+                "println \"==========================================\"",
+                "println \"       SILICON-OS KERNEL INITIALIZED      \"",
+                "println \"==========================================\"",
+                "print \"Booted from Storage Drive: \"",
+                "println A",
+                "if B != 0x5343 {",
+                "    println \"Warning: Bootloader signature mismatch!\"",
+                "}",
+                "if B == 0x5343 {",
+                "    println \"Bootloader handoff signature verified: OK\"",
+                "}",
+                "println \"Silicon-OS kernel running from Storage Drive.\"",
+                "println \"System ready for commands.\""
+        );
+
+        NCompiler.CompileResult bootResult = NCompiler.compile(bootloaderN);
+        assertTrue(bootResult.success(), "Bootloader N compilation failed: " + bootResult.errors());
+
+        NCompiler.CompileResult kernelResult = NCompiler.compile(osKernelN);
+        assertTrue(kernelResult.success(), "Kernel N compilation failed: " + kernelResult.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = new HashSet<>(bootResult.requiredInstructions());
+        isa.addAll(kernelResult.requiredInstructions());
+        cpu.configure(isa, 256, bootResult.assembly(), false, 0);
+
+        byte[] drive1Bytes = new byte[512];
+        cpu.setStorageDrive(1, drive1Bytes);
+        cpu.setDriveProgram(1, kernelResult.assembly());
+
+        // Simulate dirty RAM in user area
+        cpu.getRam()[70] = 0xABCD;
+        cpu.getRam()[100] = 0x1234;
+
+        cpu.powerOn();
+        cpu.tick(800);
+
+        assertEquals(1, cpu.getRegA());
+        assertEquals(0x5343, cpu.getRegB());
+        assertEquals(0, cpu.getRam()[70], "RAM[70] should be cleared by bootloader memory sanitization");
+        assertEquals(0, cpu.getRam()[100], "RAM[100] should be cleared by bootloader memory sanitization");
+
+        String terminal = String.join("\n", cpu.getTerminalOutput());
+        assertTrue(terminal.contains("[BIOS] SiliconCraft Bootloader 1.0"));
+        assertTrue(terminal.contains("[BIOS] Sanitizing RAM after reset..."));
+        assertTrue(terminal.contains("[BIOS] RAM sanitized: 64 words cleared."));
+        assertTrue(terminal.contains("SILICON-OS KERNEL INITIALIZED"));
+        assertTrue(terminal.contains("Bootloader handoff signature verified: OK"));
+
+        // Verify warm reset in N
+        VirtualCpu cpuResetN = new VirtualCpu();
+        cpuResetN.configure(isa, 256, bootResult.assembly(), false, 0);
+        cpuResetN.setStorageDrive(1, drive1Bytes);
+        cpuResetN.setDriveProgram(1, kernelResult.assembly());
+        cpuResetN.powerOn();
+        cpuResetN.tick(5); // Registers on_reset
+
+        cpuResetN.getRam()[80] = 0x9999;
+        cpuResetN.reset();
+        assertEquals(0x9999, cpuResetN.getRam()[80], "RAM preserved across reset before handler executes");
+        cpuResetN.tick(800);
+        assertEquals(0, cpuResetN.getRam()[80], "RAM[80] cleaned by N reset handler");
+        assertTrue(String.join("\n", cpuResetN.getTerminalOutput()).contains("Reset event caught. Sanitizing RAM..."));
     }
 
     @Test

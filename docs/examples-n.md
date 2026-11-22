@@ -326,7 +326,7 @@ println "Data persisted successfully."
 
 Demonstrates probing for installed storage drives (Flash or NVMe) and chainloading/executing a program burned to **Storage Drive X** using `storage.exec(d)`.
 
-Registers and RAM are preserved across chainloading, allowing the bootloader to pass system parameters (such as the boot drive index and handoff signatures) directly into the loaded program.
+Registers and RAM are preserved across chainloading and CPU resets. The bootloader performs memory sanitization and hooks `on_reset` (Vector 14) to clean system RAM upon reboot, ensuring a clean memory state before handing off control to the loaded operating system.
 
 ### Part 1: Bootloader (`bootloader.n`)
 *Burned into SoC ROM (BIOS)*
@@ -337,7 +337,20 @@ Registers and RAM are preserved across chainloading, allowing the bootloader to 
 // Description: BIOS bootloader that launches OS from Storage Drive
 // ============================================
 
+// Register Vector 14 (RESET) handler to clean memory after a reset
+on_reset(handle_reset)
+
 println "[BIOS] SiliconCraft Bootloader 1.0"
+
+// Memory cleanup after reset: sanitize user RAM space (addresses 64..128)
+println "[BIOS] Sanitizing RAM after reset..."
+var addr = 64
+while addr < 128 {
+    mem[addr] = 0
+    addr++
+}
+println "[BIOS] RAM sanitized: 64 words cleared."
+
 println "[BIOS] Searching for bootable Storage Drive..."
 
 // Check if Storage Drive 1 (Expansion Slot 1: Flash or NVMe) is installed
@@ -370,6 +383,18 @@ B = 0x5343
 
 // Chainload and execute program burned to boot drive (Flash or NVMe)
 storage.exec(A)
+
+// --- Reset Handler: Memory Cleanup after Reset ---
+fn handle_reset() {
+    println "[BIOS] Reset event caught. Sanitizing RAM..."
+    var raddr = 64
+    while raddr < 128 {
+        mem[raddr] = 0
+        raddr++
+    }
+    println "[BIOS] Memory sanitized. Resuming boot sequence."
+    IRET
+}
 ```
 
 ### Part 2: Operating System Kernel (`os_kernel.n`)
