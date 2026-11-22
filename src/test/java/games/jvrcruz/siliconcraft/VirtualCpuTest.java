@@ -688,4 +688,44 @@ public class VirtualCpuTest {
         assertEquals(VirtualCpu.State.HALTED, cpu.getState());
         assertEquals(100, cpu.getRegC(), "Program loaded from UTF-8 binary storage should increment C from 99 to 100");
     }
+
+    @Test
+    public void testLargeRamAnd1024MBStorageDrive() {
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "SSIZE", "SREAD", "SWRITE", "SBLKR", "SBLKW", "SSEL", "HLT");
+        List<String> code = List.of(
+                "SSEL 1",
+                "SSIZE A",                       // Should return 1024 MB = 1,073,741,824 bytes
+                "SREAD B, 500000",               // Unwritten sector: returns 0
+                "SWRITE 500000, 85",             // Write 85 (0x55) at address 500,000
+                "SREAD C, 500000",               // Read back: should be 85
+                "MOV [1000000], 42",             // Write to 1 MB RAM address
+                "SBLKW 1, 600000, 1000000, 1",   // Write RAM[1000000] to storage drive 1 at 600,000
+                "SBLKR 2000000, 1, 600000, 1",   // Read from drive 1 at 600,000 to RAM[2000000]
+                "HLT"
+        );
+
+        // 1 module of 1024 KB = 1048576 bytes
+        cpu.configure(isa, 1024 * 1024, code, true, 0);
+        assertEquals(1048576, cpu.getRam().length, "RAM should be 1024 KB = 1048576 bytes");
+
+        // Dynamically upgrade to 4 modules = 4096 KB = 4194304 bytes
+        cpu.updateHardware(4 * 1024 * 1024, true, 1024 * 1024);
+        assertEquals(4194304, cpu.getRam().length, "RAM should be 4096 KB = 4194304 bytes");
+
+        // Drive 1: 1024 MB storage drive
+        int drive1CapBytes = 1024 * 1024 * 1024;
+        cpu.setDriveCapacity(1, drive1CapBytes);
+        cpu.setStorageDrive(1, new byte[0]);
+
+        cpu.powerOn();
+        cpu.tick(100);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(drive1CapBytes, cpu.getRegA(), "SSIZE should report 1024 MB = 1,073,741,824 bytes");
+        assertEquals(0, cpu.getRegB(), "Unwritten sector should read 0");
+        assertEquals(85, cpu.getRegC(), "Written sector should read 85");
+        assertEquals(42, cpu.getRam()[1000000], "RAM[1000000] should be 42");
+        assertEquals(42, cpu.getRam()[2000000], "RAM[2000000] should be 42 via SBLKR");
+    }
 }

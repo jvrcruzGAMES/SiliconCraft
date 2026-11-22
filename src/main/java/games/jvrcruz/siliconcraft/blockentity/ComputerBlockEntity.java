@@ -8,6 +8,8 @@ import games.jvrcruz.siliconcraft.menu.ComputerMenu;
 import games.jvrcruz.siliconcraft.network.PlayAudioPacket;
 import games.jvrcruz.siliconcraft.network.SyncFramebufferPacket;
 import games.jvrcruz.siliconcraft.network.SyncTerminalPacket;
+import games.jvrcruz.siliconcraft.vm.ComputerHost;
+import games.jvrcruz.siliconcraft.vm.ComputerThreadManager;
 import games.jvrcruz.siliconcraft.vm.VirtualCpu;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -47,12 +49,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
-public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
+public class ComputerBlockEntity extends BlockEntity implements MenuProvider, ComputerHost {
     private SocData socData = SocData.EMPTY;
     private final VirtualCpu cpu = new VirtualCpu();
     private List<String> lastSyncedOutput = Collections.emptyList();
     private byte[] onboardStorage = new byte[0];
+    private volatile long lastGameTime = 0L;
 
     // Inventory: 6 slots (0-1: NVMe storage drives max 1 each; 2-5: RAM modules max 1 each)
     private final ItemStackHandler itemHandler = new ItemStackHandler(6) {
@@ -149,6 +153,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
                 setChanged();
             }
         });
+        this.cpu.setTimeSupplier(() -> lastGameTime);
     }
 
     public ItemStackHandler getItemHandler() {
@@ -173,7 +178,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
             ItemStack stack = itemHandler.getStackInSlot(i);
             if (!stack.isEmpty() && stack.is(ModItems.RAM.get())) {
                 RamData rd = stack.get(ModDataComponents.RAM_DATA.get());
-                ram += (rd != null ? rd.capacity() : 256);
+                ram += (rd != null ? rd.capacity() : 1024 * 1024);
             }
         }
         return ram;
@@ -210,26 +215,25 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
 
         // Sync Drive 0: Onboard SoC Flash
         if (socData != null && socData.storageCapacity() > 0) {
-            int targetBytes = (int) Math.min(16 * 1024 * 1024L, (long) socData.storageCapacity() * 1024L);
-            if (onboardStorage == null || onboardStorage.length != targetBytes) {
-                byte[] newSt = new byte[targetBytes];
-                if (onboardStorage != null) {
-                    System.arraycopy(onboardStorage, 0, newSt, 0, Math.min(onboardStorage.length, targetBytes));
-                }
-                onboardStorage = newSt;
-            }
-            cpu.setStorageDrive(0, onboardStorage);
+            long capBytes = (long) socData.storageCapacity() * 1024L;
+            cpu.setDriveCapacity(0, (int) Math.min(Integer.MAX_VALUE, capBytes));
+            cpu.setStorageDrive(0, onboardStorage != null ? onboardStorage : new byte[0]);
         } else {
+            cpu.setDriveCapacity(0, 0);
             cpu.setStorageDrive(0, new byte[0]);
         }
 
         // Sync Drive 1: Storage Slot 1 (itemHandler slot 0)
         ItemStack slot0 = itemHandler.getStackInSlot(0);
         if (!slot0.isEmpty() && slot0.is(ModItems.STORAGE.get())) {
+            StorageData sd = slot0.get(ModDataComponents.STORAGE_DATA.get());
+            int capKb = (sd != null ? sd.capacity() : 1024 * 1024);
+            cpu.setDriveCapacity(1, (int) Math.min(Integer.MAX_VALUE, (long) capKb * 1024L));
             cpu.setStorageDrive(1, StorageItem.getStorageBytes(slot0));
             RomData rd = slot0.get(ModDataComponents.ROM_DATA.get());
             cpu.setDriveProgram(1, rd != null ? rd.lines() : Collections.emptyList());
         } else {
+            cpu.setDriveCapacity(1, 0);
             cpu.setStorageDrive(1, new byte[0]);
             cpu.setDriveProgram(1, Collections.emptyList());
         }
@@ -237,10 +241,14 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
         // Sync Drive 2: Storage Slot 2 (itemHandler slot 1)
         ItemStack slot1 = itemHandler.getStackInSlot(1);
         if (!slot1.isEmpty() && slot1.is(ModItems.STORAGE.get())) {
+            StorageData sd = slot1.get(ModDataComponents.STORAGE_DATA.get());
+            int capKb = (sd != null ? sd.capacity() : 1024 * 1024);
+            cpu.setDriveCapacity(2, (int) Math.min(Integer.MAX_VALUE, (long) capKb * 1024L));
             cpu.setStorageDrive(2, StorageItem.getStorageBytes(slot1));
             RomData rd = slot1.get(ModDataComponents.ROM_DATA.get());
             cpu.setDriveProgram(2, rd != null ? rd.lines() : Collections.emptyList());
         } else {
+            cpu.setDriveCapacity(2, 0);
             cpu.setStorageDrive(2, new byte[0]);
             cpu.setDriveProgram(2, Collections.emptyList());
         }
@@ -306,8 +314,13 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
             return;
         }
 
-        this.cpu.setTimeSupplier(() -> level != null ? level.getGameTime() : 0L);
         cpu.togglePower();
+        if (cpu.getState() == VirtualCpu.State.RUNNING) {
+            ComputerThreadManager.register(this);
+        } else {
+            ComputerThreadManager.unregister(this);
+        }
+
         if (level != null) {
             boolean isRunning = (cpu.getState() == VirtualCpu.State.RUNNING);
             if (getBlockState().getValue(ComputerBlock.POWERED) != isRunning) {
@@ -335,25 +348,39 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
     }
 
     public void tick(Level level, BlockPos pos, BlockState state) {
-        this.cpu.setTimeSupplier(level::getGameTime);
+        this.lastGameTime = level.getGameTime();
         if (cpu.getState() == VirtualCpu.State.RUNNING) {
-            if (cpu.getTimerHz() > 0) {
-                int framesPerTick = Math.max(1, cpu.getTimerHz() / 20);
-                for (int f = 0; f < framesPerTick; f++) {
-                    cpu.queueTimerInterrupt();
-                }
-            }
-            cpu.tick(100);
+            ComputerThreadManager.register(this);
             if (!state.getValue(ComputerBlock.POWERED)) {
                 level.setBlock(pos, state.setValue(ComputerBlock.POWERED, true), 3);
             }
         } else {
+            ComputerThreadManager.unregister(this);
             if (state.getValue(ComputerBlock.POWERED)) {
                 level.setBlock(pos, state.setValue(ComputerBlock.POWERED, false), 3);
             }
         }
         syncTerminal(level, pos, state);
         syncDisplayAndAudio(level, pos);
+    }
+
+    public void tickAsyncCpu(int cycles) {
+        if (cpu.getState() != VirtualCpu.State.RUNNING) {
+            return;
+        }
+        cpu.tick(cycles);
+    }
+
+    @Override
+    public void setRemoved() {
+        super.setRemoved();
+        ComputerThreadManager.unregister(this);
+    }
+
+    @Override
+    public void onChunkUnloaded() {
+        super.onChunkUnloaded();
+        ComputerThreadManager.unregister(this);
     }
 
     private void syncDisplayAndAudio(Level level, BlockPos pos) {
@@ -387,11 +414,21 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
             }
 
             if (speakerPos != null) {
-                // Broadcast in the world at speaker position
-                PacketDistributor.sendToPlayersTrackingChunk(serverLevel, new ChunkPos(speakerPos),
-                        new PlayAudioPacket(speakerPos, audioSamples, 8000, true));
+                // Speaker connected: broadcast to nearby players (within 32 blocks) and anyone with screen open
+                Set<ServerPlayer> targets = new HashSet<>();
+                double maxDistSq = 32.0 * 32.0;
+                for (ServerPlayer player : serverLevel.players()) {
+                    if (player.distanceToSqr(speakerPos.getX() + 0.5, speakerPos.getY() + 0.5, speakerPos.getZ() + 0.5) <= maxDistSq) {
+                        targets.add(player);
+                    } else if (player.containerMenu instanceof ComputerMenu cMenu && cMenu.getBlockEntity() == this) {
+                        targets.add(player);
+                    }
+                }
+                for (ServerPlayer player : targets) {
+                    PacketDistributor.sendToPlayer(player, new PlayAudioPacket(speakerPos, audioSamples, 8000, true));
+                }
             } else {
-                // Audio plays only on computer screen by default (for players viewing this computer)
+                // No speaker: Audio plays ONLY on computer screen (players with screen open)
                 for (ServerPlayer player : serverLevel.players()) {
                     if (player.containerMenu instanceof ComputerMenu cMenu && cMenu.getBlockEntity() == this) {
                         PacketDistributor.sendToPlayer(player, new PlayAudioPacket(pos, audioSamples, 8000, false));
@@ -404,31 +441,33 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
     @Override
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
-        tag.put("Inventory", itemHandler.serializeNBT(registries));
-        tag.putInt("DisplayMode", cpu.getDisplayMode());
-        tag.putIntArray("Framebuffer", cpu.getFramebuffer());
-        if (socData != null) {
-            CompoundTag socTag = new CompoundTag();
-            ListTag instTag = new ListTag();
-            for (String s : socData.instructions()) instTag.add(StringTag.valueOf(s));
-            socTag.put("Instructions", instTag);
-            socTag.putInt("RamCapacity", socData.ramCapacity());
-            ListTag biosTag = new ListTag();
-            for (String s : socData.bios()) biosTag.add(StringTag.valueOf(s));
-            socTag.put("Bios", biosTag);
-            socTag.putBoolean("HasNvme", socData.hasNvme());
-            socTag.putInt("StorageCapacity", socData.storageCapacity());
-            tag.put("SocData", socTag);
-        }
+        synchronized (cpu.getExecutionLock()) {
+            tag.put("Inventory", itemHandler.serializeNBT(registries));
+            tag.putInt("DisplayMode", cpu.getDisplayMode());
+            tag.putIntArray("Framebuffer", cpu.getFramebuffer());
+            if (socData != null) {
+                CompoundTag socTag = new CompoundTag();
+                ListTag instTag = new ListTag();
+                for (String s : socData.instructions()) instTag.add(StringTag.valueOf(s));
+                socTag.put("Instructions", instTag);
+                socTag.putInt("RamCapacity", socData.ramCapacity());
+                ListTag biosTag = new ListTag();
+                for (String s : socData.bios()) biosTag.add(StringTag.valueOf(s));
+                socTag.put("Bios", biosTag);
+                socTag.putBoolean("HasNvme", socData.hasNvme());
+                socTag.putInt("StorageCapacity", socData.storageCapacity());
+                tag.put("SocData", socTag);
+            }
 
-        ListTag terminalTag = new ListTag();
-        for (String line : cpu.getTerminalOutput()) {
-            terminalTag.add(StringTag.valueOf(line));
-        }
-        tag.put("TerminalOutput", terminalTag);
-        tag.putInt("CpuState", cpu.getState().ordinal());
-        if (onboardStorage != null && onboardStorage.length > 0) {
-            tag.putByteArray("OnboardStorage", onboardStorage);
+            ListTag terminalTag = new ListTag();
+            for (String line : cpu.getTerminalOutput()) {
+                terminalTag.add(StringTag.valueOf(line));
+            }
+            tag.put("TerminalOutput", terminalTag);
+            tag.putInt("CpuState", cpu.getState().ordinal());
+            if (onboardStorage != null && onboardStorage.length > 0) {
+                tag.putByteArray("OnboardStorage", onboardStorage);
+            }
         }
     }
 
@@ -482,6 +521,14 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
             if (fb.length == cpu.getFramebuffer().length) {
                 System.arraycopy(fb, 0, cpu.getFramebuffer(), 0, fb.length);
                 cpu.setFbDirty(true);
+            }
+        }
+
+        if (tag.contains("CpuState")) {
+            int stateOrd = tag.getInt("CpuState");
+            if (stateOrd == VirtualCpu.State.RUNNING.ordinal() && socData != null && !socData.instructions().isEmpty()) {
+                cpu.powerOn();
+                ComputerThreadManager.register(this);
             }
         }
     }

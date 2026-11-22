@@ -23,12 +23,15 @@ public class SocItem extends Item {
         } else {
             tooltip.add(Component.translatable("tooltip.siliconcraft.soc.cpu", data.instructions().size()).withStyle(ChatFormatting.GOLD));
             tooltip.add(Component.literal("  " + String.join(", ", data.instructions())).withStyle(ChatFormatting.DARK_AQUA));
-            tooltip.add(Component.translatable("tooltip.siliconcraft.soc.ram", data.ramCapacity()).withStyle(ChatFormatting.GREEN));
+            String ramStr = (data.ramCapacity() >= 1024) ? (data.ramCapacity() / 1024) + " KB" : data.ramCapacity() + " Bytes";
+            tooltip.add(Component.translatable("tooltip.siliconcraft.soc.ram", ramStr).withStyle(ChatFormatting.GREEN));
             tooltip.add(Component.translatable("tooltip.siliconcraft.soc.bios", data.bios().size()).withStyle(ChatFormatting.LIGHT_PURPLE));
             if (data.hasNvme()) {
-                tooltip.add(Component.translatable("tooltip.siliconcraft.soc.nvme", data.storageCapacity()).withStyle(ChatFormatting.AQUA));
+                String capStr = (data.storageCapacity() >= 1024) ? (data.storageCapacity() / 1024) + " MB" : data.storageCapacity() + " KB";
+                tooltip.add(Component.translatable("tooltip.siliconcraft.soc.nvme", capStr).withStyle(ChatFormatting.AQUA));
             } else if (data.storageCapacity() > 0) {
-                tooltip.add(Component.translatable("tooltip.siliconcraft.soc.flash", data.storageCapacity()).withStyle(ChatFormatting.AQUA));
+                String capStr = (data.storageCapacity() >= 1024) ? (data.storageCapacity() / 1024) + " MB" : data.storageCapacity() + " KB";
+                tooltip.add(Component.translatable("tooltip.siliconcraft.soc.flash", capStr).withStyle(ChatFormatting.AQUA));
             } else {
                 tooltip.add(Component.translatable("tooltip.siliconcraft.soc.no_storage").withStyle(ChatFormatting.DARK_GRAY));
             }

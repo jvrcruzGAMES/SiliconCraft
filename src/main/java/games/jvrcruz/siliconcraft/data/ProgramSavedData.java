@@ -27,7 +27,7 @@ public class ProgramSavedData extends SavedData {
         if (programs.isEmpty()) {
             programs.add(new ProgramEntry(
                     "demo_counter",
-                    "counter.asm",
+                    "counter.o",
                     "Any",
                     List.of(
                             "; Countdown demo",
@@ -43,7 +43,7 @@ public class ProgramSavedData extends SavedData {
             ));
             programs.add(new ProgramEntry(
                     "demo_fibonacci",
-                    "fibonacci.asm",
+                    "fibonacci.o",
                     "Any",
                     List.of(
                             "; Fibonacci sequence",

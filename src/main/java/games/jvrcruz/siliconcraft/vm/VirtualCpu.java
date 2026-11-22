@@ -21,7 +21,7 @@ public class VirtualCpu {
         ERROR
     }
 
-    private State state = State.OFF;
+    private volatile State state = State.OFF;
     private int pc = 0;
     private int regA = 0;
     private int regB = 0;
@@ -32,17 +32,19 @@ public class VirtualCpu {
     private int cycles = 0;
     private String errorMessage = "";
 
+    private final Object executionLock = new Object();
+
     private final Set<String> supportedInstructions = new HashSet<>();
     private final List<String> program = new ArrayList<>();
     private final Map<String, Integer> labels = new HashMap<>();
     private final Map<Integer, List<String>> drivePrograms = new HashMap<>();
-    private final List<String> terminalOutput = new ArrayList<>();
+    private final List<String> terminalOutput = new java.util.concurrent.CopyOnWriteArrayList<>();
     private final StringBuilder lineBuffer = new StringBuilder();
     private final ByteArrayOutputStream utf8ByteBuf = new ByteArrayOutputStream();
     private final Deque<Integer> callStack = new ArrayDeque<>();
     private final Deque<Integer> dataStack = new ArrayDeque<>();
     private int sleepTicksRemaining = 0;
-    private LongSupplier timeSupplier = System::currentTimeMillis;
+    private volatile LongSupplier timeSupplier = System::currentTimeMillis;
     private final Random random = new Random();
     private int[] ram = new int[256];
     private boolean hasNvme = false;
@@ -50,14 +52,15 @@ public class VirtualCpu {
 
     public static final int MAX_DRIVES = 4;
     private final byte[][] storageDrives = new byte[MAX_DRIVES][];
+    private final int[] driveCapacities = new int[MAX_DRIVES];
     private int selectedDrive = 0;
     private BiConsumer<Integer, byte[]> driveWriteListener;
 
     public static final int FB_WIDTH = 240;
     public static final int FB_HEIGHT = 135;
-    private int displayMode = 0; // 0 = text mode, 1 = framebuffer mode
+    private volatile int displayMode = 0; // 0 = text mode, 1 = framebuffer mode
     private final int[] framebuffer = new int[FB_WIDTH * FB_HEIGHT];
-    private boolean fbDirty = false;
+    private volatile boolean fbDirty = false;
 
     // Bare-bones audio buffer (8000 Hz, 8-bit unsigned PCM samples)
     private byte[] audioQueue = new byte[65536];
@@ -114,6 +117,343 @@ public class VirtualCpu {
     private boolean interruptsEnabled = true;
     private boolean inInterruptHandler = false;
 
+    // Bytecode opcode constants for O(1) integer switch
+    private static final int OP_UNKNOWN = 0;
+    private static final int OP_NOP = 1;
+    private static final int OP_MOV = 2;
+    private static final int OP_ADD = 3;
+    private static final int OP_SUB = 4;
+    private static final int OP_MUL = 5;
+    private static final int OP_DIV = 6;
+    private static final int OP_MOD = 7;
+    private static final int OP_INC = 8;
+    private static final int OP_DEC = 9;
+    private static final int OP_CMP = 10;
+    private static final int OP_AND = 11;
+    private static final int OP_OR = 12;
+    private static final int OP_XOR = 13;
+    private static final int OP_NOT = 14;
+    private static final int OP_SHL = 15;
+    private static final int OP_SHR = 16;
+    private static final int OP_JMP = 17;
+    private static final int OP_JZ = 18;
+    private static final int OP_JNZ = 19;
+    private static final int OP_JS = 20;
+    private static final int OP_JNS = 21;
+    private static final int OP_JL = 22;
+    private static final int OP_JLE = 23;
+    private static final int OP_JG = 24;
+    private static final int OP_JGE = 25;
+    private static final int OP_CALL = 26;
+    private static final int OP_RET = 27;
+    private static final int OP_PUSH = 28;
+    private static final int OP_POP = 29;
+    private static final int OP_IVEC = 30;
+    private static final int OP_IRET = 31;
+    private static final int OP_CLI = 32;
+    private static final int OP_STI = 33;
+    private static final int OP_INT = 34;
+    private static final int OP_OUT = 35;
+    private static final int OP_OUTH = 36;
+    private static final int OP_OUTC = 37;
+    private static final int OP_CLS = 38;
+    private static final int OP_SLEEP = 39;
+    private static final int OP_TIME = 40;
+    private static final int OP_RAND = 41;
+    private static final int OP_INPAD = 42;
+    private static final int OP_TIMER = 43;
+    private static final int OP_VBLANK = 44;
+    private static final int OP_SSIZE = 45;
+    private static final int OP_SREAD = 46;
+    private static final int OP_SWRITE = 47;
+    private static final int OP_SBLKR = 48;
+    private static final int OP_SBLKW = 49;
+    private static final int OP_SCOUNT = 50;
+    private static final int OP_SSEL = 51;
+    private static final int OP_SDRV = 52;
+    private static final int OP_SEXEC = 53;
+    private static final int OP_FBMODE = 54;
+    private static final int OP_FBSET = 55;
+    private static final int OP_FBGET = 56;
+    private static final int OP_FBCLR = 57;
+    private static final int OP_FBRECT = 58;
+    private static final int OP_FBLINE = 59;
+    private static final int OP_FBLIT = 60;
+    private static final int OP_FBSWAP = 61;
+    private static final int OP_FBWIDTH = 62;
+    private static final int OP_FBHEIGHT = 63;
+    private static final int OP_APUSH = 64;
+    private static final int OP_ABUFW = 65;
+    private static final int OP_ACLR = 66;
+    private static final int OP_ASTAT = 67;
+    private static final int OP_ATONE = 68;
+    private static final int OP_APLAY = 69;
+    private static final int OP_HLT = 70;
+    private static final int OP_DIRECTIVE = 71;
+
+    private static final Map<String, Integer> OPCODE_MAP = new HashMap<>();
+    static {
+        OPCODE_MAP.put("NOP", OP_NOP);
+        OPCODE_MAP.put("MOV", OP_MOV);
+        OPCODE_MAP.put("ADD", OP_ADD);
+        OPCODE_MAP.put("SUB", OP_SUB);
+        OPCODE_MAP.put("MUL", OP_MUL);
+        OPCODE_MAP.put("DIV", OP_DIV);
+        OPCODE_MAP.put("MOD", OP_MOD);
+        OPCODE_MAP.put("INC", OP_INC);
+        OPCODE_MAP.put("DEC", OP_DEC);
+        OPCODE_MAP.put("CMP", OP_CMP);
+        OPCODE_MAP.put("AND", OP_AND);
+        OPCODE_MAP.put("OR", OP_OR);
+        OPCODE_MAP.put("XOR", OP_XOR);
+        OPCODE_MAP.put("NOT", OP_NOT);
+        OPCODE_MAP.put("SHL", OP_SHL);
+        OPCODE_MAP.put("SHR", OP_SHR);
+        OPCODE_MAP.put("JMP", OP_JMP);
+        OPCODE_MAP.put("JZ", OP_JZ);
+        OPCODE_MAP.put("JNZ", OP_JNZ);
+        OPCODE_MAP.put("JS", OP_JS);
+        OPCODE_MAP.put("JNS", OP_JNS);
+        OPCODE_MAP.put("JL", OP_JL);
+        OPCODE_MAP.put("JLE", OP_JLE);
+        OPCODE_MAP.put("JG", OP_JG);
+        OPCODE_MAP.put("JGE", OP_JGE);
+        OPCODE_MAP.put("CALL", OP_CALL);
+        OPCODE_MAP.put("RET", OP_RET);
+        OPCODE_MAP.put("PUSH", OP_PUSH);
+        OPCODE_MAP.put("POP", OP_POP);
+        OPCODE_MAP.put("IVEC", OP_IVEC);
+        OPCODE_MAP.put("IRET", OP_IRET);
+        OPCODE_MAP.put("CLI", OP_CLI);
+        OPCODE_MAP.put("STI", OP_STI);
+        OPCODE_MAP.put("INT", OP_INT);
+        OPCODE_MAP.put("OUT", OP_OUT);
+        OPCODE_MAP.put("OUTH", OP_OUTH);
+        OPCODE_MAP.put("OUTC", OP_OUTC);
+        OPCODE_MAP.put("CLS", OP_CLS);
+        OPCODE_MAP.put("SLEEP", OP_SLEEP);
+        OPCODE_MAP.put("TIME", OP_TIME);
+        OPCODE_MAP.put("RAND", OP_RAND);
+        OPCODE_MAP.put("INPAD", OP_INPAD);
+        OPCODE_MAP.put("TIMER", OP_TIMER);
+        OPCODE_MAP.put("SETTIMER", OP_TIMER);
+        OPCODE_MAP.put("VBLANK", OP_VBLANK);
+        OPCODE_MAP.put("SSIZE", OP_SSIZE);
+        OPCODE_MAP.put("SREAD", OP_SREAD);
+        OPCODE_MAP.put("SWRITE", OP_SWRITE);
+        OPCODE_MAP.put("SBLKR", OP_SBLKR);
+        OPCODE_MAP.put("SBLKW", OP_SBLKW);
+        OPCODE_MAP.put("SCOUNT", OP_SCOUNT);
+        OPCODE_MAP.put("SSEL", OP_SSEL);
+        OPCODE_MAP.put("SDRV", OP_SDRV);
+        OPCODE_MAP.put("SEXEC", OP_SEXEC);
+        OPCODE_MAP.put("SBOOT", OP_SEXEC);
+        OPCODE_MAP.put("FBMODE", OP_FBMODE);
+        OPCODE_MAP.put("FBSET", OP_FBSET);
+        OPCODE_MAP.put("FBGET", OP_FBGET);
+        OPCODE_MAP.put("FBCLR", OP_FBCLR);
+        OPCODE_MAP.put("FBRECT", OP_FBRECT);
+        OPCODE_MAP.put("FBLINE", OP_FBLINE);
+        OPCODE_MAP.put("FBLIT", OP_FBLIT);
+        OPCODE_MAP.put("FBSWAP", OP_FBSWAP);
+        OPCODE_MAP.put("FBWIDTH", OP_FBWIDTH);
+        OPCODE_MAP.put("FBHEIGHT", OP_FBHEIGHT);
+        OPCODE_MAP.put("APUSH", OP_APUSH);
+        OPCODE_MAP.put("ABUFW", OP_ABUFW);
+        OPCODE_MAP.put("ACLR", OP_ACLR);
+        OPCODE_MAP.put("ASTAT", OP_ASTAT);
+        OPCODE_MAP.put("ATONE", OP_ATONE);
+        OPCODE_MAP.put("APLAY", OP_APLAY);
+        OPCODE_MAP.put("HLT", OP_HLT);
+    }
+
+    private static final int TYPE_NONE = 0;
+    private static final int TYPE_REG = 1;
+    private static final int TYPE_IMM = 2;
+    private static final int TYPE_RAM_IMM = 3;
+    private static final int TYPE_RAM_REG = 4;
+    private static final int TYPE_DYNAMIC = 5;
+
+    private static final class CompiledInstruction {
+        final int opCode;
+        final boolean isSupported;
+        final String rawLine;
+        final String rawArgs;
+        final int destType;
+        final int destReg;
+        final int destImm;
+        final int srcType;
+        final int srcReg;
+        final int srcImm;
+        final int targetPc;
+
+        CompiledInstruction(int opCode, boolean isSupported, String rawLine, String rawArgs,
+                            int destType, int destReg, int destImm,
+                            int srcType, int srcReg, int srcImm,
+                            int targetPc) {
+            this.opCode = opCode;
+            this.isSupported = isSupported;
+            this.rawLine = rawLine;
+            this.rawArgs = rawArgs;
+            this.destType = destType;
+            this.destReg = destReg;
+            this.destImm = destImm;
+            this.srcType = srcType;
+            this.srcReg = srcReg;
+            this.srcImm = srcImm;
+            this.targetPc = targetPc;
+        }
+    }
+
+    private CompiledInstruction[] compiledProgram = new CompiledInstruction[0];
+
+    private int getReg(int reg) {
+        return switch (reg) {
+            case 0 -> regA;
+            case 1 -> regB;
+            case 2 -> regC;
+            case 3 -> regD;
+            default -> 0;
+        };
+    }
+
+    private void setReg(int reg, int val) {
+        switch (reg) {
+            case 0 -> regA = val;
+            case 1 -> regB = val;
+            case 2 -> regC = val;
+            case 3 -> regD = val;
+        }
+    }
+
+    private static int parseRegister(String s) {
+        if (s == null) return -1;
+        String u = s.trim().toUpperCase(Locale.ROOT);
+        return switch (u) {
+            case "A" -> 0;
+            case "B" -> 1;
+            case "C" -> 2;
+            case "D" -> 3;
+            default -> -1;
+        };
+    }
+
+    private int[] parseOperand(String token) {
+        token = token.trim();
+        int reg = parseRegister(token);
+        if (reg != -1) {
+            return new int[]{TYPE_REG, reg, 0};
+        }
+        if (token.startsWith("[") && token.endsWith("]")) {
+            String inner = token.substring(1, token.length() - 1).trim();
+            int innerReg = parseRegister(inner);
+            if (innerReg != -1) {
+                return new int[]{TYPE_RAM_REG, innerReg, 0};
+            }
+            try {
+                int imm = parseLiteral(inner);
+                return new int[]{TYPE_RAM_IMM, -1, imm};
+            } catch (Exception e) {
+                return new int[]{TYPE_DYNAMIC, -1, 0};
+            }
+        }
+        try {
+            int imm = parseLiteral(token);
+            return new int[]{TYPE_IMM, -1, imm};
+        } catch (Exception e) {
+            return new int[]{TYPE_DYNAMIC, -1, 0};
+        }
+    }
+
+    private int parseLiteral(String s) {
+        s = s.trim();
+        if (labels.containsKey(s.toLowerCase(Locale.ROOT))) {
+            return labels.get(s.toLowerCase(Locale.ROOT));
+        }
+        if (s.startsWith("0x") || s.startsWith("0X")) {
+            return (int) Long.parseLong(s.substring(2), 16);
+        }
+        if (s.startsWith("-0x") || s.startsWith("-0X")) {
+            return (int) -Long.parseLong(s.substring(3), 16);
+        }
+        if (s.startsWith("$")) {
+            return (int) Long.parseLong(s.substring(1), 16);
+        }
+        if (s.startsWith("-$")) {
+            return (int) -Long.parseLong(s.substring(2), 16);
+        }
+        return Integer.parseInt(s);
+    }
+
+    public void compileBytecode() {
+        compiledProgram = new CompiledInstruction[program.size()];
+        for (int i = 0; i < program.size(); i++) {
+            compiledProgram[i] = compileLine(i, program.get(i));
+        }
+    }
+
+    private static int findLabelColon(String line) {
+        int colon = line.indexOf(':');
+        if (colon == -1) return -1;
+        int space = line.indexOf(' ');
+        if (space != -1 && colon > space) return -1;
+        int q1 = line.indexOf('\"');
+        if (q1 != -1 && colon > q1) return -1;
+        int q2 = line.indexOf('\'');
+        if (q2 != -1 && colon > q2) return -1;
+        return colon;
+    }
+
+    private CompiledInstruction compileLine(int lineNum, String rawLine) {
+        int commentIndex = rawLine.indexOf(';');
+        if (commentIndex == -1) commentIndex = rawLine.indexOf("//");
+        if (commentIndex == -1) commentIndex = rawLine.indexOf('#');
+        String line = (commentIndex != -1 ? rawLine.substring(0, commentIndex) : rawLine).trim();
+        if (line.isEmpty() || line.endsWith(":")) {
+            return new CompiledInstruction(OP_NOP, true, rawLine, "", TYPE_NONE, -1, 0, TYPE_NONE, -1, 0, -1);
+        }
+        int colon = findLabelColon(line);
+        String rest = line;
+        if (colon != -1) {
+            rest = line.substring(colon + 1).trim();
+            if (rest.isEmpty()) {
+                return new CompiledInstruction(OP_NOP, true, rawLine, "", TYPE_NONE, -1, 0, TYPE_NONE, -1, 0, -1);
+            }
+        }
+        int spaceIndex = rest.indexOf(' ');
+        String opcode = (spaceIndex != -1 ? rest.substring(0, spaceIndex) : rest).toUpperCase(Locale.ROOT).trim();
+        String args = spaceIndex != -1 ? rest.substring(spaceIndex + 1).trim() : "";
+
+        if (DIRECTIVES.contains(opcode)) {
+            return new CompiledInstruction(OP_DIRECTIVE, true, rawLine, args, TYPE_NONE, -1, 0, TYPE_NONE, -1, 0, -1);
+        }
+
+        int opId = OPCODE_MAP.getOrDefault(opcode, OP_UNKNOWN);
+        boolean supported = supportedInstructions.contains(opcode);
+
+        int destType = TYPE_NONE, destReg = -1, destImm = 0;
+        int srcType = TYPE_NONE, srcReg = -1, srcImm = 0;
+        int targetPc = -1;
+
+        if (opId >= OP_JMP && opId <= OP_CALL && !args.isEmpty()) {
+            try {
+                targetPc = parseLiteral(args);
+            } catch (Exception ignored) {}
+        } else if (!args.isEmpty()) {
+            String[] parts = splitArgs(args, 2);
+            if (parts.length >= 1) {
+                int[] d = parseOperand(parts[0]);
+                destType = d[0]; destReg = d[1]; destImm = d[2];
+            }
+            if (parts.length >= 2) {
+                int[] s = parseOperand(parts[1]);
+                srcType = s[0]; srcReg = s[1]; srcImm = s[2];
+            }
+        }
+
+        return new CompiledInstruction(opId, supported, rawLine, args, destType, destReg, destImm, srcType, srcReg, srcImm, targetPc);
+    }
+
     public VirtualCpu() {
         Arrays.fill(framebuffer, 0xFF051009);
     }
@@ -125,39 +465,26 @@ public class VirtualCpu {
         }
         this.hasNvme = hasNvme;
         this.storageSize = storageSize;
-        int targetStorageBytes = (int) Math.min(16 * 1024 * 1024L, (long) Math.max(0, storageSize) * 1024L);
-        if (targetStorageBytes > 0) {
-            if (this.storageDrives[0] == null || this.storageDrives[0].length != targetStorageBytes) {
-                byte[] newStorage = new byte[targetStorageBytes];
-                if (this.storageDrives[0] != null) {
-                    System.arraycopy(this.storageDrives[0], 0, newStorage, 0, Math.min(this.storageDrives[0].length, targetStorageBytes));
-                }
-                this.storageDrives[0] = newStorage;
-            }
-        }
-        int effectiveRam = Math.max(0, Math.min(ramSize, 65536));
+        long targetStorageBytes = (long) Math.max(0, storageSize) * 1024L;
+        this.driveCapacities[0] = (int) Math.min(Integer.MAX_VALUE, targetStorageBytes);
+        int effectiveRam = Math.max(0, Math.min(ramSize, 64 * 1024 * 1024));
         this.ram = new int[effectiveRam];
         this.program.clear();
         this.program.addAll(code);
         this.labels.clear();
         preprocessLabels();
+        compileBytecode();
         reset();
     }
 
     public void updateHardware(int totalRam, boolean hasNvme, int storageSize) {
         this.hasNvme = hasNvme;
         this.storageSize = storageSize;
-        int targetStorageBytes = (int) Math.min(16 * 1024 * 1024L, (long) Math.max(0, storageSize) * 1024L);
-        if (targetStorageBytes > 0) {
-            if (this.storageDrives[0] == null || this.storageDrives[0].length != targetStorageBytes) {
-                byte[] newStorage = new byte[targetStorageBytes];
-                if (this.storageDrives[0] != null) {
-                    System.arraycopy(this.storageDrives[0], 0, newStorage, 0, Math.min(this.storageDrives[0].length, targetStorageBytes));
-                }
-                this.storageDrives[0] = newStorage;
-            }
+        long targetStorageBytes = (long) Math.max(0, storageSize) * 1024L;
+        if (this.driveCapacities[0] == 0 && targetStorageBytes > 0) {
+            this.driveCapacities[0] = (int) Math.min(Integer.MAX_VALUE, targetStorageBytes);
         }
-        int effectiveRam = Math.max(0, Math.min(totalRam, 65536));
+        int effectiveRam = Math.max(0, Math.min(totalRam, 64 * 1024 * 1024));
         if (this.ram.length != effectiveRam) {
             int[] newRam = new int[effectiveRam];
             System.arraycopy(this.ram, 0, newRam, 0, Math.min(this.ram.length, effectiveRam));
@@ -176,7 +503,7 @@ public class VirtualCpu {
             String line = (commentIndex != -1 ? raw.substring(0, commentIndex) : raw).trim();
             if (line.isEmpty()) continue;
 
-            int colon = line.indexOf(':');
+            int colon = findLabelColon(line);
             if (colon != -1) {
                 String labelName = line.substring(0, colon).trim().toLowerCase(Locale.ROOT);
                 if (!labelName.isEmpty()) {
@@ -199,7 +526,7 @@ public class VirtualCpu {
             String line = (commentIndex != -1 ? rawLine.substring(0, commentIndex) : rawLine).trim();
             if (line.isEmpty()) continue;
 
-            int colon = line.indexOf(':');
+            int colon = findLabelColon(line);
             String rest = line;
             if (colon != -1) {
                 pendingLabel = line.substring(0, colon).trim().toLowerCase(Locale.ROOT);
@@ -394,7 +721,7 @@ public class VirtualCpu {
         this.utf8ByteBuf.reset();
         this.selectedDrive = 0;
         for (int i = 0; i < MAX_DRIVES; i++) {
-            if (storageDrives[i] != null && storageDrives[i].length > 0) {
+            if (getDriveCapacity(i) > 0 || (storageDrives[i] != null && storageDrives[i].length > 0)) {
                 this.selectedDrive = i;
                 break;
             }
@@ -409,51 +736,71 @@ public class VirtualCpu {
         }
     }
 
+    public Object getExecutionLock() {
+        return executionLock;
+    }
+
     public void powerOn() {
-        reset();
-        this.state = State.RUNNING;
+        synchronized (executionLock) {
+            reset();
+            this.state = State.RUNNING;
+        }
     }
 
     public void powerOff() {
-        flushLineBuffer();
-        this.state = State.OFF;
-        this.terminalOutput.add("[POWER OFF]");
+        synchronized (executionLock) {
+            flushLineBuffer();
+            this.state = State.OFF;
+            this.terminalOutput.add("[POWER OFF]");
+        }
     }
 
     public void togglePower() {
-        if (state == State.OFF) {
-            powerOn();
-        } else {
-            powerOff();
+        synchronized (executionLock) {
+            if (state == State.OFF) {
+                powerOn();
+            } else {
+                powerOff();
+            }
         }
     }
 
     public void step() {
-        if (state != State.RUNNING && state != State.PAUSED) {
-            return;
+        synchronized (executionLock) {
+            if (state != State.RUNNING && state != State.PAUSED) {
+                return;
+            }
+            executeNextInstruction();
         }
-        executeNextInstruction();
     }
 
     public void tick(int maxCycles) {
-        if (state != State.RUNNING) {
-            return;
-        }
-        checkTimerTrigger();
-        if (sleepTicksRemaining > 0) {
-            checkAndDispatchInterrupt();
-            if (sleepTicksRemaining > 0) {
-                sleepTicksRemaining--;
+        synchronized (executionLock) {
+            if (state != State.RUNNING) {
                 return;
             }
-        }
-        int count = 0;
-        while (state == State.RUNNING && count < maxCycles) {
-            executeNextInstruction();
-            count++;
             checkTimerTrigger();
             if (sleepTicksRemaining > 0) {
-                break;
+                checkAndDispatchInterrupt();
+                if (sleepTicksRemaining > 0) {
+                    sleepTicksRemaining--;
+                    return;
+                }
+            }
+            int count = 0;
+            long startNanos = System.nanoTime();
+            while (state == State.RUNNING && count < maxCycles) {
+                executeNextInstruction();
+                count++;
+                if ((count & 63) == 0) {
+                    checkTimerTrigger();
+                    if (System.nanoTime() - startNanos > 10_000_000L) { // 10ms safety threshold
+                        break;
+                    }
+                }
+                if (sleepTicksRemaining > 0) {
+                    break;
+                }
             }
         }
     }
@@ -470,7 +817,7 @@ public class VirtualCpu {
     }
 
     private void checkAndDispatchInterrupt() {
-        if (!interruptsEnabled || inInterruptHandler) {
+        if (!interruptsEnabled || inInterruptHandler || interruptQueue.isEmpty()) {
             return;
         }
         InterruptEvent event = null;
@@ -501,115 +848,292 @@ public class VirtualCpu {
             return;
         }
 
-        int currentLineNum = pc;
-        String rawLine = program.get(pc++);
-        cycles++;
-
-        // Strip comments
-        int commentIndex = rawLine.indexOf(';');
-        if (commentIndex == -1) commentIndex = rawLine.indexOf("//");
-        if (commentIndex == -1) commentIndex = rawLine.indexOf('#');
-        String line = (commentIndex != -1 ? rawLine.substring(0, commentIndex) : rawLine).trim();
-
-        if (line.isEmpty() || line.endsWith(":")) {
-            return; // Skip empty lines and labels
+        if (compiledProgram == null || compiledProgram.length != program.size()) {
+            compileBytecode();
         }
 
-        int spaceIndex = line.indexOf(' ');
-        String opcode = (spaceIndex != -1 ? line.substring(0, spaceIndex) : line).toUpperCase(Locale.ROOT).trim();
-        String args = spaceIndex != -1 ? line.substring(spaceIndex + 1).trim() : "";
+        int currentLineNum = pc;
+        CompiledInstruction ci = compiledProgram[pc++];
+        cycles++;
 
-        // Directives (ORG, DB, DW, DL, INCBIN) are no-ops during execution
-        if (DIRECTIVES.contains(opcode)) {
+        if (ci.opCode == OP_NOP || ci.opCode == OP_DIRECTIVE) {
             return;
         }
 
-        // Check if instruction is supported by this CPU's synthesized hardware
-        if (!supportedInstructions.contains(opcode)) {
-            triggerException(VEC_ILLEGAL_OPCODE, "Illegal instruction: " + opcode, currentLineNum, line);
+        if (!ci.isSupported) {
+            triggerException(VEC_ILLEGAL_OPCODE, "Illegal instruction: " + ci.rawLine, currentLineNum, ci.rawLine);
             return;
         }
 
         try {
-            switch (opcode) {
-                case "NOP" -> {}
-                case "MOV" -> execMov(args);
-                case "ADD" -> execAdd(args);
-                case "SUB" -> execSub(args);
-                case "MUL" -> execMul(args);
-                case "DIV" -> execDiv(args);
-                case "MOD" -> execMod(args);
-                case "INC" -> execInc(args);
-                case "DEC" -> execDec(args);
-                case "CMP" -> execCmp(args);
-                case "AND" -> execAnd(args);
-                case "OR" -> execOr(args);
-                case "XOR" -> execXor(args);
-                case "NOT" -> execNot(args);
-                case "SHL" -> execShl(args);
-                case "SHR" -> execShr(args);
-                case "JMP" -> execJmp(args, true);
-                case "JZ" -> execJmp(args, flagZ);
-                case "JNZ" -> execJmp(args, !flagZ);
-                case "JS" -> execJmp(args, flagS);
-                case "JNS" -> execJmp(args, !flagS);
-                case "JL" -> execJmp(args, flagS && !flagZ);
-                case "JLE" -> execJmp(args, flagS || flagZ);
-                case "JG" -> execJmp(args, !flagS && !flagZ);
-                case "JGE" -> execJmp(args, !flagS);
-                case "CALL" -> execCall(args);
-                case "RET" -> execRet();
-                case "PUSH" -> execPush(args);
-                case "POP" -> execPop(args);
-                case "IVEC" -> execIvec(args);
-                case "IRET" -> execIret();
-                case "CLI" -> interruptsEnabled = false;
-                case "STI" -> interruptsEnabled = true;
-                case "INT" -> execInt(args);
-                case "OUT" -> execOut(args);
-                case "OUTH" -> execOuth(args);
-                case "OUTC" -> execOutc(args);
-                case "CLS" -> execCls();
-                case "SLEEP" -> execSleep(args);
-                case "TIME" -> execTime(args);
-                case "RAND" -> execRand(args);
-                case "INPAD" -> execInpad(args);
-                case "TIMER", "SETTIMER" -> execTimer(args);
-                case "VBLANK" -> execVblank(args);
-                case "SSIZE" -> execSSize(args);
-                case "SREAD" -> execSRead(args);
-                case "SWRITE" -> execSWrite(args);
-                case "SBLKR" -> execSBlkr(args);
-                case "SBLKW" -> execSBlkw(args);
-                case "SCOUNT" -> execSCount(args);
-                case "SSEL" -> execSSel(args);
-                case "SDRV" -> execSDrv(args);
-                case "SEXEC", "SBOOT" -> execSExec(args);
-                case "FBMODE" -> execFbMode(args);
-                case "FBSET" -> execFbSet(args);
-                case "FBGET" -> execFbGet(args);
-                case "FBCLR" -> execFbClr(args);
-                case "FBRECT" -> execFbRect(args);
-                case "FBLINE" -> execFbLine(args);
-                case "FBLIT" -> execFbLit(args);
-                case "FBSWAP" -> {
+            switch (ci.opCode) {
+                case OP_MOV -> {
+                    if (ci.destType == TYPE_REG) {
+                        if (ci.srcType == TYPE_REG) {
+                            setReg(ci.destReg, getReg(ci.srcReg));
+                        } else if (ci.srcType == TYPE_IMM) {
+                            setReg(ci.destReg, ci.srcImm);
+                        } else if (ci.srcType == TYPE_RAM_IMM) {
+                            int addr = ci.srcImm;
+                            if (addr >= 0 && addr < ram.length) {
+                                setReg(ci.destReg, ram[addr]);
+                            } else {
+                                throw new IndexOutOfBoundsException("RAM address " + addr + " out of bounds");
+                            }
+                        } else if (ci.srcType == TYPE_RAM_REG) {
+                            int addr = getReg(ci.srcReg);
+                            if (addr >= 0 && addr < ram.length) {
+                                setReg(ci.destReg, ram[addr]);
+                            } else {
+                                throw new IndexOutOfBoundsException("RAM address " + addr + " out of bounds");
+                            }
+                        } else {
+                            execMov(ci.rawArgs);
+                        }
+                    } else if (ci.destType == TYPE_RAM_IMM) {
+                        int addr = ci.destImm;
+                        if (addr < 0 || addr >= ram.length) {
+                            throw new IndexOutOfBoundsException("RAM address " + addr + " out of bounds");
+                        }
+                        if (ci.srcType == TYPE_REG) {
+                            ram[addr] = getReg(ci.srcReg);
+                        } else if (ci.srcType == TYPE_IMM) {
+                            ram[addr] = ci.srcImm;
+                        } else {
+                            execMov(ci.rawArgs);
+                        }
+                    } else if (ci.destType == TYPE_RAM_REG) {
+                        int addr = getReg(ci.destReg);
+                        if (addr < 0 || addr >= ram.length) {
+                            throw new IndexOutOfBoundsException("RAM address " + addr + " out of bounds");
+                        }
+                        if (ci.srcType == TYPE_REG) {
+                            ram[addr] = getReg(ci.srcReg);
+                        } else if (ci.srcType == TYPE_IMM) {
+                            ram[addr] = ci.srcImm;
+                        } else {
+                            execMov(ci.rawArgs);
+                        }
+                    } else {
+                        execMov(ci.rawArgs);
+                    }
+                }
+                case OP_ADD -> {
+                    if (ci.destType == TYPE_REG) {
+                        int val;
+                        if (ci.srcType == TYPE_REG) val = getReg(ci.srcReg);
+                        else if (ci.srcType == TYPE_IMM) val = ci.srcImm;
+                        else if (ci.srcType == TYPE_RAM_IMM && ci.srcImm >= 0 && ci.srcImm < ram.length) val = ram[ci.srcImm];
+                        else if (ci.srcType == TYPE_RAM_REG) {
+                            int a = getReg(ci.srcReg);
+                            if (a >= 0 && a < ram.length) val = ram[a];
+                            else throw new IndexOutOfBoundsException("RAM address " + a + " out of bounds");
+                        } else {
+                            execAdd(ci.rawArgs);
+                            break;
+                        }
+                        int res = getReg(ci.destReg) + val;
+                        setReg(ci.destReg, res);
+                        updateFlags(res);
+                    } else {
+                        execAdd(ci.rawArgs);
+                    }
+                }
+                case OP_SUB -> {
+                    if (ci.destType == TYPE_REG) {
+                        int val;
+                        if (ci.srcType == TYPE_REG) val = getReg(ci.srcReg);
+                        else if (ci.srcType == TYPE_IMM) val = ci.srcImm;
+                        else if (ci.srcType == TYPE_RAM_IMM && ci.srcImm >= 0 && ci.srcImm < ram.length) val = ram[ci.srcImm];
+                        else if (ci.srcType == TYPE_RAM_REG) {
+                            int a = getReg(ci.srcReg);
+                            if (a >= 0 && a < ram.length) val = ram[a];
+                            else throw new IndexOutOfBoundsException("RAM address " + a + " out of bounds");
+                        } else {
+                            execSub(ci.rawArgs);
+                            break;
+                        }
+                        int res = getReg(ci.destReg) - val;
+                        setReg(ci.destReg, res);
+                        updateFlags(res);
+                    } else {
+                        execSub(ci.rawArgs);
+                    }
+                }
+                case OP_INC -> {
+                    if (ci.destType == TYPE_REG) {
+                        int res = getReg(ci.destReg) + 1;
+                        setReg(ci.destReg, res);
+                        updateFlags(res);
+                    } else {
+                        execInc(ci.rawArgs);
+                    }
+                }
+                case OP_DEC -> {
+                    if (ci.destType == TYPE_REG) {
+                        int res = getReg(ci.destReg) - 1;
+                        setReg(ci.destReg, res);
+                        updateFlags(res);
+                    } else {
+                        execDec(ci.rawArgs);
+                    }
+                }
+                case OP_CMP -> {
+                    if (ci.destType == TYPE_REG) {
+                        int val;
+                        if (ci.srcType == TYPE_REG) val = getReg(ci.srcReg);
+                        else if (ci.srcType == TYPE_IMM) val = ci.srcImm;
+                        else if (ci.srcType == TYPE_RAM_IMM && ci.srcImm >= 0 && ci.srcImm < ram.length) val = ram[ci.srcImm];
+                        else if (ci.srcType == TYPE_RAM_REG) {
+                            int a = getReg(ci.srcReg);
+                            if (a >= 0 && a < ram.length) val = ram[a];
+                            else throw new IndexOutOfBoundsException("RAM address " + a + " out of bounds");
+                        } else {
+                            execCmp(ci.rawArgs);
+                            break;
+                        }
+                        int res = getReg(ci.destReg) - val;
+                        updateFlags(res);
+                    } else {
+                        execCmp(ci.rawArgs);
+                    }
+                }
+                case OP_JMP -> {
+                    if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
+                    else execJmp(ci.rawArgs, true);
+                }
+                case OP_JZ -> {
+                    if (flagZ) {
+                        if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
+                        else execJmp(ci.rawArgs, true);
+                    }
+                }
+                case OP_JNZ -> {
+                    if (!flagZ) {
+                        if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
+                        else execJmp(ci.rawArgs, true);
+                    }
+                }
+                case OP_JS -> {
+                    if (flagS) {
+                        if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
+                        else execJmp(ci.rawArgs, true);
+                    }
+                }
+                case OP_JNS -> {
+                    if (!flagS) {
+                        if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
+                        else execJmp(ci.rawArgs, true);
+                    }
+                }
+                case OP_JL -> {
+                    if (flagS && !flagZ) {
+                        if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
+                        else execJmp(ci.rawArgs, true);
+                    }
+                }
+                case OP_JLE -> {
+                    if (flagS || flagZ) {
+                        if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
+                        else execJmp(ci.rawArgs, true);
+                    }
+                }
+                case OP_JG -> {
+                    if (!flagS && !flagZ) {
+                        if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
+                        else execJmp(ci.rawArgs, true);
+                    }
+                }
+                case OP_JGE -> {
+                    if (!flagS) {
+                        if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
+                        else execJmp(ci.rawArgs, true);
+                    }
+                }
+                case OP_CALL -> {
+                    if (ci.targetPc != -1) {
+                        callStack.push(pc);
+                        pc = Math.max(0, Math.min(ci.targetPc, program.size()));
+                    } else {
+                        execCall(ci.rawArgs);
+                    }
+                }
+                case OP_RET -> execRet();
+                case OP_PUSH -> {
+                    if (ci.destType == TYPE_REG) {
+                        dataStack.push(getReg(ci.destReg));
+                    } else if (ci.destType == TYPE_IMM) {
+                        dataStack.push(ci.destImm);
+                    } else {
+                        execPush(ci.rawArgs);
+                    }
+                }
+                case OP_POP -> {
+                    if (ci.destType == TYPE_REG) {
+                        if (dataStack.isEmpty()) throw new IllegalStateException("Stack underflow");
+                        setReg(ci.destReg, dataStack.pop());
+                    } else {
+                        execPop(ci.rawArgs);
+                    }
+                }
+                case OP_MUL -> execMul(ci.rawArgs);
+                case OP_DIV -> execDiv(ci.rawArgs);
+                case OP_MOD -> execMod(ci.rawArgs);
+                case OP_AND -> execAnd(ci.rawArgs);
+                case OP_OR -> execOr(ci.rawArgs);
+                case OP_XOR -> execXor(ci.rawArgs);
+                case OP_NOT -> execNot(ci.rawArgs);
+                case OP_SHL -> execShl(ci.rawArgs);
+                case OP_SHR -> execShr(ci.rawArgs);
+                case OP_IVEC -> execIvec(ci.rawArgs);
+                case OP_IRET -> execIret();
+                case OP_CLI -> interruptsEnabled = false;
+                case OP_STI -> interruptsEnabled = true;
+                case OP_INT -> execInt(ci.rawArgs);
+                case OP_OUT -> execOut(ci.rawArgs);
+                case OP_OUTH -> execOuth(ci.rawArgs);
+                case OP_OUTC -> execOutc(ci.rawArgs);
+                case OP_CLS -> execCls();
+                case OP_SLEEP -> execSleep(ci.rawArgs);
+                case OP_TIME -> execTime(ci.rawArgs);
+                case OP_RAND -> execRand(ci.rawArgs);
+                case OP_INPAD -> execInpad(ci.rawArgs);
+                case OP_TIMER -> execTimer(ci.rawArgs);
+                case OP_VBLANK -> execVblank(ci.rawArgs);
+                case OP_SSIZE -> execSSize(ci.rawArgs);
+                case OP_SREAD -> execSRead(ci.rawArgs);
+                case OP_SWRITE -> execSWrite(ci.rawArgs);
+                case OP_SBLKR -> execSBlkr(ci.rawArgs);
+                case OP_SBLKW -> execSBlkw(ci.rawArgs);
+                case OP_SCOUNT -> execSCount(ci.rawArgs);
+                case OP_SSEL -> execSSel(ci.rawArgs);
+                case OP_SDRV -> execSDrv(ci.rawArgs);
+                case OP_SEXEC -> execSExec(ci.rawArgs);
+                case OP_FBMODE -> execFbMode(ci.rawArgs);
+                case OP_FBSET -> execFbSet(ci.rawArgs);
+                case OP_FBGET -> execFbGet(ci.rawArgs);
+                case OP_FBCLR -> execFbClr(ci.rawArgs);
+                case OP_FBRECT -> execFbRect(ci.rawArgs);
+                case OP_FBLINE -> execFbLine(ci.rawArgs);
+                case OP_FBLIT -> execFbLit(ci.rawArgs);
+                case OP_FBSWAP -> {
                     displayMode = 1;
                     fbDirty = true;
                 }
-                case "FBWIDTH" -> setDestination(args.trim(), FB_WIDTH);
-                case "FBHEIGHT" -> setDestination(args.trim(), FB_HEIGHT);
-                case "APUSH" -> execAPush(args);
-                case "ABUFW" -> execABufw(args);
-                case "ACLR" -> execAClr();
-                case "ASTAT" -> setDestination(args.trim(), audioCount);
-                case "ATONE" -> execATone(args);
-                case "APLAY" -> audioTriggered = true;
-                case "HLT" -> {
+                case OP_FBWIDTH -> setDestination(ci.rawArgs.trim(), FB_WIDTH);
+                case OP_FBHEIGHT -> setDestination(ci.rawArgs.trim(), FB_HEIGHT);
+                case OP_APUSH -> execAPush(ci.rawArgs);
+                case OP_ABUFW -> execABufw(ci.rawArgs);
+                case OP_ACLR -> execAClr();
+                case OP_ASTAT -> setDestination(ci.rawArgs.trim(), audioCount);
+                case OP_ATONE -> execATone(ci.rawArgs);
+                case OP_APLAY -> audioTriggered = true;
+                case OP_HLT -> {
                     state = State.HALTED;
                     flushLineBuffer();
                     terminalOutput.add("[EXECUTION HALTED]");
                 }
-                default -> triggerException(VEC_ILLEGAL_OPCODE, "Unknown opcode: " + opcode, currentLineNum, rawLine);
+                default -> triggerException(VEC_ILLEGAL_OPCODE, "Unknown opcode: " + ci.rawLine, currentLineNum, ci.rawLine);
             }
         } catch (Exception e) {
             int vec = VEC_GENERAL_EXCEPTION;
@@ -621,7 +1145,7 @@ public class VirtualCpu {
             } else if (e instanceof IllegalStateException && desc.toLowerCase(Locale.ROOT).contains("stack")) {
                 vec = VEC_STACK_FAULT;
             }
-            triggerException(vec, desc, currentLineNum, rawLine);
+            triggerException(vec, desc, currentLineNum, ci.rawLine);
         }
 
         if (terminalOutput.size() > 60) {
@@ -900,6 +1424,11 @@ public class VirtualCpu {
 
     public void queueTimerInterrupt() {
         synchronized (interruptQueue) {
+            for (InterruptEvent e : interruptQueue) {
+                if (e.vector == VEC_TIMER) {
+                    return;
+                }
+            }
             if (interruptQueue.size() < 64) {
                 interruptQueue.add(new InterruptEvent(VEC_TIMER, 0, 0, 0));
             }
@@ -1047,7 +1576,7 @@ public class VirtualCpu {
         } else {
             dest = parts[0].trim();
         }
-        int sz = (d >= 0 && d < MAX_DRIVES && storageDrives[d] != null) ? storageDrives[d].length : 0;
+        int sz = getDriveCapacity(d);
         setDestination(dest, sz);
         flagZ = (sz == 0);
         flagS = false;
@@ -1069,8 +1598,9 @@ public class VirtualCpu {
             throw new IllegalArgumentException("SREAD requires dest, [drive,] addr");
         }
         byte[] drv = (d >= 0 && d < MAX_DRIVES) ? storageDrives[d] : null;
-        if (drv != null && addr >= 0 && addr < drv.length) {
-            int val = drv[addr] & 0xFF;
+        int cap = getDriveCapacity(d);
+        if (addr >= 0 && addr < cap) {
+            int val = (drv != null && addr < drv.length) ? (drv[addr] & 0xFF) : 0;
             setDestination(dest, val);
             flagZ = (val == 0);
             flagS = false;
@@ -1096,8 +1626,18 @@ public class VirtualCpu {
         } else {
             throw new IllegalArgumentException("SWRITE requires [drive,] addr, val");
         }
-        byte[] drv = (d >= 0 && d < MAX_DRIVES) ? storageDrives[d] : null;
-        if (drv != null && addr >= 0 && addr < drv.length) {
+        int cap = getDriveCapacity(d);
+        if (d >= 0 && d < MAX_DRIVES && addr >= 0 && addr < cap) {
+            byte[] drv = storageDrives[d];
+            if (drv == null || addr >= drv.length) {
+                int newLen = Math.max(addr + 1, Math.min(cap, drv == null ? 1024 : Math.max(drv.length * 2, addr + 1)));
+                byte[] newDrv = new byte[newLen];
+                if (drv != null) {
+                    System.arraycopy(drv, 0, newDrv, 0, drv.length);
+                }
+                storageDrives[d] = newDrv;
+                drv = newDrv;
+            }
             drv[addr] = (byte) (val & 0xFF);
             flagZ = false;
             flagS = false;
@@ -1128,17 +1668,19 @@ public class VirtualCpu {
         } else {
             throw new IllegalArgumentException("SBLKR requires ram_dest, [drive,] storage_addr, count");
         }
-        byte[] drv = (d >= 0 && d < MAX_DRIVES) ? storageDrives[d] : null;
-        if (drv == null || count <= 0) {
+        int cap = getDriveCapacity(d);
+        if (d < 0 || d >= MAX_DRIVES || cap <= 0 || count <= 0) {
             flagZ = true;
             return;
         }
+        byte[] drv = storageDrives[d];
         int copied = 0;
         for (int i = 0; i < count; i++) {
             int curS = sAddr + i;
             int curR = rAddr + i;
-            if (curS >= 0 && curS < drv.length && curR >= 0 && curR < ram.length) {
-                ram[curR] = drv[curS] & 0xFF;
+            if (curS >= 0 && curS < cap && curR >= 0 && curR < ram.length) {
+                int val = (drv != null && curS < drv.length) ? (drv[curS] & 0xFF) : 0;
+                ram[curR] = val;
                 copied++;
             }
         }
@@ -1163,18 +1705,34 @@ public class VirtualCpu {
         } else {
             throw new IllegalArgumentException("SBLKW requires [drive,] storage_addr, ram_src, count");
         }
-        byte[] drv = (d >= 0 && d < MAX_DRIVES) ? storageDrives[d] : null;
-        if (drv == null || count <= 0) {
+        int cap = getDriveCapacity(d);
+        if (d < 0 || d >= MAX_DRIVES || cap <= 0 || count <= 0) {
             flagZ = true;
             return;
+        }
+        int maxTargetAddr = sAddr + count - 1;
+        if (maxTargetAddr >= cap) {
+            maxTargetAddr = cap - 1;
+        }
+        byte[] drv = storageDrives[d];
+        if (maxTargetAddr >= 0 && (drv == null || maxTargetAddr >= drv.length)) {
+            int newLen = Math.max(maxTargetAddr + 1, Math.min(cap, drv == null ? 1024 : Math.max(drv.length * 2, maxTargetAddr + 1)));
+            byte[] newDrv = new byte[newLen];
+            if (drv != null) {
+                System.arraycopy(drv, 0, newDrv, 0, drv.length);
+            }
+            storageDrives[d] = newDrv;
+            drv = newDrv;
         }
         int copied = 0;
         for (int i = 0; i < count; i++) {
             int curS = sAddr + i;
             int curR = rAddr + i;
-            if (curS >= 0 && curS < drv.length && curR >= 0 && curR < ram.length) {
-                drv[curS] = (byte) (ram[curR] & 0xFF);
-                copied++;
+            if (curS >= 0 && curS < cap && curR >= 0 && curR < ram.length) {
+                if (drv != null && curS < drv.length) {
+                    drv[curS] = (byte) (ram[curR] & 0xFF);
+                    copied++;
+                }
             }
         }
         flagZ = (copied == 0);
@@ -1194,8 +1752,8 @@ public class VirtualCpu {
         int d = resolveValue(args.trim());
         if (d >= 0 && d < MAX_DRIVES) {
             selectedDrive = d;
-            byte[] drv = storageDrives[d];
-            flagZ = (drv == null || drv.length == 0);
+            int cap = getDriveCapacity(d);
+            flagZ = (cap == 0);
             flagS = false;
         } else {
             flagZ = true;
@@ -1255,6 +1813,7 @@ public class VirtualCpu {
         this.program.clear();
         this.program.addAll(targetProgram);
         preprocessLabels();
+        compileBytecode();
         this.callStack.clear();
         this.pc = 0;
         this.selectedDrive = drive;
@@ -1992,9 +2551,30 @@ public class VirtualCpu {
         }
     }
 
+    public void setDriveCapacity(int drive, int capacityBytes) {
+        if (drive >= 0 && drive < MAX_DRIVES) {
+            this.driveCapacities[drive] = capacityBytes;
+        }
+    }
+
+    public int getDriveCapacity(int drive) {
+        if (drive >= 0 && drive < MAX_DRIVES) {
+            if (driveCapacities[drive] > 0) {
+                return driveCapacities[drive];
+            }
+            if (storageDrives[drive] != null) {
+                return storageDrives[drive].length;
+            }
+        }
+        return 0;
+    }
+
     public void setStorageDrive(int drive, byte[] data) {
         if (drive >= 0 && drive < MAX_DRIVES) {
             this.storageDrives[drive] = (data != null) ? data : new byte[0];
+            if (this.storageDrives[drive].length > this.driveCapacities[drive]) {
+                this.driveCapacities[drive] = this.storageDrives[drive].length;
+            }
         }
     }
 
@@ -2008,7 +2588,7 @@ public class VirtualCpu {
     public int getStorageDriveCount() {
         int count = 0;
         for (int i = 0; i < MAX_DRIVES; i++) {
-            if (storageDrives[i] != null && storageDrives[i].length > 0) {
+            if (getDriveCapacity(i) > 0 || (storageDrives[i] != null && storageDrives[i].length > 0)) {
                 count++;
             }
         }

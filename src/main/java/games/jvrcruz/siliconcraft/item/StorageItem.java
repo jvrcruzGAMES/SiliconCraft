@@ -19,13 +19,14 @@ public class StorageItem extends Item {
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
         StorageData data = stack.get(ModDataComponents.STORAGE_DATA.get());
         boolean nvme = data != null && data.isNvme();
-        int cap = (data != null) ? data.capacity() : 512;
+        int cap = (data != null) ? data.capacity() : (1024 * 1024);
         if (nvme) {
             tooltip.add(Component.translatable("tooltip.siliconcraft.storage.nvme").withStyle(ChatFormatting.GOLD));
         } else {
             tooltip.add(Component.translatable("tooltip.siliconcraft.storage.standard").withStyle(ChatFormatting.GRAY));
         }
-        tooltip.add(Component.translatable("tooltip.siliconcraft.storage.capacity", cap).withStyle(ChatFormatting.YELLOW));
+        String capStr = (cap >= 1024) ? (cap / 1024) + " MB" : cap + " KB";
+        tooltip.add(Component.translatable("tooltip.siliconcraft.storage.capacity", capStr).withStyle(ChatFormatting.YELLOW));
         games.jvrcruz.siliconcraft.data.RomData romData = stack.get(ModDataComponents.ROM_DATA.get());
         if (romData != null && !romData.lines().isEmpty()) {
             tooltip.add(Component.translatable("tooltip.siliconcraft.rom.lines", romData.lines().size()).withStyle(ChatFormatting.LIGHT_PURPLE));
@@ -51,9 +52,7 @@ public class StorageItem extends Item {
                 return tag.getByteArray("BinaryStorage");
             }
         }
-        StorageData sd = stack.get(ModDataComponents.STORAGE_DATA.get());
-        int capKb = (sd != null) ? sd.capacity() : 512;
-        return new byte[capKb * 1024];
+        return new byte[0];
     }
 
     public static void setStorageBytes(ItemStack stack, byte[] data) {

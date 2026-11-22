@@ -7,12 +7,12 @@ import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 
 public record StorageData(boolean isNvme, int capacity) {
-    public static final StorageData DEFAULT = new StorageData(false, 512);
+    public static final StorageData DEFAULT = new StorageData(false, 1024 * 1024);
 
     public static final Codec<StorageData> CODEC = RecordCodecBuilder.create(instance ->
         instance.group(
             Codec.BOOL.optionalFieldOf("isNvme", false).forGetter(StorageData::isNvme),
-            Codec.INT.optionalFieldOf("capacity", 512).forGetter(StorageData::capacity)
+            Codec.INT.optionalFieldOf("capacity", 1024 * 1024).forGetter(StorageData::capacity)
         ).apply(instance, StorageData::new)
     );
 

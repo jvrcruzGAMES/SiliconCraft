@@ -138,7 +138,7 @@ public class NProjectResolver {
     }
 
     public static String getAsmNameFromZip(String zipFileName) {
-        if (zipFileName == null || zipFileName.isBlank()) return "project.asm";
+        if (zipFileName == null || zipFileName.isBlank()) return "project.o";
         String name = zipFileName.trim();
         int lastSlash = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));
         if (lastSlash != -1) {
@@ -147,7 +147,13 @@ public class NProjectResolver {
         if (name.toLowerCase(Locale.ROOT).endsWith(".zip")) {
             name = name.substring(0, name.length() - 4);
         }
-        return name + ".asm";
+        if (name.toLowerCase(Locale.ROOT).endsWith(".asm") || name.toLowerCase(Locale.ROOT).endsWith(".s")) {
+            name = name.substring(0, name.lastIndexOf('.'));
+        }
+        if (name.toLowerCase(Locale.ROOT).endsWith(".o")) {
+            return name;
+        }
+        return name + ".o";
     }
 
     public static Map<String, List<String>> loadProjectFromFolder(java.io.File folder) throws java.io.IOException {

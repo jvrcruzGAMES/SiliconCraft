@@ -37,6 +37,9 @@ public class Siliconcraft {
         ModCreativeTabs.CREATIVE_MODE_TABS.register(modEventBus);
 
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.server.ServerStoppingEvent event) -> {
+            games.jvrcruz.siliconcraft.vm.ComputerThreadManager.shutdown();
+        });
     }
 
     private void commonSetup(final FMLCommonSetupEvent event) {

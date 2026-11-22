@@ -82,13 +82,15 @@ public class ComputerBlockProvider implements IBlockComponentProvider, IServerDa
         int drives = data.getInt("Drives");
         boolean hasNvme = data.getBoolean("HasNvme");
 
+        String ramStr = ram >= 1024 * 1024 ? (ram / 1024) + " KB" : (ram >= 1024 ? (ram / 1024) + " KB" : ram + " Bytes");
         tooltip.add(Component.literal("RAM: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(ram + " Bytes").withStyle(ChatFormatting.WHITE)));
+                .append(Component.literal(ramStr).withStyle(ChatFormatting.WHITE)));
 
         if (storage > 0 || drives > 0) {
             String storageType = hasNvme ? "NVMe" : "Flash";
+            String storageStr = storage >= 1024 ? (storage / 1024) + " MB" : storage + " KB";
             tooltip.add(Component.literal("Storage (" + storageType + "): ").withStyle(ChatFormatting.GRAY)
-                    .append(Component.literal(storage + " KB (" + drives + " Drive" + (drives != 1 ? "s" : "") + ")").withStyle(ChatFormatting.WHITE)));
+                    .append(Component.literal(storageStr + " (" + drives + " Drive" + (drives != 1 ? "s" : "") + ")").withStyle(ChatFormatting.WHITE)));
         }
 
         if (state == VirtualCpu.State.RUNNING || state == VirtualCpu.State.HALTED || state == VirtualCpu.State.PAUSED) {

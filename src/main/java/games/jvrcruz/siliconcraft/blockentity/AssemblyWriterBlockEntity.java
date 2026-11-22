@@ -1,5 +1,6 @@
 package games.jvrcruz.siliconcraft.blockentity;
 
+import games.jvrcruz.siliconcraft.compiler.Assembler;
 import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
 import games.jvrcruz.siliconcraft.data.ArchitectureData;
 import games.jvrcruz.siliconcraft.data.ProgramEntry;
@@ -82,8 +83,14 @@ public class AssemblyWriterBlockEntity extends BlockEntity implements MenuProvid
             return false;
         }
 
-        Set<String> required = InstructionValidator.getRequiredInstructions(lines);
-        List<String> missing = InstructionValidator.getMissingInstructions(required, arch.instructions());
+        Assembler.AssemblerResult asmResult = Assembler.assemble(lines);
+        if (!asmResult.success()) {
+            String firstError = asmResult.errors().isEmpty() ? "Unknown assembly error" : asmResult.errors().get(0);
+            player.displayClientMessage(Component.literal("Assemble Error: " + firstError).withStyle(ChatFormatting.RED), false);
+            return false;
+        }
+
+        List<String> missing = InstructionValidator.getMissingInstructions(asmResult.requiredInstructions(), arch.instructions());
 
         if (!missing.isEmpty()) {
             String archName = arch.name().isEmpty() ? "Installed Arch" : arch.name();
@@ -93,16 +100,22 @@ public class AssemblyWriterBlockEntity extends BlockEntity implements MenuProvid
 
         // Add to persistent world programs library
         if (level instanceof ServerLevel serverLevel) {
-            String validName = (programName == null || programName.trim().isEmpty()) ? "program.asm" : programName.trim();
+            String baseName = (programName == null || programName.trim().isEmpty()) ? "program" : programName.trim();
+            if (baseName.endsWith(".asm")) baseName = baseName.substring(0, baseName.length() - 4);
+            else if (baseName.endsWith(".s")) baseName = baseName.substring(0, baseName.length() - 2);
+            else if (baseName.endsWith(".n")) baseName = baseName.substring(0, baseName.length() - 2);
+            else if (baseName.endsWith(".o")) baseName = baseName.substring(0, baseName.length() - 2);
+            String validName = baseName + ".o";
+
             ProgramSavedData savedData = ProgramSavedData.get(serverLevel);
-            ProgramEntry entry = new ProgramEntry(UUID.randomUUID().toString(), validName, arch.name(), lines, new ArrayList<>(required));
+            ProgramEntry entry = new ProgramEntry(UUID.randomUUID().toString(), validName, arch.name(), asmResult.bytecode(), new ArrayList<>(asmResult.requiredInstructions()));
             savedData.addProgram(entry);
 
             // Sync updated library to all players on server
             PacketDistributor.sendToAllPlayers(new SyncProgramsPacket(savedData.getPrograms()));
 
             level.playSound(null, worldPosition, SoundEvents.UI_CARTOGRAPHY_TABLE_TAKE_RESULT, SoundSource.BLOCKS, 1.0f, 1.0f);
-            player.displayClientMessage(Component.literal("Added '" + validName + "' to Assembly Library!").withStyle(ChatFormatting.GREEN), false);
+            player.displayClientMessage(Component.literal("Assembled and added '" + validName + "' to Assembly Library!").withStyle(ChatFormatting.GREEN), false);
             return true;
         }
 

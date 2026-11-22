@@ -214,7 +214,7 @@ public class CompilerAndValidatorTest {
         cpu.powerOn();
         cpu.tick(300);
 
-        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState(), "Error message: " + cpu.getErrorMessage());
         List<String> output = cpu.getTerminalOutput();
 
         assertTrue(output.contains("Hello World"), "Output should contain 'Hello World' on one line: " + output);
@@ -456,9 +456,9 @@ public class CompilerAndValidatorTest {
 
     @Test
     public void testZipNameExtraction() {
-        assertEquals("MyProject.asm", NCompiler.getAsmNameFromZip("MyProject.zip"));
-        assertEquals("space_invaders.asm", NCompiler.getAsmNameFromZip("/path/to/space_invaders.ZIP"));
-        assertEquals("game.asm", NCompiler.getAsmNameFromZip("game"));
+        assertEquals("MyProject.o", NCompiler.getAsmNameFromZip("MyProject.zip"));
+        assertEquals("space_invaders.o", NCompiler.getAsmNameFromZip("/path/to/space_invaders.ZIP"));
+        assertEquals("game.o", NCompiler.getAsmNameFromZip("game"));
     }
 
     @Test
@@ -527,7 +527,7 @@ public class CompilerAndValidatorTest {
 
         // Validate asm filename
         String asmName = NCompiler.getAsmNameFromZip("MyAwesomeGame.zip");
-        assertEquals("MyAwesomeGame.asm", asmName);
+        assertEquals("MyAwesomeGame.o", asmName);
 
         // Run on VirtualCpu
         VirtualCpu cpu = new VirtualCpu();

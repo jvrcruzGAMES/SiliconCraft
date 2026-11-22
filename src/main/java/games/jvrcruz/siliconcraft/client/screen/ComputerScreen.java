@@ -177,15 +177,18 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         int totalRam = menu.getTotalRam();
         int socRam = menu.getSocRam();
         int slotsRam = Math.max(0, totalRam - socRam);
-        String ramStr = totalRam + "B" + (slotsRam > 0 ? " (+" + slotsRam + "B)" : "");
+        String totalRamStr = totalRam >= 1024 * 1024 ? (totalRam / 1024) + "KB" : (totalRam >= 1024 ? (totalRam / 1024) + "KB" : totalRam + "B");
+        String slotsRamStr = slotsRam >= 1024 * 1024 ? (slotsRam / 1024) + "KB" : (slotsRam >= 1024 ? (slotsRam / 1024) + "KB" : slotsRam + "B");
+        String ramStr = totalRamStr + (slotsRam > 0 ? " (+" + slotsRamStr + ")" : "");
 
         int storage = menu.getTotalStorage();
         boolean hasNvme = menu.hasNvme();
-        String storageStr = hasNvme ? storage + "KB" : (storage > 0 ? storage + "KB" : "None");
+        String storageDisplay = storage >= 1024 ? (storage / 1024) + "MB" : (storage > 0 ? storage + "KB" : "None");
+        String storageStr = (storage > 0 ? storageDisplay : "None");
 
         String statusText = "RAM: " + ramStr + " | " + (hasNvme ? "NVMe: " : "Drive: ") + storageStr;
         if (this.font.width(statusText) > 165) {
-            statusText = "RAM: " + totalRam + "B | " + (hasNvme ? "NVMe: " : "Drive: ") + storageStr;
+            statusText = "RAM: " + totalRamStr + " | " + (hasNvme ? "NVMe: " : "Drive: ") + storageStr;
         }
         guiGraphics.drawString(this.font, statusText, 10, 165, 0x88CCFF, false);
 

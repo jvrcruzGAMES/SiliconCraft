@@ -1,5 +1,6 @@
 package games.jvrcruz.siliconcraft.blockentity;
 
+import games.jvrcruz.siliconcraft.compiler.Assembler;
 import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
 import games.jvrcruz.siliconcraft.compiler.NCompiler;
 import games.jvrcruz.siliconcraft.data.ArchitectureData;
@@ -90,7 +91,14 @@ public class ProjectCompilerBlockEntity extends BlockEntity implements MenuProvi
             return false;
         }
 
-        List<String> missing = InstructionValidator.getMissingInstructions(result.requiredInstructions(), arch.instructions());
+        Assembler.AssemblerResult asmResult = Assembler.assemble(result.assembly());
+        if (!asmResult.success()) {
+            String firstError = asmResult.errors().isEmpty() ? "Unknown assembly error" : asmResult.errors().get(0);
+            player.displayClientMessage(Component.literal("Assemble Error: " + firstError).withStyle(ChatFormatting.RED), false);
+            return false;
+        }
+
+        List<String> missing = InstructionValidator.getMissingInstructions(asmResult.requiredInstructions(), arch.instructions());
         if (!missing.isEmpty()) {
             String archName = arch.name().isEmpty() ? "Installed Arch" : arch.name();
             player.displayClientMessage(Component.literal("Cannot add program: Architecture '" + archName + "' is missing required instructions: " + missing).withStyle(ChatFormatting.RED), false);
@@ -100,13 +108,13 @@ public class ProjectCompilerBlockEntity extends BlockEntity implements MenuProvi
         if (level instanceof ServerLevel serverLevel) {
             String validName = NCompiler.getAsmNameFromZip(projectName);
             ProgramSavedData savedData = ProgramSavedData.get(serverLevel);
-            ProgramEntry entry = new ProgramEntry(UUID.randomUUID().toString(), validName, arch.name(), result.assembly(), new ArrayList<>(result.requiredInstructions()));
+            ProgramEntry entry = new ProgramEntry(UUID.randomUUID().toString(), validName, arch.name(), asmResult.bytecode(), new ArrayList<>(asmResult.requiredInstructions()));
             savedData.addProgram(entry);
 
             PacketDistributor.sendToAllPlayers(new SyncProgramsPacket(savedData.getPrograms()));
 
             level.playSound(null, worldPosition, SoundEvents.UI_CARTOGRAPHY_TABLE_TAKE_RESULT, SoundSource.BLOCKS, 1.0f, 1.2f);
-            player.displayClientMessage(Component.literal("Compiled project '" + validName + "' and added to Assembly Library!").withStyle(ChatFormatting.GREEN), false);
+            player.displayClientMessage(Component.literal("Compiled, assembled project '" + validName + "' and added to Assembly Library!").withStyle(ChatFormatting.GREEN), false);
             return true;
         }
 
