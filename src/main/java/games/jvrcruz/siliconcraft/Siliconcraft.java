@@ -37,9 +37,42 @@ public class Siliconcraft {
         ModCreativeTabs.CREATIVE_MODE_TABS.register(modEventBus);
 
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+
+        // Register Server & Game Shutdown Handlers on NeoForge event bus
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.server.ServerStoppingEvent event) -> {
-            games.jvrcruz.siliconcraft.vm.ComputerThreadManager.shutdown();
+            shutdownAll();
         });
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.server.ServerStoppedEvent event) -> {
+            shutdownAll();
+        });
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.GameShuttingDownEvent event) -> {
+            shutdownAll();
+        });
+
+        // Client world disconnect listener
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingOut event) -> {
+                games.jvrcruz.siliconcraft.client.audio.ClientAudioShutdownHelper.stopAllAudio();
+            });
+        }
+
+        // JVM Shutdown Hook for forced terminations, crashes, or SIGTERM
+        Runtime.getRuntime().addShutdownHook(new Thread(Siliconcraft::shutdownAll, "SiliconCraft-ShutdownHook"));
+    }
+
+    /**
+     * Unloads all background worker threads and releases hardware audio resources immediately.
+     */
+    public static void shutdownAll() {
+        try {
+            games.jvrcruz.siliconcraft.vm.ComputerThreadManager.shutdown();
+        } catch (Throwable ignored) {}
+
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            try {
+                games.jvrcruz.siliconcraft.client.audio.ClientAudioShutdownHelper.shutdown();
+            } catch (Throwable ignored) {}
+        }
     }
 
     private void commonSetup(final FMLCommonSetupEvent event) {

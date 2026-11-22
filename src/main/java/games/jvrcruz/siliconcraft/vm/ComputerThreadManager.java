@@ -84,14 +84,24 @@ public class ComputerThreadManager {
     }
 
     /**
-     * Shuts down all worker threads cleanly (e.g. on server stop or mod unload).
+     * Shuts down all worker threads cleanly and quickly (e.g. on server stop, game exit, or JVM shutdown).
      */
     public static void shutdown() {
+        List<WorkerThread> workersToStop;
         synchronized (ALLOCATION_LOCK) {
-            for (WorkerThread worker : WORKERS) {
+            workersToStop = new java.util.ArrayList<>(WORKERS);
+            for (WorkerThread worker : workersToStop) {
                 worker.stopWorker();
             }
             WORKERS.clear();
+        }
+        for (WorkerThread worker : workersToStop) {
+            try {
+                worker.join(50);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+                break;
+            }
         }
     }
 
@@ -136,6 +146,7 @@ public class ComputerThreadManager {
         public void stopWorker() {
             this.running = false;
             interrupt();
+            this.computers.clear();
         }
 
         @Override
@@ -172,6 +183,8 @@ public class ComputerThreadManager {
                         comp.tickAsyncCpu(CYCLES_PER_SLICE);
                     }
                 }
+
+                if (!running || isInterrupted()) break;
 
                 long elapsed = System.nanoTime() - sliceStart;
                 if (elapsed < SLICE_PARK_NANOS) {

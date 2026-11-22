@@ -800,7 +800,7 @@ public class VirtualCpu {
             }
             int count = 0;
             long startNanos = System.nanoTime();
-            while (state == State.RUNNING && count < maxCycles) {
+            while (state == State.RUNNING && count < maxCycles && !Thread.currentThread().isInterrupted()) {
                 executeNextInstruction();
                 count++;
                 if ((count & 63) == 0) {

@@ -54,6 +54,10 @@ Agents must adhere to these thread-safety requirements:
    - `interruptQueue` and `audioQueue` are synchronized internally. Writers and readers must use the designated queue methods (`queueTimerInterrupt`, `queueKeyboardInterrupt`, `pollAudioSamples`).
 6. **Host Unregistration**:
    - Any `BlockEntity` hosting a CPU must implement `ComputerHost` and call `ComputerThreadManager.unregister(this)` inside `setRemoved()` and `onChunkUnloaded()`.
+7. **Fast Unloading & Forced Shutdown**:
+   - `ComputerThreadManager.shutdown()` interrupts all workers, clears host collections to prevent memory leaks, and fast-joins threads (<50ms).
+   - `VirtualCpu.tick()` checks `Thread.currentThread().isInterrupted()` to abort slices instantly upon thread interruption.
+   - Both client and server register shutdown listeners on `GameShuttingDownEvent`, `ServerStoppingEvent`, `ServerStoppedEvent`, client `LoggingOut`, and a dedicated JVM shutdown hook (`Runtime.getRuntime().addShutdownHook`) to guarantee zero hang times and instant unloading on forced process termination (`SIGTERM`, `kill`, crashes).
 
 ---
 

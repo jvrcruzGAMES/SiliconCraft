@@ -15,11 +15,22 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class ComputerAudioPlayer {
-    private static final ExecutorService AUDIO_EXECUTOR = Executors.newCachedThreadPool(r -> {
-        Thread t = new Thread(r, "SiliconCraft-Audio");
-        t.setDaemon(true);
-        return t;
-    });
+    private static volatile ExecutorService AUDIO_EXECUTOR = createExecutor();
+
+    private static ExecutorService createExecutor() {
+        return Executors.newCachedThreadPool(r -> {
+            Thread t = new Thread(r, "SiliconCraft-Audio");
+            t.setDaemon(true);
+            return t;
+        });
+    }
+
+    private static synchronized ExecutorService getExecutor() {
+        if (AUDIO_EXECUTOR == null || AUDIO_EXECUTOR.isShutdown()) {
+            AUDIO_EXECUTOR = createExecutor();
+        }
+        return AUDIO_EXECUTOR;
+    }
 
     private static class ActiveAudioStream {
         final BlockPos computerPos;
@@ -138,12 +149,21 @@ public class ComputerAudioPlayer {
         ACTIVE_STREAMS.clear();
     }
 
+    public static void shutdown() {
+        stopAllAudio();
+        synchronized (ComputerAudioPlayer.class) {
+            if (AUDIO_EXECUTOR != null && !AUDIO_EXECUTOR.isShutdown()) {
+                AUDIO_EXECUTOR.shutdownNow();
+            }
+        }
+    }
+
     public static void playScreenAudio(BlockPos computerPos, byte[] pcmSamples, int sampleRate) {
         if (pcmSamples == null || pcmSamples.length == 0) return;
         ActiveAudioStream stream = new ActiveAudioStream(computerPos, null);
         registerStream(stream);
 
-        AUDIO_EXECUTOR.submit(() -> {
+        getExecutor().submit(() -> {
             stream.workerThread = Thread.currentThread();
             try {
                 if (playViaOpenAl(stream, pcmSamples, sampleRate, null)) {
@@ -161,7 +181,7 @@ public class ComputerAudioPlayer {
         ActiveAudioStream stream = new ActiveAudioStream(computerPos, worldPos);
         registerStream(stream);
 
-        AUDIO_EXECUTOR.submit(() -> {
+        getExecutor().submit(() -> {
             stream.workerThread = Thread.currentThread();
             try {
                 if (playViaOpenAl(stream, pcmSamples, sampleRate, worldPos)) {

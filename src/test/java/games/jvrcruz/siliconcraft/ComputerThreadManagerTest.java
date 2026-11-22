@@ -148,4 +148,41 @@ public class ComputerThreadManagerTest {
         assertEquals(0, ComputerThreadManager.getTotalRegisteredComputers(),
                 "Removed host should be purged from background worker thread");
     }
+
+    @Test
+    public void testFastShutdownUnloading() {
+        List<String> infiniteLoop = List.of(
+                "loop:",
+                "  INC A",
+                "  JMP loop"
+        );
+
+        // Spawn multiple workers (e.g. 18 computers -> 3 workers)
+        List<TestHost> hosts = new ArrayList<>();
+        for (int i = 0; i < 18; i++) {
+            TestHost host = new TestHost(infiniteLoop);
+            hosts.add(host);
+            ComputerThreadManager.register(host);
+        }
+
+        assertTrue(ComputerThreadManager.getActiveWorkerCount() >= 2,
+                "Should have at least 2 active worker threads for 18 computers");
+
+        // Measure shutdown time
+        long start = System.currentTimeMillis();
+        ComputerThreadManager.shutdown();
+        long elapsed = System.currentTimeMillis() - start;
+
+        assertEquals(0, ComputerThreadManager.getActiveWorkerCount(),
+                "All workers should be terminated and unregistered");
+        assertEquals(0, ComputerThreadManager.getTotalRegisteredComputers(),
+                "Registered computers should be 0 after shutdown");
+        assertTrue(elapsed < 250, "Forced shutdown should complete fast (<250ms), took: " + elapsed + "ms");
+
+        // Verify that after shutdown, new computers can still be registered cleanly
+        TestHost postShutdownHost = new TestHost(infiniteLoop);
+        ComputerThreadManager.register(postShutdownHost);
+        assertEquals(1, ComputerThreadManager.getActiveWorkerCount());
+        assertEquals(1, ComputerThreadManager.getTotalRegisteredComputers());
+    }
 }
