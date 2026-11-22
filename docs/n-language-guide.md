@@ -261,7 +261,7 @@ println result                   // 56
 
 ## 11. Multi-File Projects & Modular Imports (Project Compiler)
 
-When writing large applications, package your project into a `.zip` archive and compile using the **Project Compiler**.
+When writing large applications, package your project into a `.zip` archive or select a project root folder using the **Project Compiler**.
 
 ### Import Syntax
 Inside any `.n` file (starting with `main.n` as entrypoint):
@@ -272,10 +272,10 @@ import utils.string               // Resolves to utils/string.n
 ```
 
 ### Rules for Project Compilation
-- The `.zip` root or entrypoint must be `main.n`.
+- The project root (either the root of the `.zip` or the selected folder) must contain `main.n` as the entrypoint.
 - Imports can reference subdirectories (`"sub/module.n"`).
 - Duplicate and circular imports are automatically detected and prevented.
-- The output assembly `<zipname>.asm` is compiled and registered in your Program Library.
+- The output assembly `<project_name>.asm` is compiled and registered in your Program Library.
 
 ---
 

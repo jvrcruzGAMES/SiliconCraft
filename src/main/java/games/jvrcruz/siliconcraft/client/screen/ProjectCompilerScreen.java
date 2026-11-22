@@ -18,22 +18,19 @@ import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
-import java.io.ByteArrayOutputStream;
+import net.minecraft.client.gui.components.Tooltip;
+
 import java.io.File;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 
 public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu> {
     private static final ResourceLocation TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Siliconcraft.MODID, "textures/gui/project_compiler.png");
 
     private Map<String, List<String>> projectFiles = new LinkedHashMap<>();
-    private String loadedZipName = "";
-    private String statusText = "No .zip chosen";
+    private String loadedProjectName = "";
+    private String statusText = "No project chosen";
     private boolean isChoosing = false;
     private Button compileButton;
 
@@ -48,15 +45,22 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
         // Request latest program library from server
         PacketDistributor.sendToServer(new RequestProgramsPacket());
 
-        // File selection button
-        this.addRenderableWidget(Button.builder(Component.literal("📁 Choose .zip Project"), b -> {
+        // Zip selection button
+        this.addRenderableWidget(Button.builder(Component.literal("📁 .zip"), b -> {
             chooseFileAsync();
-        }).bounds(this.leftPos + 72, this.topPos + 16, 96, 16).build());
+        }).tooltip(Tooltip.create(Component.literal("Select .zip project archive")))
+          .bounds(this.leftPos + 72, this.topPos + 16, 47, 16).build());
+
+        // Folder selection button
+        this.addRenderableWidget(Button.builder(Component.literal("📂 Folder"), b -> {
+            chooseFolderAsync();
+        }).tooltip(Tooltip.create(Component.literal("Select root folder containing main.n")))
+          .bounds(this.leftPos + 121, this.topPos + 16, 47, 16).build());
 
         // Compile & Add button
         compileButton = Button.builder(Component.literal("+ Compile Project"), b -> {
             if (projectFiles == null || projectFiles.isEmpty()) {
-                statusText = "Load a .zip project first!";
+                statusText = "Load a project first!";
                 return;
             }
 
@@ -80,7 +84,7 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
 
             PacketDistributor.sendToServer(new CompileProjectPacket(
                     menu.getBlockEntity().getBlockPos(),
-                    loadedZipName.isEmpty() ? "project.zip" : loadedZipName,
+                    loadedProjectName.isEmpty() ? "project" : loadedProjectName,
                     new LinkedHashMap<>(projectFiles)
             ));
             statusText = "Compiled & Added!";
@@ -123,41 +127,13 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
                 try {
                     File file = new File(filePath.trim());
                     if (file.exists() && file.isFile()) {
-                        Map<String, List<String>> extracted = new LinkedHashMap<>();
-                        try (ZipInputStream zis = new ZipInputStream(Files.newInputStream(file.toPath()), StandardCharsets.UTF_8)) {
-                            ZipEntry entry;
-                            byte[] buffer = new byte[4096];
-                            while ((entry = zis.getNextEntry()) != null) {
-                                if (!entry.isDirectory() && entry.getName().toLowerCase().endsWith(".n")) {
-                                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                                    int len;
-                                    while ((len = zis.read(buffer)) > 0) {
-                                        baos.write(buffer, 0, len);
-                                    }
-                                    String text = baos.toString(StandardCharsets.UTF_8);
-                                    List<String> rawLines = Arrays.asList(text.split("\\r?\\n"));
-                                    List<String> cleaned = new ArrayList<>();
-                                    for (String line : rawLines) {
-                                        String trimmed = line.trim();
-                                        if (!trimmed.isEmpty()) {
-                                            cleaned.add(trimmed);
-                                        }
-                                    }
-                                    String normPath = entry.getName().replace('\\', '/');
-                                    while (normPath.startsWith("/")) {
-                                        normPath = normPath.substring(1);
-                                    }
-                                    extracted.put(normPath, cleaned);
-                                }
-                                zis.closeEntry();
-                            }
-                        }
+                        Map<String, List<String>> extracted = NCompiler.loadProjectFromZip(file);
 
                         if (extracted.isEmpty()) {
                             this.statusText = "No .n files found in zip!";
                         } else {
                             this.projectFiles = extracted;
-                            this.loadedZipName = file.getName();
+                            this.loadedProjectName = file.getName();
                             this.statusText = file.getName() + " (" + extracted.size() + " files)";
                         }
                     } else {
@@ -167,7 +143,48 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
                     this.statusText = "Error reading zip: " + e.getMessage();
                 }
             } else {
-                this.statusText = projectFiles.isEmpty() ? "No .zip chosen" : loadedZipName;
+                this.statusText = projectFiles.isEmpty() ? "No project chosen" : loadedProjectName;
+            }
+        }, Minecraft.getInstance()::execute);
+    }
+
+    private void chooseFolderAsync() {
+        if (isChoosing) return;
+        isChoosing = true;
+        statusText = "Selecting folder...";
+
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                return TinyFileDialogs.tinyfd_selectFolderDialog(
+                        "Select .n Project Folder (root containing main.n)",
+                        ""
+                );
+            } catch (Throwable t) {
+                return null;
+            }
+        }).thenAcceptAsync(folderPath -> {
+            isChoosing = false;
+            if (folderPath != null && !folderPath.trim().isEmpty()) {
+                try {
+                    File folder = new File(folderPath.trim());
+                    if (folder.exists() && folder.isDirectory()) {
+                        Map<String, List<String>> extracted = NCompiler.loadProjectFromFolder(folder);
+
+                        if (extracted.isEmpty()) {
+                            this.statusText = "No .n files found in folder!";
+                        } else {
+                            this.projectFiles = extracted;
+                            this.loadedProjectName = folder.getName();
+                            this.statusText = folder.getName() + " (" + extracted.size() + " files)";
+                        }
+                    } else {
+                        this.statusText = "Folder not found";
+                    }
+                } catch (Exception e) {
+                    this.statusText = "Error reading folder: " + e.getMessage();
+                }
+            } else {
+                this.statusText = projectFiles.isEmpty() ? "No project chosen" : loadedProjectName;
             }
         }, Minecraft.getInstance()::execute);
     }
@@ -183,8 +200,8 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
         ArchitectureData arch = menu.getInstalledArchitecture();
 
         if (projectFiles == null || projectFiles.isEmpty()) {
-            guiGraphics.drawString(this.font, "No .zip chosen", boxX, boxY + 2, 0x888888, false);
-            guiGraphics.drawString(this.font, "Click Choose File", boxX, boxY + 12, 0x555555, false);
+            guiGraphics.drawString(this.font, "No project chosen", boxX, boxY + 2, 0x888888, false);
+            guiGraphics.drawString(this.font, "Choose .zip / Folder", boxX, boxY + 12, 0x555555, false);
             compileButton.active = false;
         } else {
             // First check N compiler validity
@@ -196,7 +213,7 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
                 guiGraphics.drawString(this.font, error, boxX, boxY + 12, 0xCC3333, false);
                 compileButton.active = false;
             } else {
-                String title = loadedZipName;
+                String title = loadedProjectName;
                 if (this.font.width(title) > 90) {
                     title = title.substring(0, Math.min(title.length(), 11)) + "...";
                 }

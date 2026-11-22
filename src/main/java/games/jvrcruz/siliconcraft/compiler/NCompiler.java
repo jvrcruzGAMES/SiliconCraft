@@ -104,6 +104,14 @@ public class NCompiler {
         return NProjectResolver.getAsmNameFromZip(zipFileName);
     }
 
+    public static Map<String, List<String>> loadProjectFromFolder(java.io.File folder) throws java.io.IOException {
+        return NProjectResolver.loadProjectFromFolder(folder);
+    }
+
+    public static Map<String, List<String>> loadProjectFromZip(java.io.File zipFile) throws java.io.IOException {
+        return NProjectResolver.loadProjectFromZip(zipFile);
+    }
+
     public static boolean isNumeric(String token) {
         return NNumberParser.isNumeric(token);
     }

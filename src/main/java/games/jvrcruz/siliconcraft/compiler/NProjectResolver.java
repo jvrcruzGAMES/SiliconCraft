@@ -149,4 +149,76 @@ public class NProjectResolver {
         }
         return name + ".asm";
     }
+
+    public static Map<String, List<String>> loadProjectFromFolder(java.io.File folder) throws java.io.IOException {
+        if (folder == null || !folder.exists() || !folder.isDirectory()) {
+            return Collections.emptyMap();
+        }
+        java.nio.file.Path rootPath = folder.toPath().toAbsolutePath().normalize();
+        Map<String, List<String>> files = new LinkedHashMap<>();
+        try (var stream = java.nio.file.Files.walk(rootPath)) {
+            List<java.nio.file.Path> nFiles = stream.filter(java.nio.file.Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".n"))
+                    .toList();
+            for (java.nio.file.Path filePath : nFiles) {
+                java.nio.file.Path rel = rootPath.relativize(filePath);
+                String normPath = rel.toString().replace('\\', '/');
+                while (normPath.startsWith("/")) {
+                    normPath = normPath.substring(1);
+                }
+                List<String> rawLines = java.nio.file.Files.readAllLines(filePath, java.nio.charset.StandardCharsets.UTF_8);
+                List<String> cleaned = new ArrayList<>();
+                for (String line : rawLines) {
+                    String trimmed = line.trim();
+                    if (!trimmed.isEmpty()) {
+                        cleaned.add(trimmed);
+                    }
+                }
+                files.put(normPath, cleaned);
+            }
+        }
+        return files;
+    }
+
+    public static Map<String, List<String>> loadProjectFromZip(java.io.File zipFile) throws java.io.IOException {
+        if (zipFile == null || !zipFile.exists() || !zipFile.isFile()) {
+            return Collections.emptyMap();
+        }
+        try (java.io.InputStream in = java.nio.file.Files.newInputStream(zipFile.toPath())) {
+            return loadProjectFromZipStream(in);
+        }
+    }
+
+    public static Map<String, List<String>> loadProjectFromZipStream(java.io.InputStream in) throws java.io.IOException {
+        Map<String, List<String>> extracted = new LinkedHashMap<>();
+        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(in, java.nio.charset.StandardCharsets.UTF_8)) {
+            java.util.zip.ZipEntry entry;
+            byte[] buffer = new byte[4096];
+            while ((entry = zis.getNextEntry()) != null) {
+                if (!entry.isDirectory() && entry.getName().toLowerCase(Locale.ROOT).endsWith(".n")) {
+                    java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                    int len;
+                    while ((len = zis.read(buffer)) > 0) {
+                        baos.write(buffer, 0, len);
+                    }
+                    String text = baos.toString(java.nio.charset.StandardCharsets.UTF_8);
+                    List<String> rawLines = Arrays.asList(text.split("\\r?\\n"));
+                    List<String> cleaned = new ArrayList<>();
+                    for (String line : rawLines) {
+                        String trimmed = line.trim();
+                        if (!trimmed.isEmpty()) {
+                            cleaned.add(trimmed);
+                        }
+                    }
+                    String normPath = entry.getName().replace('\\', '/');
+                    while (normPath.startsWith("/")) {
+                        normPath = normPath.substring(1);
+                    }
+                    extracted.put(normPath, cleaned);
+                }
+                zis.closeEntry();
+            }
+        }
+        return extracted;
+    }
 }

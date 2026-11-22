@@ -78,9 +78,9 @@ SiliconCraft separates program writing and compilation from physical ROM/Storage
 ### Option B: Multi-File Projects with the Project Compiler
 For complex applications spanning multiple files and subdirectories:
 1. Craft and place the **Project Compiler** block.
-2. Package your `.n` project into a `.zip` archive (must contain `main.n` as the entrypoint). Files can import other files via `import "path/file.n"` or `import module.name`.
-3. Open the Project Compiler GUI, insert your **Architecture Writeup**, and load your `.zip` archive.
-4. Click **[+ Compile Project]**. It resolves all dependencies and outputs `<zipname>.asm` directly into your Program Library!
+2. Structure your `.n` project with `main.n` at the root as the entrypoint. Files can import other files via `import "path/file.n"` or `import module.name`. You can leave it as a folder or package it into a `.zip` archive.
+3. Open the Project Compiler GUI, insert your **Architecture Writeup**, and click either **📁 .zip** or **📂 Folder** to select your project.
+4. Click **[+ Compile Project]**. It resolves all dependencies and outputs `<project_name>.asm` directly into your Program Library!
 
 ### Option C: Assembly Programming with the Assembly Writer
 1. Write your `.s` or `.asm` file on your computer (see [assembly-syntax.md](assembly-syntax.md)).

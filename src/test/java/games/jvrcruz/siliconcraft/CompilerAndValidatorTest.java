@@ -542,6 +542,56 @@ public class CompilerAndValidatorTest {
     }
 
     @Test
+    public void testProjectCompilerFolderLoading() throws Exception {
+        java.nio.file.Path tempDir = java.nio.file.Files.createTempDirectory("siliconcraft_test_proj_dir");
+        try {
+            java.nio.file.Path mathDir = tempDir.resolve("math");
+            java.nio.file.Path ioDir = tempDir.resolve("io");
+            java.nio.file.Files.createDirectories(mathDir);
+            java.nio.file.Files.createDirectories(ioDir);
+
+            java.nio.file.Files.writeString(mathDir.resolve("operations.n"),
+                    "fn addTen() -> int {\n    return 32 + 10\n}\n", java.nio.charset.StandardCharsets.UTF_8);
+
+            java.nio.file.Files.writeString(ioDir.resolve("display.n"),
+                    "import \"../math/operations.n\"\nfn showResult() {\n    var x = addTen()\n    print \"Result: \"\n    println x\n}\n", java.nio.charset.StandardCharsets.UTF_8);
+
+            java.nio.file.Files.writeString(tempDir.resolve("main.n"),
+                    "import \"io/display.n\"\nshowResult()\nhalt\n", java.nio.charset.StandardCharsets.UTF_8);
+
+            // Load from folder using NCompiler.loadProjectFromFolder
+            java.util.Map<String, List<String>> extracted = NCompiler.loadProjectFromFolder(tempDir.toFile());
+
+            assertEquals(3, extracted.size(), "Should load 3 .n files from folder");
+            assertTrue(extracted.containsKey("main.n"), "Root main.n must be present");
+            assertTrue(extracted.containsKey("math/operations.n"), "math/operations.n must be present");
+            assertTrue(extracted.containsKey("io/display.n"), "io/display.n must be present");
+
+            // Compile loaded folder project
+            NCompiler.CompileResult result = NCompiler.compileProject(extracted, null);
+            assertTrue(result.success(), "Project compile from folder should succeed: " + result.errors());
+
+            // Run on VirtualCpu
+            VirtualCpu cpu = new VirtualCpu();
+            Set<String> isa = Set.of("MOV", "ADD", "CALL", "RET", "JMP", "OUT", "OUTC", "HLT");
+            cpu.configure(isa, 256, result.assembly(), false, 0);
+            cpu.powerOn();
+            cpu.tick(150);
+
+            assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+            List<String> out = cpu.getTerminalOutput();
+            assertTrue(out.contains("Result: 42"), "Output should contain 'Result: 42': " + out);
+        } finally {
+            // Recursively delete temp directory
+            try (var s = java.nio.file.Files.walk(tempDir)) {
+                s.sorted(java.util.Comparator.reverseOrder())
+                 .map(java.nio.file.Path::toFile)
+                 .forEach(java.io.File::delete);
+            }
+        }
+    }
+
+    @Test
     public void testNStorageHelpers() {
         List<String> nSource = List.of(
                 "var sz = storage.size()",
