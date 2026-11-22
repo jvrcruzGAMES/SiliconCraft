@@ -77,6 +77,33 @@ public class VirtualCpu {
     public static final int VEC_MOUSE_MOVE = 11;
     public static final int VEC_MOUSE_CLICK = 12;
     public static final int VEC_TIMER = 13;
+    public static final int VEC_VBLANK = 13;
+
+    // Gamepad / Held controller state (bitmask)
+    public static final int PAD_RIGHT  = 1 << 0;  // 0x0001
+    public static final int PAD_LEFT   = 1 << 1;  // 0x0002
+    public static final int PAD_DOWN   = 1 << 2;  // 0x0004
+    public static final int PAD_UP     = 1 << 3;  // 0x0008
+    public static final int PAD_START  = 1 << 4;  // 0x0010
+    public static final int PAD_SELECT = 1 << 5;  // 0x0020
+    public static final int PAD_B      = 1 << 6;  // 0x0040 (Jump)
+    public static final int PAD_A      = 1 << 7;  // 0x0080 (Spin Jump)
+    public static final int PAD_Y      = 1 << 8;  // 0x0100 (Run / Dash)
+    public static final int PAD_X      = 1 << 9;  // 0x0200 (Action)
+    public static final int PAD_L      = 1 << 10; // 0x0400 (Shoulder L)
+    public static final int PAD_R      = 1 << 11; // 0x0800 (Shoulder R)
+
+    private final int[] padStates = new int[4];
+
+    // Hardware frame / periodic timer
+    private int timerHz = 0;
+    private long lastTimerNanos = 0;
+    private int timerIntervalCycles = 0;
+    private int lastTimerCycle = 0;
+
+    // Assembler Directives
+    public static final Set<String> DIRECTIVES = InstructionValidator.ASSEMBLER_DIRECTIVES;
+    private final Map<String, Integer> dataLabels = new HashMap<>();
 
     public record CpuContext(int pc, int regA, int regB, int regC, int regD, boolean flagZ, boolean flagS, boolean restoreRegs) {}
     public record InterruptEvent(int vector, int regA, int regB, int regC) {}
@@ -140,13 +167,189 @@ public class VirtualCpu {
 
     private void preprocessLabels() {
         labels.clear();
+        dataLabels.clear();
         for (int i = 0; i < program.size(); i++) {
-            String line = program.get(i).trim();
-            if (line.endsWith(":")) {
-                String labelName = line.substring(0, line.length() - 1).trim().toLowerCase(Locale.ROOT);
-                labels.put(labelName, i);
+            String raw = program.get(i);
+            int commentIndex = raw.indexOf(';');
+            if (commentIndex == -1) commentIndex = raw.indexOf("//");
+            if (commentIndex == -1) commentIndex = raw.indexOf('#');
+            String line = (commentIndex != -1 ? raw.substring(0, commentIndex) : raw).trim();
+            if (line.isEmpty()) continue;
+
+            int colon = line.indexOf(':');
+            if (colon != -1) {
+                String labelName = line.substring(0, colon).trim().toLowerCase(Locale.ROOT);
+                if (!labelName.isEmpty()) {
+                    labels.put(labelName, i);
+                }
             }
         }
+        loadStaticData();
+    }
+
+    private void loadStaticData() {
+        int currentDataAddr = 0;
+        String pendingLabel = null;
+
+        for (int lineIdx = 0; lineIdx < program.size(); lineIdx++) {
+            String rawLine = program.get(lineIdx);
+            int commentIndex = rawLine.indexOf(';');
+            if (commentIndex == -1) commentIndex = rawLine.indexOf("//");
+            if (commentIndex == -1) commentIndex = rawLine.indexOf('#');
+            String line = (commentIndex != -1 ? rawLine.substring(0, commentIndex) : rawLine).trim();
+            if (line.isEmpty()) continue;
+
+            int colon = line.indexOf(':');
+            String rest = line;
+            if (colon != -1) {
+                pendingLabel = line.substring(0, colon).trim().toLowerCase(Locale.ROOT);
+                rest = line.substring(colon + 1).trim();
+                if (rest.isEmpty()) continue;
+            }
+
+            int spaceIndex = rest.indexOf(' ');
+            String opcode = (spaceIndex != -1 ? rest.substring(0, spaceIndex) : rest).toUpperCase(Locale.ROOT).trim();
+            String args = spaceIndex != -1 ? rest.substring(spaceIndex + 1).trim() : "";
+
+            if (opcode.equals("ORG")) {
+                currentDataAddr = resolveValue(args);
+                if (pendingLabel != null) {
+                    labels.put(pendingLabel, currentDataAddr);
+                    dataLabels.put(pendingLabel, currentDataAddr);
+                    pendingLabel = null;
+                }
+            } else if (opcode.equals("DB") || opcode.equals("DW") || opcode.equals("DL")) {
+                if (pendingLabel != null) {
+                    labels.put(pendingLabel, currentDataAddr);
+                    dataLabels.put(pendingLabel, currentDataAddr);
+                    pendingLabel = null;
+                }
+                currentDataAddr = parseAndStoreData(opcode, args, currentDataAddr);
+            } else if (opcode.equals("INCBIN")) {
+                if (pendingLabel != null) {
+                    labels.put(pendingLabel, currentDataAddr);
+                    dataLabels.put(pendingLabel, currentDataAddr);
+                    pendingLabel = null;
+                }
+                currentDataAddr = loadIncbin(args, currentDataAddr);
+            } else {
+                pendingLabel = null;
+            }
+        }
+    }
+
+    private void ensureRamCapacity(int targetAddr) {
+        if (targetAddr >= ram.length && targetAddr < 65536) {
+            int newCap = Math.min(65536, Math.max(targetAddr + 1024, ram.length * 2));
+            int[] newRam = new int[newCap];
+            System.arraycopy(ram, 0, newRam, 0, ram.length);
+            ram = newRam;
+        }
+    }
+
+    private List<String> splitDataTokens(String s) {
+        List<String> tokens = new ArrayList<>();
+        if (s == null || s.trim().isEmpty()) return tokens;
+        StringBuilder sb = new StringBuilder();
+        boolean inQuotes = false;
+        char quoteChar = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if ((c == '\"' || c == '\'') && (i == 0 || s.charAt(i - 1) != '\\')) {
+                if (inQuotes && c == quoteChar) {
+                    inQuotes = false;
+                } else if (!inQuotes) {
+                    inQuotes = true;
+                    quoteChar = c;
+                }
+            }
+            if (!inQuotes && c == ',') {
+                tokens.add(sb.toString().trim());
+                sb.setLength(0);
+            } else {
+                sb.append(c);
+            }
+        }
+        if (sb.length() > 0) {
+            tokens.add(sb.toString().trim());
+        }
+        return tokens;
+    }
+
+    private int parseAndStoreData(String opcode, String args, int currentAddr) {
+        List<String> tokens = splitDataTokens(args);
+        for (String token : tokens) {
+            if (token.isEmpty()) continue;
+
+            if (opcode.equals("DB") && token.startsWith("\"") && token.endsWith("\"") && token.length() >= 2) {
+                String str = stripQuotes(token);
+                byte[] bytes = str.getBytes(StandardCharsets.UTF_8);
+                for (byte b : bytes) {
+                    ensureRamCapacity(currentAddr);
+                    if (currentAddr < ram.length) {
+                        ram[currentAddr++] = (b & 0xFF);
+                    }
+                }
+                continue;
+            }
+
+            int val = resolveValue(token);
+
+            if (opcode.equals("DB")) {
+                ensureRamCapacity(currentAddr);
+                if (currentAddr < ram.length) {
+                    ram[currentAddr++] = (val & 0xFF);
+                }
+            } else if (opcode.equals("DW")) {
+                ensureRamCapacity(currentAddr + 1);
+                if (currentAddr < ram.length) ram[currentAddr++] = (val & 0xFF);
+                if (currentAddr < ram.length) ram[currentAddr++] = ((val >> 8) & 0xFF);
+            } else if (opcode.equals("DL")) {
+                ensureRamCapacity(currentAddr + 2);
+                if (currentAddr < ram.length) ram[currentAddr++] = (val & 0xFF);
+                if (currentAddr < ram.length) ram[currentAddr++] = ((val >> 8) & 0xFF);
+                if (currentAddr < ram.length) ram[currentAddr++] = ((val >> 16) & 0xFF);
+            }
+        }
+        return currentAddr;
+    }
+
+    private int loadIncbin(String args, int currentAddr) {
+        List<String> tokens = splitDataTokens(args);
+        if (tokens.isEmpty()) return currentAddr;
+        String pathToken = tokens.get(0);
+        if (pathToken.startsWith("\"") && pathToken.endsWith("\"") && pathToken.length() >= 2) {
+            pathToken = pathToken.substring(1, pathToken.length() - 1);
+        }
+        int offset = 0;
+        int length = -1;
+        if (tokens.size() > 1) {
+            offset = resolveValue(tokens.get(1));
+        }
+        if (tokens.size() > 2) {
+            length = resolveValue(tokens.get(2));
+        }
+
+        try {
+            java.nio.file.Path p = java.nio.file.Path.of(pathToken);
+            if (!java.nio.file.Files.exists(p)) {
+                p = java.nio.file.Path.of("").toAbsolutePath().resolve(pathToken);
+            }
+            if (java.nio.file.Files.exists(p)) {
+                byte[] allBytes = java.nio.file.Files.readAllBytes(p);
+                int start = Math.max(0, Math.min(offset, allBytes.length));
+                int count = (length >= 0) ? Math.min(length, allBytes.length - start) : (allBytes.length - start);
+                for (int i = 0; i < count; i++) {
+                    ensureRamCapacity(currentAddr);
+                    if (currentAddr < ram.length) {
+                        ram[currentAddr++] = (allBytes[start + i] & 0xFF);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            terminalOutput.add("[ASSEMBLER ERROR] INCBIN failed: " + e.getMessage());
+        }
+        return currentAddr;
     }
 
     public void setTimeSupplier(LongSupplier supplier) {
@@ -174,7 +377,11 @@ public class VirtualCpu {
         this.callStack.clear();
         this.dataStack.clear();
         this.sleepTicksRemaining = 0;
+        this.timerHz = 0;
+        this.timerIntervalCycles = 0;
+        Arrays.fill(this.padStates, 0);
         Arrays.fill(ram, 0);
+        loadStaticData();
         this.displayMode = 0;
         Arrays.fill(this.framebuffer, 0xFF051009);
         this.fbDirty = true;
@@ -232,6 +439,7 @@ public class VirtualCpu {
         if (state != State.RUNNING) {
             return;
         }
+        checkTimerTrigger();
         if (sleepTicksRemaining > 0) {
             checkAndDispatchInterrupt();
             if (sleepTicksRemaining > 0) {
@@ -243,9 +451,21 @@ public class VirtualCpu {
         while (state == State.RUNNING && count < maxCycles) {
             executeNextInstruction();
             count++;
+            checkTimerTrigger();
             if (sleepTicksRemaining > 0) {
                 break;
             }
+        }
+    }
+
+    private void checkTimerTrigger() {
+        if (timerHz <= 0) return;
+        long now = System.nanoTime();
+        long intervalNanos = 1_000_000_000L / timerHz;
+        if (now - lastTimerNanos >= intervalNanos || (timerIntervalCycles > 0 && cycles - lastTimerCycle >= timerIntervalCycles)) {
+            lastTimerNanos = now;
+            lastTimerCycle = cycles;
+            queueTimerInterrupt();
         }
     }
 
@@ -299,6 +519,11 @@ public class VirtualCpu {
         String opcode = (spaceIndex != -1 ? line.substring(0, spaceIndex) : line).toUpperCase(Locale.ROOT).trim();
         String args = spaceIndex != -1 ? line.substring(spaceIndex + 1).trim() : "";
 
+        // Directives (ORG, DB, DW, DL, INCBIN) are no-ops during execution
+        if (DIRECTIVES.contains(opcode)) {
+            return;
+        }
+
         // Check if instruction is supported by this CPU's synthesized hardware
         if (!supportedInstructions.contains(opcode)) {
             triggerException(VEC_ILLEGAL_OPCODE, "Illegal instruction: " + opcode, currentLineNum, line);
@@ -348,6 +573,9 @@ public class VirtualCpu {
                 case "SLEEP" -> execSleep(args);
                 case "TIME" -> execTime(args);
                 case "RAND" -> execRand(args);
+                case "INPAD" -> execInpad(args);
+                case "TIMER", "SETTIMER" -> execTimer(args);
+                case "VBLANK" -> execVblank(args);
                 case "SSIZE" -> execSSize(args);
                 case "SREAD" -> execSRead(args);
                 case "SWRITE" -> execSWrite(args);
@@ -557,35 +785,14 @@ public class VirtualCpu {
 
     private void execJmp(String target, boolean condition) {
         if (!condition) return;
-        target = target.trim();
-        String lower = target.toLowerCase(Locale.ROOT);
-        if (labels.containsKey(lower)) {
-            pc = labels.get(lower);
-        } else {
-            try {
-                int line = Integer.parseInt(target);
-                pc = Math.max(0, Math.min(line, program.size()));
-            } catch (NumberFormatException e) {
-                throw new IllegalArgumentException("Label not found: " + target);
-            }
-        }
+        int dest = resolveTarget(target);
+        pc = Math.max(0, Math.min(dest, program.size()));
     }
 
     private void execCall(String target) {
-        target = target.trim();
-        String lower = target.toLowerCase(Locale.ROOT);
-        int destPc;
-        if (labels.containsKey(lower)) {
-            destPc = labels.get(lower);
-        } else {
-            try {
-                destPc = Integer.parseInt(target);
-            } catch (NumberFormatException e) {
-                throw new IllegalArgumentException("Label not found for CALL: " + target);
-            }
-        }
+        int destPc = resolveTarget(target);
         callStack.push(pc);
-        pc = destPc;
+        pc = Math.max(0, Math.min(destPc, program.size()));
     }
 
     private void execRet() {
@@ -615,9 +822,9 @@ public class VirtualCpu {
             return labels.get(lower);
         }
         try {
-            return Integer.parseInt(target);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Label not found: " + target);
+            return resolveValue(target);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Label or jump target not found: " + target);
         }
     }
 
@@ -686,9 +893,17 @@ public class VirtualCpu {
             case "KEYBOARD", "KEY", "CHAR" -> VEC_KEYBOARD;
             case "MOUSE_MOVE", "MOUSE_POS" -> VEC_MOUSE_MOVE;
             case "MOUSE_CLICK", "CLICK" -> VEC_MOUSE_CLICK;
-            case "TIMER" -> VEC_TIMER;
+            case "TIMER", "VBLANK", "VBL", "NMI", "FRAME" -> VEC_TIMER;
             default -> resolveValue(token);
         };
+    }
+
+    public void queueTimerInterrupt() {
+        synchronized (interruptQueue) {
+            if (interruptQueue.size() < 64) {
+                interruptQueue.add(new InterruptEvent(VEC_TIMER, 0, 0, 0));
+            }
+        }
     }
 
     public void queueKeyboardInterrupt(int keyChar) {
@@ -764,6 +979,62 @@ public class VirtualCpu {
         int max = resolveValue(parts[1].trim());
         int val = (max > 0) ? random.nextInt(max) : 0;
         setDestination(dest, val);
+    }
+
+    private void execInpad(String args) {
+        String[] parts = args.split(",", 2);
+        String dest = parts[0].trim();
+        int padId = 0;
+        if (parts.length > 1) {
+            padId = resolveValue(parts[1].trim());
+        }
+        int padMask = getPadState(padId);
+        setDestination(dest, padMask);
+    }
+
+    public void setPadState(int padId, int bitmask) {
+        if (padId >= 0 && padId < padStates.length) {
+            padStates[padId] = bitmask;
+        }
+    }
+
+    public int getPadState(int padId) {
+        if (padId >= 0 && padId < padStates.length) {
+            return padStates[padId];
+        }
+        return 0;
+    }
+
+    private void execTimer(String arg) {
+        int hz = resolveValue(arg.trim());
+        setTimerHz(hz);
+    }
+
+    private void execVblank(String arg) {
+        String trimmed = arg.trim();
+        if (trimmed.isEmpty() || trimmed.equals("1") || trimmed.equalsIgnoreCase("true") || trimmed.equalsIgnoreCase("ON")) {
+            setTimerHz(60);
+        } else if (trimmed.equals("0") || trimmed.equalsIgnoreCase("false") || trimmed.equalsIgnoreCase("OFF")) {
+            setTimerHz(0);
+        } else {
+            int val = resolveValue(trimmed);
+            setTimerHz(val > 0 ? 60 : 0);
+        }
+    }
+
+    public void setTimerHz(int hz) {
+        this.timerHz = Math.max(0, hz);
+        this.lastTimerNanos = System.nanoTime();
+        this.lastTimerCycle = this.cycles;
+        this.timerIntervalCycles = hz > 0 ? Math.max(1, 1000 / hz) : 0;
+    }
+
+    public int getTimerHz() {
+        return timerHz;
+    }
+
+    public Map<String, Integer> getDataLabels() {
+        return Collections.unmodifiableMap(dataLabels);
     }
 
     private void execSSize(String args) {
@@ -1437,6 +1708,26 @@ public class VirtualCpu {
         if (token.startsWith("'") && token.endsWith("'") && token.length() >= 2) {
             String inner = token.substring(1, token.length() - 1);
             return parseCharLiteral(inner);
+        }
+
+        // Support token + offset: e.g. "table + 1" or "D + 2"
+        if (token.contains("+") && !token.startsWith("+")) {
+            int plusIdx = token.indexOf('+');
+            String left = token.substring(0, plusIdx).trim();
+            String right = token.substring(plusIdx + 1).trim();
+            return resolveValue(left) + resolveValue(right);
+        }
+        if (token.contains("-") && !token.startsWith("-")) {
+            int minusIdx = token.indexOf('-');
+            String left = token.substring(0, minusIdx).trim();
+            String right = token.substring(minusIdx + 1).trim();
+            return resolveValue(left) - resolveValue(right);
+        }
+
+        // Label reference: returns line number (code label) or RAM address (data label)
+        String lower = token.toLowerCase(Locale.ROOT);
+        if (labels.containsKey(lower)) {
+            return labels.get(lower);
         }
 
         try {

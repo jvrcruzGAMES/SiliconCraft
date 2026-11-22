@@ -337,7 +337,13 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider {
     public void tick(Level level, BlockPos pos, BlockState state) {
         this.cpu.setTimeSupplier(level::getGameTime);
         if (cpu.getState() == VirtualCpu.State.RUNNING) {
-            cpu.tick(10);
+            if (cpu.getTimerHz() > 0) {
+                int framesPerTick = Math.max(1, cpu.getTimerHz() / 20);
+                for (int f = 0; f < framesPerTick; f++) {
+                    cpu.queueTimerInterrupt();
+                }
+            }
+            cpu.tick(100);
             if (!state.getValue(ComputerBlock.POWERED)) {
                 level.setBlock(pos, state.setValue(ComputerBlock.POWERED, true), 3);
             }

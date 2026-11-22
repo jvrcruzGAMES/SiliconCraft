@@ -177,7 +177,72 @@ The SiliconCraft CPU features an Interrupt Vector Table (IVT), hardware event qu
 | **`10`** | `KEYBOARD` | Interrupt | `A = keyCode` | Client key typed in Computer Screen. |
 | **`11`** | `MOUSE_MOVE` | Interrupt | `A = x, B = y` | Mouse motion inside CRT monitor canvas. |
 | **`12`** | `MOUSE_CLICK` | Interrupt | `A = x, B = y, C = button` | Mouse click inside CRT monitor canvas (`0`=left, `1`=right). |
-| **`13`** | `TIMER` | Interrupt | `A = 13` | Timer tick interrupt. |
+| **`13`** | `TIMER` / `VBLANK` | Interrupt | `A = 13` | Periodic hardware timer / 60 Hz V-Blank interrupt. |
 
 > **Unhandled Exceptions**: If an exception occurs on a vector with no registered handler in the IVT, the CPU halts with state `ERROR` and displays:
 > `[CPU EXCEPTION] Exception not handled: <description> at line <line>: '<lineCode>'`
+
+---
+
+### 9. Gamepad & Controller Button Polling
+
+SiliconCraft supports real-time polling of held keys and controller buttons for continuous motion, jumping, and action inputs (such as Super Mario World style controls):
+
+| Opcode | Syntax | Description |
+|---|---|---|
+| **`INPAD`** | `INPAD dest [, padId]` | Reads the 16-bit bitmask of currently held buttons on controller `padId` (default 0) into `dest`. |
+
+#### Gamepad Button Bitmask Layout (SNES / Retro Layout)
+| Button Constant | Bit / Value | Hex | Description |
+|---|---|---|---|
+| `PAD_RIGHT` | Bit 0 (`1`) | `0x0001` | D-Pad Right / Key D / Right Arrow |
+| `PAD_LEFT` | Bit 1 (`2`) | `0x0002` | D-Pad Left / Key A / Left Arrow |
+| `PAD_DOWN` | Bit 2 (`4`) | `0x0004` | D-Pad Down / Key S / Down Arrow |
+| `PAD_UP` | Bit 3 (`8`) | `0x0008` | D-Pad Up / Key W / Up Arrow |
+| `PAD_START` | Bit 4 (`16`) | `0x0010` | Start / Key Enter |
+| `PAD_SELECT`| Bit 5 (`32`) | `0x0020` | Select / Key Space |
+| `PAD_B` | Bit 6 (`64`) | `0x0040` | B Button (Standard Jump) / Key J |
+| `PAD_A` | Bit 7 (`128`)| `0x0080` | A Button (Spin Jump) / Key K |
+| `PAD_Y` | Bit 8 (`256`)| `0x0100` | Y Button (Run / Dash) / Key U |
+| `PAD_X` | Bit 9 (`512`)| `0x0200` | X Button (Action) / Key I |
+| `PAD_L` | Bit 10 (`1024`)| `0x0400`| Left Shoulder / Key Q |
+| `PAD_R` | Bit 11 (`2048`)| `0x0800`| Right Shoulder / Key E |
+
+---
+
+### 10. Dynamic Indirect Jumps & Jump Tables
+
+`JMP` and `CALL` support dynamic jumping to registers and memory locations, enabling dynamic function pointers, jump tables, and sprite/state dispatchers:
+
+| Opcode | Syntax | Description |
+|---|---|---|
+| **`JMP`** | `JMP reg` | Jumps to instruction address stored in register `reg` (`A`, `B`, `C`, `D`). |
+| **`JMP`** | `JMP [reg]` | Jumps to instruction address stored in RAM at `[reg]`. |
+| **`CALL`** | `CALL reg` | Pushes return address and calls function at address in register `reg`. |
+| **`CALL`** | `CALL [reg]`| Pushes return address and calls function at address stored in RAM at `[reg]`. |
+
+---
+
+### 11. Periodic Hardware Timer & 60 Hz V-Blank
+
+The CPU hardware features a real-time periodic frame timer that dispatches interrupt vector 13:
+
+| Opcode | Syntax | Description |
+|---|---|---|
+| **`TIMER`** | `TIMER hz` | Configures periodic timer frequency in Hz (e.g. `TIMER 60` for 60 Hz). `0` disables timer. |
+| **`VBLANK`**| `VBLANK enable` | Shortcut for 60 Hz frame synchronization (`VBLANK 1` = 60 Hz, `VBLANK 0` = off). |
+
+---
+
+### 12. Assembler Static Data Directives
+
+Directives allow placing raw binary data, tables, and external files directly into the RAM address space without executing instructions. Assembler directives are processed at CPU initialization and **do not require Chip Forge crafting**:
+
+| Directive | Syntax | Description |
+|---|---|---|
+| **`ORG`** | `ORG addr` | Sets current memory location counter to `addr` (decimal or `0x...`). |
+| **`DB`** | `DB byte1, byte2, "str", ...` | Emits 8-bit bytes and UTF-8 string bytes into RAM. |
+| **`DW`** | `DW word1, word2, ...` | Emits 16-bit little-endian words (2 bytes per entry) into RAM. |
+| **`DL`** | `DL long1, long2, ...` | Emits 24-bit/32-bit little-endian longs (3 bytes per entry) into RAM. |
+| **`INCBIN`**| `INCBIN "path" [, offset, len]` | Includes raw binary file contents directly into RAM. |
+

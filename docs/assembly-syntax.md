@@ -54,6 +54,19 @@ end:
 - Forward references (jumping to a label declared lower in the file) are fully supported.
 - You can also jump to a direct line index (e.g. `JMP 0` resets to the first instruction), but labels are recommended for safety and clarity.
 
+### Dynamic Indirect Jumps & Jump Tables
+`JMP` and `CALL` can target registers or dereferenced RAM pointers:
+```assembly
+; Jump to an address stored in a register
+MOV A, my_handler
+JMP A
+
+; Dynamic jump table lookup
+MOV D, jump_table
+ADD D, state_index
+CALL [D]             ; Call function pointer stored at [jump_table + state_index]
+```
+
 ---
 
 ## 4. Number Literals & Constants
@@ -199,7 +212,57 @@ div_zero_handler:
 
 ---
 
-## 11. Flashing Assembly with the Programmer
+## 11. Static Data Directives (`ORG`, `DB`, `DW`, `DL`, `INCBIN`)
+
+SiliconCraft's assembler allows you to embed static assets, lookup tables, tilemaps, and raw binaries directly into RAM at arbitrary addresses. Because these are assembler directives rather than executable opcodes, they do not require chip architecture support.
+
+```assembly
+; Set initial load address to RAM location 0x200
+ORG 0x200
+
+sprite_lut:
+    DB 0x01, 0x02, 0x04, 0x08       ; 8-bit bytes
+    DB "HERO_WALK", 0                ; Null-terminated string
+
+pointer_table:
+    DW state_idle, state_walk        ; 16-bit little-endian words
+
+long_pointers:
+    DL 0x100000, 0x100040            ; 24-bit / 32-bit addresses
+
+rom_data:
+    INCBIN "tiles.bin"               ; Load raw binary file into RAM at current address
+```
+
+---
+
+## 12. Gamepad Polling & 60 Hz V-Blank Timing
+
+For continuous player controls and smooth 60 Hz arcade/retro game loops:
+
+```assembly
+; Hook 60 Hz frame interrupt (Vector 13)
+IVEC TIMER, vblank_handler
+VBLANK 1                             ; Start 60 Hz V-Blank interrupt
+
+STI
+
+game_loop:
+    ; Poll held controller buttons (bitmask: Right=1, Left=2, Down=4, Up=8, B=64, Y=256)
+    INPAD A                          ; Read controller 0 held bitmask into A
+    TEST A, 64                       ; Check if B button (jump) is held down
+    JNZ do_jump
+    JMP game_loop
+
+vblank_handler:
+    ; Executed 60 times per second
+    FBSWAP                           ; Flip display canvas
+    IRET
+```
+
+---
+
+## 13. Flashing Assembly with the Programmer
 
 1. Open the **Programmer** block in Minecraft.
 2. Insert either a blank **ROM Chip** OR a **Storage Drive** (Flash / NVMe).
@@ -209,7 +272,7 @@ div_zero_handler:
 
 ---
 
-## 12. Common CPU Errors & Troubleshooting
+## 14. Common CPU Errors & Troubleshooting
 
 | Error in Terminal | Cause | Solution |
 | :--- | :--- | :--- |

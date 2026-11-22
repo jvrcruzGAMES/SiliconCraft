@@ -11,7 +11,7 @@ public class InstructionValidator {
             // Arithmetic & Logic
             "ADD", "SUB", "MUL", "DIV", "MOD", "INC", "DEC", "CMP", "AND", "OR", "XOR", "NOT", "SHL", "SHR",
             // I/O & System / BIOS
-            "OUT", "OUTC", "OUTH", "CLS", "SLEEP", "TIME", "RAND",
+            "OUT", "OUTC", "OUTH", "CLS", "SLEEP", "TIME", "RAND", "INPAD",
             // Storage (multi-drive)
             "SSIZE", "SREAD", "SWRITE", "SBLKR", "SBLKW", "SCOUNT", "SSEL", "SDRV", "SEXEC",
             // Framebuffer / Graphics
@@ -19,9 +19,15 @@ public class InstructionValidator {
             // Audio Buffer & Sound
             "APUSH", "ABUFW", "ACLR", "ASTAT", "ATONE", "APLAY",
             // Interrupts & Exceptions
-            "IVEC", "IRET", "CLI", "STI", "INT"
+            "IVEC", "IRET", "CLI", "STI", "INT", "TIMER", "VBLANK"
     );
     public static final Set<String> ALL_INSTRUCTIONS_SET = new HashSet<>(ALL_INSTRUCTIONS);
+
+    // Static Assembler Directives (processed by assembler/loader, do not require CPU silicon opcodes)
+    public static final Set<String> ASSEMBLER_DIRECTIVES = Set.of(
+            "ORG", "DB", "DW", "DL", "INCBIN"
+    );
+    public static final Set<String> ALL_DIRECTIVES_SET = new HashSet<>(ASSEMBLER_DIRECTIVES);
 
     public static Set<String> getRequiredInstructions(List<String> assemblyLines) {
         Set<String> required = new LinkedHashSet<>();
@@ -34,6 +40,9 @@ public class InstructionValidator {
             }
             int space = line.indexOf(' ');
             String opcode = (space == -1 ? line : line.substring(0, space)).toUpperCase(Locale.ROOT).trim();
+            if (ASSEMBLER_DIRECTIVES.contains(opcode)) {
+                continue;
+            }
             if (ALL_INSTRUCTIONS_SET.contains(opcode)) {
                 required.add(opcode);
             }

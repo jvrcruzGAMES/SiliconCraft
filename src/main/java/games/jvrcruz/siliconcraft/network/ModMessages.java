@@ -198,6 +198,8 @@ public class ModMessages {
                         compBe.getCpu().queueMouseMoveInterrupt(packet.arg1(), packet.arg2());
                     } else if (packet.inputType() == 2) {
                         compBe.getCpu().queueMouseClickInterrupt(packet.arg1(), packet.arg2(), packet.arg3());
+                    } else if (packet.inputType() == 3) {
+                        compBe.getCpu().setPadState(packet.arg1(), packet.arg2());
                     }
                 }
             }

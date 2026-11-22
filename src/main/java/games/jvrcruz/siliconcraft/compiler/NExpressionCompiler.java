@@ -70,6 +70,8 @@ public class NExpressionCompiler {
             expr.equalsIgnoreCase("display.width()") || expr.equalsIgnoreCase("fb.width()") ||
             expr.equalsIgnoreCase("display.height()") || expr.equalsIgnoreCase("fb.height()") ||
             expr.equalsIgnoreCase("audio.status()") || expr.equalsIgnoreCase("audio.size()")) return NType.Type.INT;
+        if (expr.startsWith("pad.get(") || expr.startsWith("input.pad(") || expr.startsWith("inpad(") ||
+            expr.equalsIgnoreCase("pad.get()") || expr.equalsIgnoreCase("input.pad()") || expr.equalsIgnoreCase("inpad()")) return NType.Type.INT;
         return typeMap.getOrDefault(expr.toLowerCase(Locale.ROOT), NType.Type.INT);
     }
 
@@ -320,6 +322,36 @@ public class NExpressionCompiler {
         if (token.equalsIgnoreCase("true")) return "1";
         if (token.equalsIgnoreCase("false")) return "0";
 
+        // Held gamepad bitmask: pad.get([id]) or input.pad([id]) or inpad([id])
+        if ((token.startsWith("pad.get(") || token.startsWith("input.pad(") || token.startsWith("inpad(")) && token.endsWith(")")) {
+            String inner = extractParenthesesOrRest(token).trim();
+            if (inner.isEmpty()) {
+                if (assembly != null) assembly.add("INPAD A");
+            } else {
+                String idLoc = resolveLocation(inner, varMap, tableMap, assembly);
+                if (assembly != null) assembly.add("INPAD A, " + idLoc);
+            }
+            return "A";
+        }
+        if (token.equalsIgnoreCase("pad.get()") || token.equalsIgnoreCase("input.pad()") || token.equalsIgnoreCase("inpad()")) {
+            if (assembly != null) assembly.add("INPAD A");
+            return "A";
+        }
+
+        // Pad button bitmask constants
+        if (token.equalsIgnoreCase("pad.RIGHT")) return "1";
+        if (token.equalsIgnoreCase("pad.LEFT")) return "2";
+        if (token.equalsIgnoreCase("pad.DOWN")) return "4";
+        if (token.equalsIgnoreCase("pad.UP")) return "8";
+        if (token.equalsIgnoreCase("pad.START")) return "16";
+        if (token.equalsIgnoreCase("pad.SELECT")) return "32";
+        if (token.equalsIgnoreCase("pad.B")) return "64";
+        if (token.equalsIgnoreCase("pad.A")) return "128";
+        if (token.equalsIgnoreCase("pad.Y")) return "256";
+        if (token.equalsIgnoreCase("pad.X")) return "512";
+        if (token.equalsIgnoreCase("pad.L")) return "1024";
+        if (token.equalsIgnoreCase("pad.R")) return "2048";
+
         return token;
     }
 
@@ -424,6 +456,16 @@ public class NExpressionCompiler {
             String dExpr = extractParenthesesOrRest(expr);
             String dLoc = resolveLocation(dExpr, varMap, tableMap, assembly);
             assembly.add("SSIZE " + targetLoc + ", " + dLoc);
+        } else if ((expr.startsWith("pad.get(") || expr.startsWith("input.pad(") || expr.startsWith("inpad(")) && expr.endsWith(")")) {
+            String inner = extractParenthesesOrRest(expr).trim();
+            if (inner.isEmpty()) {
+                assembly.add("INPAD " + targetLoc);
+            } else {
+                String idLoc = resolveLocation(inner, varMap, tableMap, assembly);
+                assembly.add("INPAD " + targetLoc + ", " + idLoc);
+            }
+        } else if (expr.equalsIgnoreCase("pad.get()") || expr.equalsIgnoreCase("input.pad()") || expr.equalsIgnoreCase("inpad()")) {
+            assembly.add("INPAD " + targetLoc);
         } else if ((expr.startsWith("storage.read(") || expr.startsWith("storage.get(")) && expr.endsWith(")")) {
             String inner = extractParenthesesOrRest(expr);
             List<String> sArgs = splitArgs(inner);

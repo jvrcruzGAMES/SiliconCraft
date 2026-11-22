@@ -213,9 +213,9 @@ public class NCompiler {
                     continue;
                 }
 
-                // Inline assembly
+                // Inline assembly and static assembler directives (ORG, DB, DW, DL, INCBIN)
                 String firstWord = getFirstWord(line).toUpperCase(Locale.ROOT);
-                if (InstructionValidator.ALL_INSTRUCTIONS_SET.contains(firstWord)) {
+                if (InstructionValidator.ALL_INSTRUCTIONS_SET.contains(firstWord) || InstructionValidator.ASSEMBLER_DIRECTIVES.contains(firstWord)) {
                     assembly.add(line);
                     continue;
                 }
@@ -667,6 +667,42 @@ public class NCompiler {
                 if ((line.startsWith("on_mouse_click(") || line.startsWith("on_mouse_click ")) && line.endsWith(")")) {
                     String handler = extractParenthesesOrRest(line).trim();
                     assembly.add("IVEC 12, " + handler);
+                    continue;
+                }
+                if ((line.startsWith("on_timer(") || line.startsWith("on_timer ") ||
+                     line.startsWith("on_vblank(") || line.startsWith("on_vblank ")) && line.endsWith(")")) {
+                    String handler = extractParenthesesOrRest(line).trim();
+                    assembly.add("IVEC 13, " + handler);
+                    continue;
+                }
+                if ((line.startsWith("timer.start(") || line.startsWith("timer.set(") || line.startsWith("timer(")) && line.endsWith(")")) {
+                    String inner = extractParenthesesOrRest(line).trim();
+                    String hzLoc = resolveLocation(inner, varMap, tableMap, assembly);
+                    assembly.add("TIMER " + hzLoc);
+                    continue;
+                }
+                if (line.equalsIgnoreCase("timer.stop()") || line.equalsIgnoreCase("timer.stop")) {
+                    assembly.add("TIMER 0");
+                    continue;
+                }
+                if (line.equalsIgnoreCase("vblank.enable()") || line.equalsIgnoreCase("vblank()") || line.equalsIgnoreCase("vblank.start()")) {
+                    assembly.add("VBLANK 1");
+                    continue;
+                }
+                if (line.equalsIgnoreCase("vblank.disable()") || line.equalsIgnoreCase("vblank.stop()")) {
+                    assembly.add("VBLANK 0");
+                    continue;
+                }
+                if ((line.startsWith("call(") || line.startsWith("call ")) && line.endsWith(")")) {
+                    String target = extractParenthesesOrRest(line).trim();
+                    String loc = resolveLocation(target, varMap, tableMap, assembly);
+                    assembly.add("CALL " + loc);
+                    continue;
+                }
+                if ((line.startsWith("jmp(") || line.startsWith("jmp ")) && line.endsWith(")")) {
+                    String target = extractParenthesesOrRest(line).trim();
+                    String loc = resolveLocation(target, varMap, tableMap, assembly);
+                    assembly.add("JMP " + loc);
                     continue;
                 }
                 if ((line.startsWith("catch(") || line.startsWith("catch ")) && line.endsWith(")")) {

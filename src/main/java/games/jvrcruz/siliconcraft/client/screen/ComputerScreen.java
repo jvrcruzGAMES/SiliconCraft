@@ -241,12 +241,18 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         return super.charTyped(codePoint, modifiers);
     }
 
+    private final java.util.Set<Integer> heldKeyCodes = new java.util.HashSet<>();
+    private int lastSentPadMask = 0;
+
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (keyCode == 256) { // Escape
             return super.keyPressed(keyCode, scanCode, modifiers);
         }
         if (menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal()) {
+            heldKeyCodes.add(keyCode);
+            updateAndSendPadState();
+
             if (keyCode == 257 || keyCode == 335) { // Enter / Numpad Enter -> '\n' (10)
                 PacketDistributor.sendToServer(new ComputerInputPacket(menu.getBlockEntity().getBlockPos(), 0, 10, scanCode, modifiers));
                 return true;
@@ -262,8 +268,54 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
     }
 
     @Override
+    public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+        if (menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal()) {
+            if (heldKeyCodes.remove(keyCode)) {
+                updateAndSendPadState();
+            }
+        }
+        return super.keyReleased(keyCode, scanCode, modifiers);
+    }
+
+    private void updateAndSendPadState() {
+        int mask = 0;
+        for (int k : heldKeyCodes) {
+            // Right: Arrow Right (262) or D (68)
+            if (k == 262 || k == 68) mask |= VirtualCpu.PAD_RIGHT;
+            // Left: Arrow Left (263) or A (65)
+            if (k == 263 || k == 65) mask |= VirtualCpu.PAD_LEFT;
+            // Down: Arrow Down (264) or S (83)
+            if (k == 264 || k == 83) mask |= VirtualCpu.PAD_DOWN;
+            // Up: Arrow Up (265) or W (87)
+            if (k == 265 || k == 87) mask |= VirtualCpu.PAD_UP;
+            // Start: Enter (257) or Keypad Enter (335)
+            if (k == 257 || k == 335) mask |= VirtualCpu.PAD_START;
+            // Select: Shift (340 / 344)
+            if (k == 340 || k == 344) mask |= VirtualCpu.PAD_SELECT;
+            // B (Jump): Space (32) or Z (90)
+            if (k == 32 || k == 90) mask |= VirtualCpu.PAD_B;
+            // A (Spin jump): X (88)
+            if (k == 88) mask |= VirtualCpu.PAD_A;
+            // Y (Run / dash): C (67) or J (74)
+            if (k == 67 || k == 74) mask |= VirtualCpu.PAD_Y;
+            // X: V (86) or K (75)
+            if (k == 86 || k == 75) mask |= VirtualCpu.PAD_X;
+            // L: Q (81) or U (85)
+            if (k == 81 || k == 85) mask |= VirtualCpu.PAD_L;
+            // R: E (69) or I (73)
+            if (k == 69 || k == 73) mask |= VirtualCpu.PAD_R;
+        }
+        if (mask != lastSentPadMask) {
+            lastSentPadMask = mask;
+            PacketDistributor.sendToServer(new ComputerInputPacket(menu.getBlockEntity().getBlockPos(), 3, 0, mask, 0));
+        }
+    }
+
+    @Override
     public void onClose() {
         super.onClose();
+        heldKeyCodes.clear();
+        updateAndSendPadState();
         displayRenderer.close();
     }
 }

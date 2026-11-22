@@ -288,11 +288,18 @@ The `.n` language provides native event-hooking and exception handling primitive
 on_key(handle_key)              // Vector 10: Keyboard input
 on_mouse_move(handle_mouse)     // Vector 11: Mouse movement in CRT canvas
 on_mouse_click(handle_click)    // Vector 12: Mouse click in CRT canvas
+on_vblank(handle_frame)         // Vector 13: 60 Hz V-Blank / periodic timer
 
 fn handle_key() {
     // Register A holds the typed character code
     print "Key: "
     println A
+    IRET
+}
+
+fn handle_frame() {
+    // Executed 60 times per second
+    fb.flip()
     IRET
 }
 
@@ -302,6 +309,14 @@ fn handle_click() {
     fb.flip()
     IRET
 }
+```
+
+### Frame Synchronization & Timer
+```text
+vblank.enable()                 // Starts 60 Hz V-Blank interrupt
+vblank.disable()                // Disables V-Blank interrupt
+timer.start(60)                 // Set arbitrary timer frequency in Hz
+timer.stop()                    // Stops timer
 ```
 
 ### Exception Handlers (`catch`)
@@ -321,3 +336,62 @@ fn handle_div_zero() {
 - `CLI`: Disable/mask interrupts. Incoming events are queued safely.
 - `STI`: Enable/unmask interrupts. Queued events are immediately dispatched.
 - `INT <vector>`: Trigger a software interrupt or system call.
+
+---
+
+## 13. Gamepad & Controller Button State Polling
+
+For continuous player movement, dash mechanics, and variable jump heights, `.n` provides high-level gamepad polling:
+
+```text
+var buttons = pad.get()          // Polls controller 0 held bitmask
+
+if (buttons & pad.RIGHT) != 0 {
+    playerX += 2
+}
+if (buttons & pad.B) != 0 {
+    // B button held: jump
+    playerY -= 5
+}
+if (buttons & pad.Y) != 0 {
+    // Y button held: dash speed boost
+    playerX += 2
+}
+```
+
+#### Available Pad Constants:
+- `pad.RIGHT` (`1`), `pad.LEFT` (`2`), `pad.DOWN` (`4`), `pad.UP` (`8`)
+- `pad.START` (`16`), `pad.SELECT` (`32`)
+- `pad.B` (`64` - Jump), `pad.A` (`128` - Spin Jump)
+- `pad.Y` (`256` - Dash/Run), `pad.X` (`512` - Action)
+- `pad.L` (`1024` - Shoulder L), `pad.R` (`2048` - Shoulder R)
+
+---
+
+## 14. Dynamic Function Pointers & Indirect Calls
+
+You can dynamically call or jump to functions stored in variables or lookup tables:
+
+```text
+var stateHandler = &walk_state
+call(stateHandler)               // Dynamic CALL to address in stateHandler
+
+var stateTable = { &idle_state, &walk_state, &jump_state }
+var nextFn = stateTable[stateIndex]
+call(nextFn)
+```
+
+---
+
+## 15. Static Data Directives in `.n`
+
+Low-level static data directives can be placed directly at the top or bottom of `.n` files to define asset ROM tables and preloaded data:
+
+```text
+ORG 0x1000
+DB 0x01, 0x02, 0x03, 0x04
+DW 0x55AA, 0x1234
+DL 0x100000
+INCBIN "level1_map.bin"
+```
+
