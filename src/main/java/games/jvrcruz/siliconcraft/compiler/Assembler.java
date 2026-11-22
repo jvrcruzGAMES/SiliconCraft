@@ -135,7 +135,7 @@ public class Assembler {
         return sb.toString();
     }
 
-    private static int findLabelColon(String line) {
+    public static int findLabelColon(String line) {
         boolean inQuotes = false;
         char quoteChar = 0;
         for (int i = 0; i < line.length(); i++) {

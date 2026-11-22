@@ -1,5 +1,6 @@
 package games.jvrcruz.siliconcraft;
 
+import games.jvrcruz.siliconcraft.compiler.Assembler;
 import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
 import games.jvrcruz.siliconcraft.compiler.NCompiler;
 import games.jvrcruz.siliconcraft.vm.VirtualCpu;
@@ -589,6 +590,111 @@ public class CompilerAndValidatorTest {
                  .forEach(java.io.File::delete);
             }
         }
+    }
+
+    @Test
+    public void testNImportsAssemblyProject() {
+        java.util.Map<String, List<String>> files = new java.util.LinkedHashMap<>();
+        files.put("math/routines.asm", List.of(
+                "double_val:",
+                "    MUL A, 2",
+                "    RET"
+        ));
+        files.put("main.n", List.of(
+                "import \"math/routines.asm\"",
+                "A = 10",
+                "double_val()",
+                "println A"
+        ));
+
+        NCompiler.CompileResult result = NCompiler.compileProject(files, null);
+        assertTrue(result.success(), "Compile should succeed: " + result.errors());
+
+        Assembler.AssemblerResult asmResult = Assembler.assemble(result.assembly());
+        assertTrue(asmResult.success(), "Assemble should succeed: " + asmResult.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "MUL", "CALL", "RET", "JMP", "OUT", "HLT");
+        cpu.configure(isa, 256, asmResult.bytecode(), false, 0);
+        cpu.powerOn();
+        cpu.tick(100);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertTrue(cpu.getTerminalOutput().contains("20"), "Output should contain 20: " + cpu.getTerminalOutput());
+    }
+
+    @Test
+    public void testPureAssemblyProject() {
+        java.util.Map<String, List<String>> files = new java.util.LinkedHashMap<>();
+        files.put("sub.s", List.of(
+                "add_twenty:",
+                "    ADD A, 20",
+                "    RET"
+        ));
+        files.put("helpers.asm", List.of(
+                "include \"sub.s\"",
+                "compute_total:",
+                "    CALL add_twenty",
+                "    MUL A, 2",
+                "    RET"
+        ));
+        files.put("main.asm", List.of(
+                "include \"helpers.asm\"",
+                "start:",
+                "    MOV A, 5",
+                "    CALL compute_total",
+                "    OUT A",
+                "    HLT"
+        ));
+
+        NCompiler.CompileResult result = NCompiler.compileProject(files, null);
+        assertTrue(result.success(), "Compile should succeed: " + result.errors());
+
+        Assembler.AssemblerResult asmResult = Assembler.assemble(result.assembly());
+        assertTrue(asmResult.success(), "Assemble should succeed: " + asmResult.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "ADD", "MUL", "CALL", "RET", "JMP", "OUT", "HLT");
+        cpu.configure(isa, 256, asmResult.bytecode(), false, 0);
+        cpu.powerOn();
+        cpu.tick(100);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertTrue(cpu.getTerminalOutput().contains("50"), "Output should contain 50: " + cpu.getTerminalOutput());
+    }
+
+    @Test
+    public void testAssemblyImportsNProject() {
+        java.util.Map<String, List<String>> files = new java.util.LinkedHashMap<>();
+        files.put("logic.n", List.of(
+                "fn square_it() {",
+                "    A = A * A;",
+                "    return A;",
+                "}"
+        ));
+        files.put("main.asm", List.of(
+                "include \"logic.n\"",
+                "start:",
+                "    MOV A, 7",
+                "    CALL square_it",
+                "    OUT A",
+                "    HLT"
+        ));
+
+        NCompiler.CompileResult result = NCompiler.compileProject(files, null);
+        assertTrue(result.success(), "Compile should succeed: " + result.errors());
+
+        Assembler.AssemblerResult asmResult = Assembler.assemble(result.assembly());
+        assertTrue(asmResult.success(), "Assemble should succeed: " + asmResult.errors());
+
+        VirtualCpu cpu = new VirtualCpu();
+        Set<String> isa = Set.of("MOV", "MUL", "CALL", "RET", "JMP", "OUT", "HLT");
+        cpu.configure(isa, 256, asmResult.bytecode(), false, 0);
+        cpu.powerOn();
+        cpu.tick(100);
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertTrue(cpu.getTerminalOutput().contains("49"), "Output should contain 49: " + cpu.getTerminalOutput());
     }
 
     @Test

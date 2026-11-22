@@ -48,13 +48,13 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
         // Zip selection button
         this.addRenderableWidget(Button.builder(Component.literal("📁 .zip"), b -> {
             chooseFileAsync();
-        }).tooltip(Tooltip.create(Component.literal("Select .zip project archive")))
+        }).tooltip(Tooltip.create(Component.literal("Select project .zip archive (.n, .asm, .s)")))
           .bounds(this.leftPos + 72, this.topPos + 16, 47, 16).build());
 
         // Folder selection button
         this.addRenderableWidget(Button.builder(Component.literal("📂 Folder"), b -> {
             chooseFolderAsync();
-        }).tooltip(Tooltip.create(Component.literal("Select root folder containing main.n")))
+        }).tooltip(Tooltip.create(Component.literal("Select root folder containing main.n or main.asm / main.s")))
           .bounds(this.leftPos + 121, this.topPos + 16, 47, 16).build());
 
         // Compile & Add button
@@ -106,7 +106,7 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
                 filterPatterns.flip();
 
                 return TinyFileDialogs.tinyfd_openFileDialog(
-                        "Select .n Project Zip Archive",
+                        "Select Project Zip Archive (.zip with .n, .asm, .s)",
                         "",
                         filterPatterns,
                         "Zip Archive (*.zip)",
@@ -114,7 +114,7 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
                 );
             } catch (Throwable t) {
                 return TinyFileDialogs.tinyfd_openFileDialog(
-                        "Select .n Project Zip Archive",
+                        "Select Project Zip Archive (.zip with .n, .asm, .s)",
                         "",
                         null,
                         null,
@@ -130,7 +130,7 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
                         Map<String, List<String>> extracted = NCompiler.loadProjectFromZip(file);
 
                         if (extracted.isEmpty()) {
-                            this.statusText = "No .n files found in zip!";
+                            this.statusText = "No project files (.n, .asm, .s) found in zip!";
                         } else {
                             this.projectFiles = extracted;
                             this.loadedProjectName = file.getName();
@@ -156,7 +156,7 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
         CompletableFuture.supplyAsync(() -> {
             try {
                 return TinyFileDialogs.tinyfd_selectFolderDialog(
-                        "Select .n Project Folder (root containing main.n)",
+                        "Select Project Folder (root containing main.n or main.asm / main.s)",
                         ""
                 );
             } catch (Throwable t) {
@@ -171,7 +171,7 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
                         Map<String, List<String>> extracted = NCompiler.loadProjectFromFolder(folder);
 
                         if (extracted.isEmpty()) {
-                            this.statusText = "No .n files found in folder!";
+                            this.statusText = "No project files (.n, .asm, .s) found in folder!";
                         } else {
                             this.projectFiles = extracted;
                             this.loadedProjectName = folder.getName();

@@ -95,3 +95,14 @@ Agents must adhere to these thread-safety requirements:
 Before completing any task:
 1. Run `./gradlew test` — all test suites must pass 100%.
 2. Run `./gradlew build` — ensure all jar artifacts build with 0 compiler errors.
+
+---
+
+## 8. Standalone CPU Emulator (`SiliconCraft-ComputerEmulator`)
+
+A standalone, cycle-accurate Rust implementation of the SiliconCraft Virtual CPU architecture is located at `/home/jvrcruz/Documentos/Projects/SiliconCraft-ComputerEmulator`:
+
+- **Vulkan Window Interface**: Runs full CRT text mode and 240x135 framebuffer graphics inside a hardware-accelerated Vulkan window (`pixels` + `wgpu` + `winit`).
+- **Headless Mode**: Supports `--headless` for automated test suites and benchmarks.
+- **Toolchain Parity**: Features the same `.n` compiler, assembly project resolver, and `.o` bytecode executor as the Minecraft mod.
+- **Standard Preset**: 4 sticks of RAM (4096 KB), NVMe in extension slot 1 (1024 MB), all 71 instructions enabled, and code burned to non-volatile ROM.

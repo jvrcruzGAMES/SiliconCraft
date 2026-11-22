@@ -73,14 +73,19 @@ SiliconCraft separates program writing and compilation from physical ROM/Storage
 3. Insert your **Architecture Writeup** into the slot.
 4. Click **📁 Choose .n File** to select your `.n` source.
 5. The compiler verifies syntax and validates every required opcode against your architecture writeup.
-6. Click **[+ Compile & Add]** to compile it to assembly and store it into the world's program library.
+6. Click **[+ Compile & Add]** to compile and assemble it directly into a standard `.o` bytecode image in your Program Library.
 
-### Option B: Multi-File Projects with the Project Compiler
-For complex applications spanning multiple files and subdirectories:
+### Option B: Multi-File & Assembly Projects with the Project Compiler
+For complex applications spanning multiple files, subdirectories, or mixed language codebases:
 1. Craft and place the **Project Compiler** block.
-2. Structure your `.n` project with `main.n` at the root as the entrypoint. Files can import other files via `import "path/file.n"` or `import module.name`. You can leave it as a folder or package it into a `.zip` archive.
+2. Supports `.n`, `.asm`, `.s`, and `.S` source files.
+   - Entrypoints: `main.n`, `main.asm`, `main.s`, `entry.*`, or `start.*`.
+   - `.n` files can import assembly subroutines (`import "math_sub.asm"`).
+   - `.asm` files can import other assembly files (`include "helper.asm"`, `.include`, `#include`, `.import`).
+   - `.asm` files can run and import `.n` files (`include "logic.n"`).
+   - Imported assembly modules are automatically wrapped with safe jump skips to preserve entrypoint flow.
 3. Open the Project Compiler GUI, insert your **Architecture Writeup**, and click either **📁 .zip** or **📂 Folder** to select your project.
-4. Click **[+ Compile Project]**. It resolves all dependencies and outputs `<project_name>.asm` directly into your Program Library!
+4. Click **[+ Compile Project]**. The toolchain compiles and preassembles the entire project down to a single optimized **`.o`** bytecode image in your Program Library!
 
 ### Option C: Assembly Programming with the Assembly Writer
 1. Write your `.s` or `.asm` file on your computer (see [assembly-syntax.md](assembly-syntax.md)).
@@ -88,7 +93,7 @@ For complex applications spanning multiple files and subdirectories:
 3. Insert your **Architecture Writeup** into the slot.
 4. Click **📁 Choose .s / .asm** to load the file.
 5. The validator verifies that all opcodes in your assembly program are supported by the writeup.
-6. Click **[+ Add to Programs]** to register it into the world's program library.
+6. Click **[+ Add to Programs]** to assemble and register it as a `.o` bytecode image in your Program Library.
 
 ### Flashing with the Programmer
 The **Programmer** writes your programs to physical chips and drives:
@@ -124,25 +129,28 @@ Click **Assemble SoC** to generate your integrated **SoC**.
 
 ### Expanding Hardware in the PC GUI
 Opening the Personal Computer interface provides dedicated hardware expansion slots:
-- **4 RAM Expansion Slots**: Insert up to 4 RAM modules (1 per slot). Each module's capacity adds directly to the total RAM pool available to the SoC.
+- **4 RAM Expansion Slots**: Insert up to 4 RAM modules (1 per slot). Each module provides **1024 KB** (1,048,576 Bytes), allowing a maximum expanded capacity of **4096 KB** (4 MB) of RAM!
 - **2 NVMe / Storage Drive Slots**: Insert up to 2 individual Storage Drives (1 per slot).
+  - Both **Flash** and **NVMe** drives provide an expansive **1024 MB** (1,073,741,824 Bytes / 1 GB) capacity per drive!
   - Each drive is treated independently (indexed as drive `0` and drive `1`).
   - Storage drives retain their binary content in item NBT when extracted and moved!
 
 ### Framebuffer Graphics (Direct Screen Canvas)
-The Personal Computer includes a dedicated **$128 \times 64$ CRT Framebuffer**:
+The Personal Computer includes a dedicated **$240 \times 135$ CRT Framebuffer**:
 - Programs can draw direct pixels, lines, rectangles, or flip entire color buffers (`FBSET`, `FBLINE`, `FBRECT`, `FBSWAP`, or in N: `fb.set()`, `fb.rect()`, etc.).
 - Rendering executes directly on the computer screen canvas without Minecraft GUI engine overhead.
 
-### Audio Buffer & Speaker Block
-- The computer features a 4-channel audio synthesis buffer (`APUSH`, `APLAY`, `ASTOP`, `ASTAT`).
-- By default, audio plays through the computer screen CRT speaker.
-- **Speaker Block**: Place a **Speaker** block adjacent to or connected to your computer to broadcast computer sound effects, music, and beeps into the surrounding Minecraft world!
+### Audio Buffer & Speaker Routing Rules
+- The computer features an 8000 Hz, 8-bit unsigned PCM audio synthesis buffer (`APUSH`, `ATONE`, `APLAY`, `ACLR`, `ASTAT`).
+- **Speaker vs. Screen Routing**:
+  - **No Speaker Connected**: Audio plays **only** to players who currently have the computer screen GUI open (`ComputerMenu`).
+  - **Speaker Connected** (adjacent `SpeakerBlock`): Audio is broadcast to nearby players within a **32-block radius** (`distanceToSqr <= 32 * 32`) and anyone with the screen GUI open.
 
-### Operating the Computer
-- **Power Button**: Boots the CPU. The terminal outputs BIOS information, clock cycles, and any strings printed with `OUT`.
+### Operating the Computer & Keystroke Isolation
+- **Power Button**: Boots the CPU on background worker threads. The terminal outputs BIOS information, clock cycles, and any strings printed with `OUT`.
 - **Reset Button**: Resets registers, flags, audio, and restarts PC from line `0`.
 - **Step Button**: Executes a single clock cycle / instruction for interactive debugging.
+- **Keystroke Isolation**: Buttons automatically lose selection when your cursor moves away. This prevents accidental UI button activation when typing interactive terminal keystrokes into your running program!
 - **CPU Registers & Flags**: Live displays for `PC`, `A`, `B`, `C`, `D`, `Z` (Zero Flag), and `S` (Sign Flag).
 
 ### Upgrading or Removing the SoC

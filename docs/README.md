@@ -70,7 +70,7 @@ SiliconCraft features an accessible 4-register architecture with custom instruct
   - Executing an instruction that was not added during chip fabrication will trigger a hardware `[CPU EXCEPTION] Illegal Opcode` halt!
 - **Assembly & Project Compilers**:
   - Single `.n` files can be compiled with the **Code Compiler**.
-  - Multi-file `.zip` projects can be compiled with the **Project Compiler**, resolving subfolders and modular imports into `<zipname>.asm`.
+  - Multi-file projects (`.zip` or folders containing `.n`, `.asm`, `.s`, `.S`) can be compiled with the **Project Compiler**, resolving imports and assembling into `<zipname>.o`.
   - Flash assembly to ROM chips or Storage drives using the **Programmer** machine.
 - **JEI & Jade Compatibility**:
   - Full JEI integration with recipe categories for Chip Forge, Memory Forge, SoC Manufacturer, and Computer Assembly.

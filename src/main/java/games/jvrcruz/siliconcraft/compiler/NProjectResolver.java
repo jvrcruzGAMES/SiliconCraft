@@ -25,13 +25,56 @@ public class NProjectResolver {
         return String.join("/", list);
     }
 
+    public static boolean isAssemblyFile(String path) {
+        if (path == null) return false;
+        String p = path.toLowerCase(Locale.ROOT);
+        return p.endsWith(".asm") || p.endsWith(".s");
+    }
+
+    public static boolean isNFile(String path) {
+        if (path == null) return false;
+        return path.toLowerCase(Locale.ROOT).endsWith(".n");
+    }
+
+    public static boolean isSupportedSourceFile(String path) {
+        return isNFile(path) || isAssemblyFile(path);
+    }
+
+    public static String getImportDirectiveArg(String rawLine) {
+        if (rawLine == null) return null;
+        String line = InstructionValidator.stripComments(rawLine).trim();
+        if (line.isEmpty()) return null;
+
+        if (line.startsWith(".include ") || line.startsWith(".include\t")) {
+            return line.substring(9).trim();
+        }
+        if (line.startsWith("include ") || line.startsWith("include\t")) {
+            return line.substring(8).trim();
+        }
+        if (line.startsWith("#include ") || line.startsWith("#include\t")) {
+            String s = line.substring(9).trim();
+            if (s.startsWith("<") && s.endsWith(">") && s.length() >= 2) {
+                s = s.substring(1, s.length() - 1).trim();
+            }
+            return s;
+        }
+        if (line.startsWith(".import ") || line.startsWith(".import\t")) {
+            return line.substring(8).trim();
+        }
+        if (line.startsWith("import ") || line.startsWith("import\t")) {
+            return line.substring(7).trim();
+        }
+        return null;
+    }
+
     public static String cleanImportString(String raw) {
         if (raw == null) return "";
         String s = raw.trim();
         if (s.endsWith(";")) {
             s = s.substring(0, s.length() - 1).trim();
         }
-        if ((s.startsWith("\"") && s.endsWith("\"")) || (s.startsWith("'") && s.endsWith("'"))) {
+        if ((s.startsWith("\"") && s.endsWith("\"")) || (s.startsWith("'") && s.endsWith("'"))
+                || (s.startsWith("<") && s.endsWith(">"))) {
             if (s.length() >= 2) {
                 s = s.substring(1, s.length() - 1).trim();
             }
@@ -50,25 +93,28 @@ public class NProjectResolver {
         }
 
         List<String> candidates = new ArrayList<>();
+        String[] extensions = {"", ".n", ".asm", ".s", ".S"};
 
         // 1. Relative to current file's directory
         String rel = currentDir.isEmpty() ? clean : currentDir + "/" + clean;
-        candidates.add(normalizePath(rel));
-        if (!clean.endsWith(".n")) {
-            candidates.add(normalizePath(rel + ".n"));
+        for (String ext : extensions) {
+            candidates.add(normalizePath(rel + ext));
         }
 
         // 2. Relative to project root
-        candidates.add(normalizePath(clean));
-        if (!clean.endsWith(".n")) {
-            candidates.add(normalizePath(clean + ".n"));
+        for (String ext : extensions) {
+            candidates.add(normalizePath(clean + ext));
         }
 
-        // 3. Dot notation to slash (e.g. math.vec -> math/vec.n)
-        if (clean.contains(".") && !clean.endsWith(".n")) {
+        // 3. Dot notation to slash (e.g. math.vec -> math/vec.n or math/vec.asm)
+        if (clean.contains(".") && !clean.endsWith(".n") && !clean.endsWith(".asm") && !clean.endsWith(".s") && !clean.endsWith(".S")) {
             String slash = clean.replace('.', '/');
-            candidates.add(normalizePath(currentDir.isEmpty() ? slash + ".n" : currentDir + "/" + slash + ".n"));
-            candidates.add(normalizePath(slash + ".n"));
+            for (String ext : extensions) {
+                if (!ext.isEmpty()) {
+                    candidates.add(normalizePath(currentDir.isEmpty() ? slash + ext : currentDir + "/" + slash + ext));
+                    candidates.add(normalizePath(slash + ext));
+                }
+            }
         }
 
         // Check exact matches
@@ -96,6 +142,17 @@ public class NProjectResolver {
                                          Set<String> currentlyImporting,
                                          List<NCompiler.SourceLine> outputLines,
                                          List<String> errors) {
+        expandProjectFiles(currentFile, fileMap, alreadyImported, currentlyImporting, outputLines, errors, true, new int[]{1});
+    }
+
+    public static void expandProjectFiles(String currentFile,
+                                         Map<String, List<String>> fileMap,
+                                         Set<String> alreadyImported,
+                                         Set<String> currentlyImporting,
+                                         List<NCompiler.SourceLine> outputLines,
+                                         List<String> errors,
+                                         boolean isEntrypoint,
+                                         int[] wrapCounter) {
         currentlyImporting.add(currentFile);
         List<String> lines = fileMap.get(currentFile);
         if (lines == null) {
@@ -104,12 +161,20 @@ public class NProjectResolver {
             return;
         }
 
+        // If an assembly module is imported (not the main entrypoint), wrap it with a JMP
+        // so its subroutines are not executed as linear top-level code on machine startup
+        boolean wrapWithJump = !isEntrypoint && isAssemblyFile(currentFile);
+        int wrapId = 0;
+        if (wrapWithJump) {
+            wrapId = wrapCounter[0]++;
+            outputLines.add(new NCompiler.SourceLine(currentFile, 0, "JMP _import_skip_" + wrapId));
+        }
+
         for (int i = 0; i < lines.size(); i++) {
             String rawLine = lines.get(i);
-            String line = InstructionValidator.stripComments(rawLine).trim();
+            String importArg = getImportDirectiveArg(rawLine);
 
-            if (line.startsWith("import ") || line.startsWith("import\t")) {
-                String importArg = line.substring(6).trim();
+            if (importArg != null) {
                 String resolved = resolveImportPath(currentFile, importArg, fileMap.keySet());
                 if (resolved == null) {
                     errors.add(currentFile + ":" + (i + 1) + ": Cannot resolve import '" + importArg + "'");
@@ -127,10 +192,14 @@ public class NProjectResolver {
                     continue;
                 }
 
-                expandProjectFiles(resolved, fileMap, alreadyImported, currentlyImporting, outputLines, errors);
+                expandProjectFiles(resolved, fileMap, alreadyImported, currentlyImporting, outputLines, errors, false, wrapCounter);
             } else {
                 outputLines.add(new NCompiler.SourceLine(currentFile, i + 1, rawLine));
             }
+        }
+
+        if (wrapWithJump) {
+            outputLines.add(new NCompiler.SourceLine(currentFile, lines.size() + 1, "_import_skip_" + wrapId + ":"));
         }
 
         currentlyImporting.remove(currentFile);
@@ -150,6 +219,9 @@ public class NProjectResolver {
         if (name.toLowerCase(Locale.ROOT).endsWith(".asm") || name.toLowerCase(Locale.ROOT).endsWith(".s")) {
             name = name.substring(0, name.lastIndexOf('.'));
         }
+        if (name.toLowerCase(Locale.ROOT).endsWith(".n")) {
+            name = name.substring(0, name.lastIndexOf('.'));
+        }
         if (name.toLowerCase(Locale.ROOT).endsWith(".o")) {
             return name;
         }
@@ -163,10 +235,10 @@ public class NProjectResolver {
         java.nio.file.Path rootPath = folder.toPath().toAbsolutePath().normalize();
         Map<String, List<String>> files = new LinkedHashMap<>();
         try (var stream = java.nio.file.Files.walk(rootPath)) {
-            List<java.nio.file.Path> nFiles = stream.filter(java.nio.file.Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".n"))
+            List<java.nio.file.Path> projectFiles = stream.filter(java.nio.file.Files::isRegularFile)
+                    .filter(p -> isSupportedSourceFile(p.getFileName().toString()))
                     .toList();
-            for (java.nio.file.Path filePath : nFiles) {
+            for (java.nio.file.Path filePath : projectFiles) {
                 java.nio.file.Path rel = rootPath.relativize(filePath);
                 String normPath = rel.toString().replace('\\', '/');
                 while (normPath.startsWith("/")) {
@@ -201,7 +273,7 @@ public class NProjectResolver {
             java.util.zip.ZipEntry entry;
             byte[] buffer = new byte[4096];
             while ((entry = zis.getNextEntry()) != null) {
-                if (!entry.isDirectory() && entry.getName().toLowerCase(Locale.ROOT).endsWith(".n")) {
+                if (!entry.isDirectory() && isSupportedSourceFile(entry.getName())) {
                     java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
                     int len;
                     while ((len = zis.read(buffer)) > 0) {

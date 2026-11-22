@@ -395,3 +395,39 @@ DL 0x100000
 INCBIN "level1_map.bin"
 ```
 
+
+---
+
+## 16. Modules, Projects & Assembly Interoperability
+
+The `.n` language seamlessly interoperates with raw SiliconCraft assembly (`.asm`, `.s`, `.S`) within multi-file projects:
+
+### Importing Modules and Subroutines
+```text
+import "math/trig.n"             // Import another .n module
+import "drivers/screen.asm"      // Import an assembly subroutine module
+import utils.logger              // Dot-notation import (resolves to utils/logger.n or .asm)
+```
+
+When importing external assembly files, the project compiler automatically protects the entrypoint with safe jump skips (`JMP _import_skip_X ... _import_skip_X:`) to ensure imported subroutines or static tables do not execute on program boot.
+
+### Inline Assembly (`asm { ... }`)
+For cycle-critical loops or direct hardware register manipulation:
+```text
+fn clear_screen_fast() {
+    asm {
+        FBCLR 0xFF051009
+        FBSWAP
+    }
+}
+```
+
+Single-line assembly is also supported:
+```text
+asm("CLI")
+// Critical section
+asm("STI")
+```
+
+### Precompiled Bytecode Output (`.o`)
+Compiling a project produces a single, pre-assembled numerical bytecode file with the standard extension **`.o`**, ready to be burned directly to ROM chips or Storage drives.

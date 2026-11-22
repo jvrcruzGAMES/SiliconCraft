@@ -58,20 +58,34 @@ public class NCompiler {
         }
 
         if (selectedEntrypoint == null) {
-            if (normalizedMap.containsKey("main.n")) {
-                selectedEntrypoint = "main.n";
-            } else {
-                for (String path : normalizedMap.keySet()) {
-                    if (path.equalsIgnoreCase("main.n") || path.toLowerCase(Locale.ROOT).endsWith("/main.n")) {
-                        selectedEntrypoint = path;
-                        break;
-                    }
+            String[] commonEntrypoints = {
+                    "main.n", "main.asm", "main.s", "main.S",
+                    "entry.n", "entry.asm", "entry.s", "entry.S",
+                    "start.asm", "start.s", "start.S", "start.n",
+                    "index.n", "index.asm", "index.s", "index.S"
+            };
+            for (String cand : commonEntrypoints) {
+                if (normalizedMap.containsKey(cand)) {
+                    selectedEntrypoint = cand;
+                    break;
                 }
             }
         }
 
         if (selectedEntrypoint == null) {
-            return new CompileResult(false, List.of(), List.of("Project must contain a 'main.n' file as entrypoint!"), Set.of());
+            for (String path : normalizedMap.keySet()) {
+                String lower = path.toLowerCase(Locale.ROOT);
+                if (lower.endsWith("/main.n") || lower.endsWith("/main.asm") || lower.endsWith("/main.s") ||
+                    lower.endsWith("/entry.n") || lower.endsWith("/entry.asm") || lower.endsWith("/entry.s") ||
+                    lower.endsWith("/start.asm") || lower.endsWith("/start.s")) {
+                    selectedEntrypoint = path;
+                    break;
+                }
+            }
+        }
+
+        if (selectedEntrypoint == null) {
+            return new CompileResult(false, List.of(), List.of("Project must contain a 'main.n' (or 'main.asm' / 'main.s') entrypoint!"), Set.of());
         }
 
         List<SourceLine> expandedLines = new ArrayList<>();
@@ -79,7 +93,7 @@ public class NCompiler {
         Set<String> alreadyImported = new HashSet<>();
         Set<String> currentlyImporting = new LinkedHashSet<>();
 
-        NProjectResolver.expandProjectFiles(selectedEntrypoint, normalizedMap, alreadyImported, currentlyImporting, expandedLines, expansionErrors);
+        NProjectResolver.expandProjectFiles(selectedEntrypoint, normalizedMap, alreadyImported, currentlyImporting, expandedLines, expansionErrors, true, new int[]{1});
 
         if (!expansionErrors.isEmpty()) {
             return new CompileResult(false, List.of(), expansionErrors, Set.of());
@@ -215,10 +229,46 @@ public class NCompiler {
                     }
                 }
 
-                // Label definition (inline assembly label)
-                if (line.endsWith(":") && !line.contains(" ") && line.length() > 1) {
-                    assembly.add(line);
+                // Inline assembly block: asm { ... } or __asm__ { ... } or assembly { ... }
+                if (line.equals("asm {") || line.equals("__asm__ {") || line.equals("assembly {")) {
+                    while (i + 1 < sourceLines.size()) {
+                        i++;
+                        String rawAsm = sourceLines.get(i).text;
+                        String cleanAsm = InstructionValidator.stripComments(rawAsm).trim();
+                        if (cleanAsm.equals("}")) {
+                            break;
+                        }
+                        if (!cleanAsm.isEmpty()) {
+                            assembly.add(cleanAsm);
+                        }
+                    }
                     continue;
+                }
+
+                // Single line inline assembly: asm("..."); or asm "...";
+                if (line.startsWith("asm(") || line.startsWith("asm ")) {
+                    String asmCode = extractParenthesesOrRest(line).trim();
+                    if (asmCode.startsWith("\"") && asmCode.endsWith("\"") && asmCode.length() >= 2) {
+                        asmCode = asmCode.substring(1, asmCode.length() - 1).trim();
+                    }
+                    if (!asmCode.isEmpty()) {
+                        assembly.add(asmCode);
+                    }
+                    continue;
+                }
+
+                // Label definition (e.g. "my_label:" or "my_label: MOV A, 5")
+                int labelColon = Assembler.findLabelColon(line);
+                if (labelColon != -1) {
+                    String labelPart = line.substring(0, labelColon + 1).trim();
+                    String rest = line.substring(labelColon + 1).trim();
+                    if (!labelPart.contains(" ") && labelPart.length() > 1) {
+                        assembly.add(labelPart);
+                        if (rest.isEmpty()) {
+                            continue;
+                        }
+                        line = rest;
+                    }
                 }
 
                 // Inline assembly and static assembler directives (ORG, DB, DW, DL, INCBIN)

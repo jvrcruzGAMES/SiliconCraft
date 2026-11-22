@@ -284,3 +284,21 @@ vblank_handler:
 | `[CPU EXCEPTION] MOV requires dest, src` | Missing comma or operand in instruction syntax. | Ensure instructions have both operands separated by a comma (e.g. `MOV A, 5`). |
 | `[CPU EXCEPTION] Cannot write to destination: XYZ` | Attempted to write a value into an invalid destination (such as an immediate constant). | Ensure the first operand is a register (`A`, `B`, `C`, `D`) or memory bracket `[...]`. |
 
+
+---
+
+## 15. Modular Assembly & Multi-File Projects
+
+SiliconCraft supports multi-file assembly projects with file inclusion directives:
+
+### Supported Directives
+```assembly
+include "math_helpers.asm"     ; Relative or project-root include
+.include "constants.s"         ; Alternative dot syntax
+#include <hardware.asm>        ; C-style bracket syntax
+import "logic.n"               ; Run high-level .n modules directly from assembly!
+```
+
+- **Cross-Language Interoperability**: Assembly files can include and call `.n` files, and `.n` files can call assembly routines.
+- **Entrypoint Discovery**: The Project Compiler automatically detects entrypoints (`main.asm`, `main.s`, `main.n`, `entry.*`, `start.*`).
+- **Standard Object Format (`.o`)**: The assembled output is a unified, fully linked bytecode file with the standard `.o` extension.
