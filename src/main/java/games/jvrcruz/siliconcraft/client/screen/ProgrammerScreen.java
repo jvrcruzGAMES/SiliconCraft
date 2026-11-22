@@ -328,13 +328,20 @@ public class ProgrammerScreen extends BaseMachineScreen<ProgrammerMenu> {
                     Collections.sort(sortedReq);
                     tooltip.add(Component.literal("Required Instructions (" + sortedReq.size() + "):").withStyle(ChatFormatting.GRAY));
 
-                    StringBuilder sb = new StringBuilder();
-                    for (int i = 0; i < sortedReq.size(); i++) {
-                        if (i > 0) sb.append(", ");
-                        sb.append(sortedReq.get(i));
-                        if ((i + 1) % 6 == 0 || i == sortedReq.size() - 1) {
-                            tooltip.add(Component.literal("  " + sb.toString()).withStyle(ChatFormatting.DARK_AQUA));
-                            sb.setLength(0);
+                    if (!hasShiftDown() && sortedReq.size() > 4) {
+                        List<String> preview = sortedReq.subList(0, 4);
+                        int remaining = sortedReq.size() - 4;
+                        tooltip.add(Component.literal("  " + String.join(", ", preview) + ", ... (+" + remaining + " more)").withStyle(ChatFormatting.DARK_AQUA));
+                        tooltip.add(Component.literal("  Hold [SHIFT] to view all").withStyle(ChatFormatting.YELLOW, ChatFormatting.ITALIC));
+                    } else {
+                        StringBuilder sb = new StringBuilder();
+                        for (int i = 0; i < sortedReq.size(); i++) {
+                            if (i > 0) sb.append(", ");
+                            sb.append(sortedReq.get(i));
+                            if ((i + 1) % 6 == 0 || i == sortedReq.size() - 1) {
+                                tooltip.add(Component.literal("  " + sb.toString()).withStyle(ChatFormatting.DARK_AQUA));
+                                sb.setLength(0);
+                            }
                         }
                     }
                 } else {
