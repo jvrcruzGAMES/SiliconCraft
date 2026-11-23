@@ -68,7 +68,7 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
                 new ItemStack(Items.REDSTONE, Math.min(16, 1 + (8 / 3))),
                 starterChip,
                 200 + (8 * 100),
-                48 + (8 * 16),
+                38 + (8 * 13),
                 "Silicon-8 Starter CPU (8 ops)",
                 starterArch
         ));
@@ -86,7 +86,7 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
                 new ItemStack(Items.REDSTONE, Math.min(16, 1 + (fullCount / 3))),
                 fullChip,
                 200 + (fullCount * 100),
-                48 + (fullCount * 16),
+                38 + (fullCount * 13),
                 "Silicon-" + fullCount + " Full RISC CPU (" + fullCount + " ops)",
                 fullArch
         ));
@@ -103,7 +103,7 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
                 new ItemStack(Items.REDSTONE, Math.min(16, 1 + (3 / 3))),
                 minChip,
                 200 + (3 * 100),
-                48 + (3 * 16),
+                38 + (3 * 13),
                 "Silicon-3 Micro-Controller (3 ops)",
                 minArch
         ));

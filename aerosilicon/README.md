@@ -38,7 +38,7 @@ Use `PCALL` or `peripheral_call(side, method, 0, 0)`. Results are signed fixed-p
 
 | Method | Reading |
 |---|---|
-| `0x300` | World altitude in blocks |
+| `0x300` | World Y coordinate (altitude) in blocks |
 | `0x301` | Air pressure ratio, where 1000 means 100% |
 | `0x302` | Gimbal X angle in degrees |
 | `0x303` | Gimbal Z angle in degrees |
@@ -47,8 +47,10 @@ Use `PCALL` or `peripheral_call(side, method, 0, 0)`. Results are signed fixed-p
 | `0x306` | Local Y velocity in blocks per second |
 | `0x307` | Local Z velocity in blocks per second |
 | `0x308` | Speed in blocks per second |
+| `0x309` | World X coordinate in blocks |
+| `0x30A` | World Z coordinate in blocks |
 
-The sensor reads position and air pressure in the world. Its gimbal and velocity readings are zero when it is outside a Sable sub-level.
+The sensor reads world position (X, Y, Z projected out of the sub-level into the base world) and air pressure in the world. Its gimbal and velocity readings are zero when it is outside a Sable sub-level.
 
 ### Airship Controller
 

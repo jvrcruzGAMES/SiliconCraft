@@ -173,23 +173,30 @@ public class HardwareExpansionTest {
         // Base was 60, per-instruction was 20: 60 + (count * 20)
         // With first 10% speed increase (10% less duration): 54 + (count * 18)
         // With second 10% speed increase: 48 + (count * 16)
+        // With additional 20% speed increase: 38 + (count * 13)
         int initial8 = 60 + (8 * 20);
         int v1Speed8 = 54 + (8 * 18);
         int v2Speed8 = 48 + (8 * 16);
+        int v3Speed8 = 38 + (8 * 13);
         assertEquals(220, initial8);
         assertEquals(198, v1Speed8);
         assertEquals(176, v2Speed8);
+        assertEquals(142, v3Speed8);
         assertEquals(initial8 * 0.90, (double) v1Speed8, 0.001);
         assertEquals(198 * 0.90, (double) v2Speed8, 2.5); // ~11% speedup over v1
+        assertEquals(v2Speed8 * 0.80, (double) v3Speed8, 2.0); // ~20% speedup over v2
 
         int initial61 = 60 + (61 * 20);
         int v1Speed61 = 54 + (61 * 18);
         int v2Speed61 = 48 + (61 * 16);
+        int v3Speed61 = 38 + (61 * 13);
         assertEquals(1280, initial61);
         assertEquals(1152, v1Speed61);
         assertEquals(1024, v2Speed61);
+        assertEquals(831, v3Speed61);
         assertEquals(initial61 * 0.90, (double) v1Speed61, 0.001);
         assertEquals(1152 * 0.90, (double) v2Speed61, 15.0); // ~11% speedup over v1
+        assertEquals(v2Speed61 * 0.80, (double) v3Speed61, 15.0); // ~20% speedup over v2
     }
 
     @Test

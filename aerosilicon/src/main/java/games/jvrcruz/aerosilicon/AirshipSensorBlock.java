@@ -79,6 +79,8 @@ final class AirshipSensorBlock extends Block {
                     default -> velocity.length();
                 };
             }
+            case 0x309 -> value = Sable.HELPER.projectOutOfSubLevel(level, localCenter).x;
+            case 0x30A -> value = Sable.HELPER.projectOutOfSubLevel(level, localCenter).z;
             default -> { return OptionalInt.empty(); }
         }
         return OptionalInt.of((int) Math.clamp(Math.round(value * 1000), Integer.MIN_VALUE, Integer.MAX_VALUE));
