@@ -1,0 +1,10 @@
+{
+  "block.aerosilicon.airship_sensor": "Airship Sensor",
+  "block.aerosilicon.airship_controller": "Airship Controller",
+  "screen.aerosilicon.nickname": "Nickname",
+  "screen.aerosilicon.frequencies": "Frequency",
+  "screen.aerosilicon.frequency_slot": "Click here with an item to set the frequency",
+  "screen.aerosilicon.save": "Save",
+  "screen.aerosilicon.saved": "Channel nickname saved",
+  "screen.aerosilicon.invalid_name": "Choose a unique nickname of up to 32 characters"
+}

@@ -1,0 +1,27 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "aerosilicon:block/airship_sensor"
+    },
+    "facing=east": {
+      "model": "aerosilicon:block/airship_sensor",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "aerosilicon:block/airship_sensor",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "aerosilicon:block/airship_sensor",
+      "y": 270
+    },
+    "facing=up": {
+      "model": "aerosilicon:block/airship_sensor",
+      "x": 270
+    },
+    "facing=down": {
+      "model": "aerosilicon:block/airship_sensor",
+      "x": 90
+    }
+  }
+}

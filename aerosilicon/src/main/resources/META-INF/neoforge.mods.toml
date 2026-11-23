@@ -1,0 +1,51 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "All Rights Reserved"
+
+[[mods]]
+modId = "aerosilicon"
+version = "${addonVersion}"
+displayName = "AeroSilicon"
+description = "Airship sensors and wireless controls for SiliconCraft computers."
+
+[[dependencies.aerosilicon]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1]"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.aerosilicon]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.1.247,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.aerosilicon]]
+modId = "siliconcraft"
+type = "required"
+versionRange = "[0.1.0-BETA,)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.aerosilicon]]
+modId = "create"
+type = "required"
+versionRange = "[6.0.10,6.1)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.aerosilicon]]
+modId = "aeronautics"
+type = "required"
+versionRange = "[1.3.3,2)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.aerosilicon]]
+modId = "sable"
+type = "required"
+versionRange = "[2.0.6,3)"
+ordering = "AFTER"
+side = "BOTH"

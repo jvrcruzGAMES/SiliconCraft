@@ -1,0 +1,16 @@
+{
+  "variants": {
+    "axis=x": {
+      "model": "siliconcraft:block/serial_cable",
+      "x": 90,
+      "y": 90
+    },
+    "axis=y": {
+      "model": "siliconcraft:block/serial_cable"
+    },
+    "axis=z": {
+      "model": "siliconcraft:block/serial_cable",
+      "x": 90
+    }
+  }
+}

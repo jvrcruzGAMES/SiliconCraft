@@ -1,0 +1,67 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev'
+}
+
+version = mod_version
+group = mod_group_id
+
+base { archivesName = 'aerosilicon' }
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+repositories {
+    mavenCentral()
+    maven {
+        url = 'https://api.modrinth.com/maven'
+        content { includeGroup 'maven.modrinth' }
+    }
+}
+
+neoForge {
+    version = project.neo_version
+    parchment {
+        mappingsVersion = project.parchment_mappings_version
+        minecraftVersion = project.parchment_minecraft_version
+    }
+}
+
+configurations {
+    createBundle
+    sableBundle
+}
+
+def createFiles = configurations.createBundle
+def sableFiles = configurations.sableBundle
+def embeddedApiDirectory = layout.buildDirectory.dir('embedded-apis')
+def embeddedApis = tasks.register('extractEmbeddedApis', Sync) {
+    includeEmptyDirs = false
+    from({ zipTree(createFiles.singleFile) }) {
+        include 'META-INF/jarjar/ponder-*.jar'
+        eachFile { path = 'ponder-api.jar' }
+    }
+    from({ zipTree(sableFiles.singleFile) }) {
+        include 'META-INF/jarjar/sable-companion-*.jar'
+        eachFile { path = 'sable-companion-api.jar' }
+    }
+    into embeddedApiDirectory
+}
+neoForge.ideSyncTask embeddedApis
+
+dependencies {
+    compileOnly project(':')
+    compileOnly "maven.modrinth:create:${aerosilicon_create_release}"
+    compileOnly "maven.modrinth:sable:${aerosilicon_sable_release}"
+    createBundle "maven.modrinth:create:${aerosilicon_create_release}"
+    sableBundle "maven.modrinth:sable:${aerosilicon_sable_release}"
+    compileOnly files(embeddedApiDirectory.map { directory ->
+        [directory.file('ponder-api.jar'), directory.file('sable-companion-api.jar')]
+    }).builtBy(embeddedApis)
+}
+
+def addonVersion = version.toString()
+tasks.named('processResources', ProcessResources) {
+    inputs.property 'addonVersion', addonVersion
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand addonVersion: addonVersion
+    }
+}

@@ -1,0 +1,12 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "particle": "aerosilicon:block/airship_casing",
+    "north": "aerosilicon:block/airship_sensor_face",
+    "south": "aerosilicon:block/airship_casing",
+    "east": "aerosilicon:block/airship_casing",
+    "west": "aerosilicon:block/airship_casing",
+    "up": "aerosilicon:block/airship_casing",
+    "down": "aerosilicon:block/airship_casing"
+  }
+}

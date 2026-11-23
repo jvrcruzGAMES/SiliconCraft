@@ -1,0 +1,27 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "redstone",
+  "pattern": [
+    "ICI",
+    "DSD",
+    "ICI"
+  ],
+  "key": {
+    "I": {
+      "item": "minecraft:iron_ingot"
+    },
+    "C": {
+      "item": "minecraft:copper_ingot"
+    },
+    "D": {
+      "item": "siliconcraft:serial_cable"
+    },
+    "S": {
+      "item": "siliconcraft:chip"
+    }
+  },
+  "result": {
+    "id": "siliconcraft:serial_expansion",
+    "count": 1
+  }
+}
