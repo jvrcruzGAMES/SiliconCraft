@@ -271,6 +271,12 @@ See [Adjacent peripherals and DeviceKit](peripherals.md) for port numbers, statu
 
 See the [Network library](network.md) for the server config and `NOPEN`, `NSEND`, `NRECV`, `NCLOSE`, `NHTTP`, `NSTATUS`, `NLEN`, and `NRESULT` syntax.
 
+Additional Network instructions open WebSocket (`NWSOPEN`), send UTF-8 WebSocket text (`NWSTEXT`), upgrade a TCP stream to TLS (`NTLS`) and make an HTTP/3 request (`NHTTP3`). See the [Network library reference](network.md#n2-and-assembly) for operands and server requirements.
+
+The operator can enable inbound connections. Use `NLISTEN` to bind a configured port, `NACCEPT` to accept stream connections, and `NRESPOND` to send an HTTP or HTTPS response. See the [listener reference](network.md#listening-on-a-server-port).
+
+The N2 HTTP helpers compile to guest code that uses `NREADY` for mailbox pacing, `NUTF8` for text conversion, and `NRESPONDT` for responses with a UTF-8 text content type. Named callbacks are called with ordinary guest `CALL` instructions. See the [HTTP helpers](network.md#http-callbacks-and-routes-in-n2).
+
 ### 15. Managed Guest Heap
 
 | Instruction | Syntax | Effect |

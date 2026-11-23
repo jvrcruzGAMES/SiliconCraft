@@ -380,4 +380,43 @@ public class N2CompilerTest {
         assertTrue(cpu.getTerminalOutput().stream().anyMatch(l -> l.contains("65")), "read_key should return 65 ('A')");
         assertTrue(cpu.getTerminalOutput().stream().anyMatch(l -> l.contains("1")), "gc_button_south should return 1");
     }
+
+    @Test
+    public void testPcallSuccessAndError() {
+        String code = """
+                import <std>
+
+                func divide(a, b)
+                    if b == 99 then
+                        error(404)
+                    end
+                    return a / b
+                end
+
+                func main()
+                    local ok1, res1 = pcall(divide, 100, 5)
+                    print(ok1)
+                    print(res1)
+
+                    local ok2, err2 = pcall(divide, 100, 0)
+                    print(ok2)
+
+                    local ok3, err3 = pcall(divide, 100, 99)
+                    print(ok3)
+                    print(err3)
+                end
+                """;
+
+        N2Compiler.CompileResult result = N2Compiler.compile(code);
+        assertTrue(result.success(), "Compilation should succeed: " + result.errors());
+
+        Assembler.AssemblerResult asmResult = Assembler.assemble(result.assembly());
+        assertTrue(asmResult.success(), "Assembly should succeed: " + asmResult.errors());
+
+        VirtualCpu cpu = runCpu(asmResult.bytecode(), 2000);
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState(), "CPU Error: " + cpu.getErrorMessage());
+        List<String> out = cpu.getTerminalOutput();
+        assertTrue(out.stream().anyMatch(l -> l.contains("20")), "Successful pcall should return 20: " + out);
+        assertTrue(out.stream().anyMatch(l -> l.contains("404")), "Failed pcall with error(404) should unpack 404: " + out);
+    }
 }

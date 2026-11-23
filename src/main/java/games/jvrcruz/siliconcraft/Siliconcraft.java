@@ -8,7 +8,6 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
 import org.slf4j.Logger;
@@ -20,7 +19,6 @@ public class Siliconcraft {
 
     public Siliconcraft(IEventBus modEventBus, ModContainer modContainer) {
         modEventBus.addListener(this::commonSetup);
-        modEventBus.addListener(Config::onLoad);
         modEventBus.addListener(NetworkConfig::onConfig);
         modEventBus.addListener(ModMessages::register);
         modEventBus.addListener(ModCapabilities::registerCapabilities);
@@ -38,8 +36,7 @@ public class Siliconcraft {
         ModDataComponents.REGISTRY.register(modEventBus);
         ModCreativeTabs.CREATIVE_MODE_TABS.register(modEventBus);
 
-        modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
-        modContainer.registerConfig(ModConfig.Type.SERVER, NetworkConfig.SPEC, "siliconcraft-network.toml");
+        NetworkConfig.register(modContainer);
 
         // Register Server & Game Shutdown Handlers on NeoForge event bus
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.server.ServerStoppingEvent event) -> {

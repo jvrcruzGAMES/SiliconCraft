@@ -1,0 +1,290 @@
+-- Linked on demand by the N2 compiler. Every function runs on the guest CPU.
+
+func __net_ready()
+    while network_status() == NET_IDLE do
+        if network_ready() == 1 then
+            return 1
+        end
+        sleep(1)
+    end
+    return 0
+end
+
+func __net_await()
+    while network_status() == NET_PENDING do
+        sleep(1)
+    end
+    return network_status()
+end
+
+func __net_encode(text)
+    local length = network_utf8(text, -1, 0, 0)
+    if length <= 0 then
+        return [0, length]
+    end
+    local address = __net_alloc(length)
+    local written = network_utf8(text, -1, address, length)
+    return [address, written]
+end
+
+func __net_http_text(address, length)
+    if length < 0 then
+        return ""
+    end
+    local count = network_utf8(address, length, 0, 0)
+    if count < 0 then
+        return ""
+    end
+    local text = __net_alloc(count + 1)
+    network_utf8(address, length, text, count + 1)
+    return text
+end
+
+func __net_http_body(address, length)
+    local offset = 0
+    while offset + 3 < length do
+        if __net_peek(address + offset) == 13 and __net_peek(address + offset + 1) == 10 and __net_peek(address + offset + 2) == 13 and __net_peek(address + offset + 3) == 10 then
+            return __net_http_text(address + offset + 4, length - offset - 4)
+        end
+        offset = offset + 1
+    end
+    return ""
+end
+
+func __net_http_get(url, callback)
+    return __net_request(0, NET_GET, url, 0, 0, callback)
+end
+
+func __net_http_post(url, text, callback)
+    return __net_http_request(NET_POST, url, text, callback)
+end
+
+func __net_http_request(method, url, text, callback)
+    local body = __net_encode(text)
+    if body[1] < 0 then
+        return __net_invoke(callback, body[1], 0, 0, 0)
+    end
+    return __net_request(1, method, url, body[0], body[1], callback)
+end
+
+func __net_http3_request(method, url, text, callback)
+    local body = __net_encode(text)
+    if body[1] < 0 then
+        return __net_invoke(callback, body[1], 0, 0, 0)
+    end
+    return __net_request3(1, method, url, body[0], body[1], callback)
+end
+
+func __net_http_request_bytes(method, url, address, length, callback)
+    return __net_request(0, method, url, address, length, callback)
+end
+
+func __net_http3_request_bytes(method, url, address, length, callback)
+    return __net_request3(0, method, url, address, length, callback)
+end
+
+func __net_request(text_mode, method, url, address, length, callback)
+    if __net_ready() == 0 then
+        return __net_invoke(callback, NET_BUSY, 0, 0, 0)
+    end
+    if text_mode == 1 then
+        return __net_collect_reply(callback, network_http_text(method, url, address, length))
+    end
+    return __net_collect_reply(callback, network_http(method, url, address, length))
+end
+
+func __net_request3(text_mode, method, url, address, length, callback)
+    if __net_ready() == 0 then
+        return __net_invoke(callback, NET_BUSY, 0, 0, 0)
+    end
+    if text_mode == 1 then
+        return __net_collect_reply(callback, network_http3_text(method, url, address, length))
+    end
+    return __net_collect_reply(callback, network_http3(method, url, address, length))
+end
+
+func __net_collect_reply(callback, submitted)
+    if submitted == 0 then
+        return __net_invoke(callback, NET_BUSY, 0, 0, 0)
+    end
+    local status = __net_await()
+    local count = network_length()
+    local body = 0
+    if count > 0 then
+        body = __net_alloc(count)
+    end
+    local code = network_result(body, count)
+    return __net_invoke(callback, status, code, body, count)
+end
+
+func __net_http_reply(status, text)
+    local body = __net_encode(text)
+    if body[1] < 0 then
+        return 0
+    end
+    return [status, body[0], body[1], 1]
+end
+
+func __net_http_reply_bytes(status, address, length)
+    return [status, address, length, 0]
+end
+
+func __net_http_route(method, path, callback)
+    return [method, path, callback]
+end
+
+func __net_http_listen(protocol, port)
+    if protocol != NET_HTTP and protocol != NET_HTTPS then
+        return NET_INVALID
+    end
+    if __net_ready() == 0 then
+        return NET_BUSY
+    end
+    if network_listen(protocol, port) == 0 then
+        return NET_BUSY
+    end
+    local status = __net_await()
+    local handle = network_result(0, 0)
+    if status == NET_OK then
+        return handle
+    end
+    return status
+end
+
+func __net_send_response(handle, response)
+    if response == 0 then
+        response = [500, 0, 0, 0]
+    end
+    if __net_ready() == 0 then
+        return NET_BUSY
+    end
+    local submitted = 0
+    if response[3] == 1 then
+        submitted = network_respond_text(handle, response[0], response[1], response[2])
+    else
+        submitted = network_respond(handle, response[0], response[1], response[2])
+    end
+    if submitted == 0 then
+        return NET_BUSY
+    end
+    local status = __net_await()
+    network_result(0, 0)
+    if status != NET_OK then
+        if network_close(handle) == 1 then
+            __net_await()
+            network_result(0, 0)
+        end
+    end
+    return status
+end
+
+func __net_http_dispatch(listener, routes)
+    if __net_ready() == 0 then
+        return NET_BUSY
+    end
+    if network_accept(listener) == 0 then
+        return NET_BUSY
+    end
+    local status = __net_await()
+    local length = network_length()
+    local address = 0
+    if length > 0 then
+        address = __net_alloc(length)
+    end
+    local handle = network_result(address, length)
+    if status != NET_OK then
+        return status
+    end
+    if length == 0 then
+        if network_close(handle) == 1 then
+            __net_await()
+            network_result(0, 0)
+        end
+        return NET_INVALID
+    end
+
+    local index = 0
+    local count = __net_peek(routes)
+    while index < count do
+        local route = routes[index]
+        if __net_matches(address, length, route) == 1 then
+            return __net_send_response(handle, __net_invoke(route[2], address, length))
+        end
+        index = index + 1
+    end
+    return __net_send_response(handle, [404, 0, 0, 0])
+end
+
+func __net_http_serve(listener, routes)
+    while 1 do
+        local status = __net_http_dispatch(listener, routes)
+        if status != NET_OK and status != NET_TIMEOUT and status != NET_DENIED and status != NET_LIMIT and status != NET_IO_ERROR then
+            return status
+        end
+    end
+end
+
+func __net_method_name(method)
+    if method == NET_GET then
+        return "GET"
+    elseif method == NET_POST then
+        return "POST"
+    elseif method == NET_PUT then
+        return "PUT"
+    elseif method == NET_DELETE then
+        return "DELETE"
+    elseif method == NET_PATCH then
+        return "PATCH"
+    elseif method == NET_HEAD then
+        return "HEAD"
+    end
+    return 0
+end
+
+func __net_matches(address, length, route)
+    local end_method = 0
+    while end_method < length do
+        if __net_peek(address + end_method) == 32 then
+            -- The request line separates the method and target with a space.
+            return __net_match_target(address, length, end_method, route)
+        end
+        end_method = end_method + 1
+    end
+    return 0
+end
+
+func __net_match_target(address, length, end_method, route)
+    if route[0] != NET_ANY then
+        local method = __net_method_name(route[0])
+        if method == 0 then
+            return 0
+        end
+        local index = 0
+        while index < end_method do
+            local letter = __net_peek(method + index)
+            if letter == 0 or letter != __net_peek(address + index) then
+                return 0
+            end
+            index = index + 1
+        end
+        if __net_peek(method + end_method) != 0 then
+            return 0
+        end
+    end
+
+    local path = route[1]
+    local offset = 0
+    local target = end_method + 1
+    while target + offset < length do
+        local byte = __net_peek(address + target + offset)
+        local letter = __net_peek(path + offset)
+        if byte == 32 or byte == 63 then
+            return letter == 0
+        end
+        if letter == 0 or letter != byte then
+            return 0
+        end
+        offset = offset + 1
+    end
+    return 0
+end

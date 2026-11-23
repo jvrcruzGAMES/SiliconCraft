@@ -21,7 +21,7 @@ public class InstructionValidator {
             // Adjacent peripherals
             "PINFO", "PWRAP", "PCALL", "PCALLS", "PSTATUS", "PRESULT", "PSCAN", "GALLOC",
             // Server network
-            "NOPEN", "NSEND", "NRECV", "NCLOSE", "NHTTP", "NSTATUS", "NLEN", "NRESULT",
+            "NOPEN", "NSEND", "NRECV", "NCLOSE", "NHTTP", "NSTATUS", "NLEN", "NRESULT", "NWSOPEN", "NWSTEXT", "NTLS", "NHTTP3", "NLISTEN", "NACCEPT", "NRESPOND", "NREADY", "NUTF8", "NRESPONDT",
             // Interrupts & Exceptions
             "IVEC", "IRET", "CLI", "STI", "INT", "TIMER", "VBLANK"
     );

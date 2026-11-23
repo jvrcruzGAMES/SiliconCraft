@@ -220,6 +220,16 @@ public class VirtualCpu {
     private static final int OP_NLEN = 85;
     private static final int OP_NRESULT = 86;
     private static final int OP_GALLOC = 87;
+    private static final int OP_NWSOPEN = 88;
+    private static final int OP_NWSTEXT = 89;
+    private static final int OP_NTLS = 90;
+    private static final int OP_NHTTP3 = 91;
+    private static final int OP_NRESPOND = 95;
+    private static final int OP_NACCEPT = 94;
+    private static final int OP_NLISTEN = 93;
+    private static final int OP_NREADY = 96;
+    private static final int OP_NUTF8 = 97;
+    private static final int OP_NRESPONDT = 98;
 
     private final NetworkPort networkPort = new NetworkPort();
 
@@ -322,6 +332,16 @@ public class VirtualCpu {
         OPCODE_MAP.put("NLEN", OP_NLEN);
         OPCODE_MAP.put("NRESULT", OP_NRESULT);
         OPCODE_MAP.put("GALLOC", OP_GALLOC);
+        OPCODE_MAP.put("NWSOPEN", OP_NWSOPEN);
+        OPCODE_MAP.put("NWSTEXT", OP_NWSTEXT);
+        OPCODE_MAP.put("NTLS", OP_NTLS);
+        OPCODE_MAP.put("NHTTP3", OP_NHTTP3);
+        OPCODE_MAP.put("NRESPOND", OP_NRESPOND);
+        OPCODE_MAP.put("NACCEPT", OP_NACCEPT);
+        OPCODE_MAP.put("NLISTEN", OP_NLISTEN);
+        OPCODE_MAP.put("NREADY", OP_NREADY);
+        OPCODE_MAP.put("NUTF8", OP_NUTF8);
+        OPCODE_MAP.put("NRESPONDT", OP_NRESPONDT);
         OPCODE_MAP.put("HLT", OP_HLT);
     }
 
@@ -1213,9 +1233,19 @@ public class VirtualCpu {
                 case OP_NRECV -> submitNetwork(ci.rawArgs, NetworkPort.Operation.RECEIVE);
                 case OP_NCLOSE -> submitNetwork(ci.rawArgs, NetworkPort.Operation.CLOSE);
                 case OP_NHTTP -> submitNetwork(ci.rawArgs, NetworkPort.Operation.HTTP);
+                case OP_NWSOPEN -> submitNetwork(ci.rawArgs, NetworkPort.Operation.WEBSOCKET);
+                case OP_NWSTEXT -> submitNetwork(ci.rawArgs, NetworkPort.Operation.SEND_TEXT);
+                case OP_NTLS -> submitNetwork(ci.rawArgs, NetworkPort.Operation.TLS);
+                case OP_NHTTP3 -> submitNetwork(ci.rawArgs, NetworkPort.Operation.HTTP3);
+                case OP_NRESPOND -> submitNetwork(ci.rawArgs, NetworkPort.Operation.RESPOND);
+                case OP_NRESPONDT -> submitNetwork(ci.rawArgs, NetworkPort.Operation.RESPOND_TEXT);
+                case OP_NACCEPT -> submitNetwork(ci.rawArgs, NetworkPort.Operation.ACCEPT);
+                case OP_NLISTEN -> submitNetwork(ci.rawArgs, NetworkPort.Operation.LISTEN);
                 case OP_NSTATUS -> setDestination(ci.rawArgs, networkPort.status());
                 case OP_NLEN -> setDestination(ci.rawArgs, networkPort.resultLength());
                 case OP_NRESULT -> readNetworkResult(ci.rawArgs);
+                case OP_NREADY -> setDestination(ci.rawArgs, networkPort.ready() ? 1 : 0);
+                case OP_NUTF8 -> transcodeNetworkText(ci.rawArgs);
                 case OP_GALLOC -> {
                     if (ci.srcType != TYPE_IMM || (ci.destType != TYPE_REG && ci.destType != TYPE_IMM)) {
                         throw new IllegalArgumentException("GALLOC requires a size and an immediate heap base");
@@ -1302,18 +1332,22 @@ public class VirtualCpu {
     private void submitNetwork(String args, NetworkPort.Operation operation) {
         String[] parts = splitArgs(args, 0);
         int expected = switch (operation) {
-            case OPEN, SEND -> 4;
-            case RECEIVE -> 3;
-            case CLOSE -> 2;
-            case HTTP -> 5;
+            case OPEN, SEND, SEND_TEXT -> 4;
+            case RECEIVE, LISTEN -> 3;
+            case CLOSE, WEBSOCKET, TLS, ACCEPT -> 2;
+            case HTTP, HTTP3, RESPOND, RESPOND_TEXT -> 5;
         };
-        if (parts.length != expected) throw new IllegalArgumentException(operation + " has an invalid operand count");
+        boolean withTextFlag = (operation == NetworkPort.Operation.HTTP || operation == NetworkPort.Operation.HTTP3)
+                && parts.length == expected + 1;
+        if (parts.length != expected && !withTextFlag) {
+            throw new IllegalArgumentException(operation + " has an invalid operand count");
+        }
         if (networkPort.status() != NetworkPort.IDLE) {
             setDestination(parts[0], 0);
             return;
         }
 
-        int arg0 = resolveValue(parts[1]);
+        int arg0 = operation == NetworkPort.Operation.WEBSOCKET ? 0 : resolveValue(parts[1]);
         int arg1 = 0;
         String text = null;
         byte[] data = null;
@@ -1322,13 +1356,19 @@ public class VirtualCpu {
                 text = readGuestString(resolveValue(parts[2]), NetworkPort.MAX_TEXT);
                 arg1 = resolveValue(parts[3]);
             }
-            case HTTP -> {
+            case HTTP, HTTP3 -> {
                 text = readGuestString(resolveValue(parts[2]), NetworkPort.MAX_TEXT);
+                if (withTextFlag) arg1 = resolveValue(parts[5]);
                 data = copyNetworkBytes(resolveValue(parts[3]), resolveValue(parts[4]));
             }
-            case SEND -> data = copyNetworkBytes(resolveValue(parts[2]), resolveValue(parts[3]));
-            case RECEIVE -> arg1 = resolveValue(parts[2]);
-            case CLOSE -> {}
+            case WEBSOCKET -> text = readGuestString(resolveValue(parts[1]), NetworkPort.MAX_TEXT);
+            case SEND, SEND_TEXT -> data = copyNetworkBytes(resolveValue(parts[2]), resolveValue(parts[3]));
+            case RESPOND, RESPOND_TEXT -> {
+                arg1 = resolveValue(parts[2]);
+                data = copyNetworkBytes(resolveValue(parts[3]), resolveValue(parts[4]));
+            }
+            case RECEIVE, LISTEN -> arg1 = resolveValue(parts[2]);
+            case CLOSE, TLS, ACCEPT -> {}
         }
         setDestination(parts[0], networkPort.submit(new NetworkPort.Request(operation, arg0, arg1, text, data)) ? 1 : 0);
     }
@@ -1353,6 +1393,49 @@ public class VirtualCpu {
             for (int i = 0; i < count; i++) ram[address + i] = Byte.toUnsignedInt(result.data()[i]);
         }
         setDestination(parts[0], result == null ? 0 : result.value());
+    }
+
+    private void transcodeNetworkText(String args) {
+        String[] parts = splitArgs(args, 0);
+        if (parts.length != 5) throw new IllegalArgumentException("NUTF8 requires dst, source, count, target, capacity");
+        int source = resolveValue(parts[1]);
+        int count = resolveValue(parts[2]);
+        int target = resolveValue(parts[3]);
+        int capacity = resolveValue(parts[4]);
+        verifyNetworkRange(target, capacity);
+        int limit = networkPort.transferLimit();
+        if (count == -1) {
+            byte[] bytes;
+            try {
+                bytes = readGuestString(source, limit).getBytes(StandardCharsets.UTF_8);
+            } catch (IllegalArgumentException invalid) {
+                setDestination(parts[0], NetworkPort.LIMIT);
+                return;
+            }
+            if (bytes.length > limit || (capacity != 0 && bytes.length > capacity)) {
+                setDestination(parts[0], NetworkPort.LIMIT);
+                return;
+            }
+            if (capacity != 0) {
+                for (int i = 0; i < bytes.length; i++) ram[target + i] = Byte.toUnsignedInt(bytes[i]);
+            }
+            setDestination(parts[0], bytes.length);
+        } else {
+            if (count < 0 || count > limit) {
+                setDestination(parts[0], NetworkPort.LIMIT);
+                return;
+            }
+            String text = new String(copyNetworkBytes(source, count), StandardCharsets.UTF_8);
+            if (capacity != 0 && text.length() >= capacity) {
+                setDestination(parts[0], NetworkPort.LIMIT);
+                return;
+            }
+            if (capacity != 0) {
+                for (int i = 0; i < text.length(); i++) ram[target + i] = text.charAt(i);
+                ram[target + text.length()] = 0;
+            }
+            setDestination(parts[0], text.length());
+        }
     }
 
     private void verifyNetworkRange(int address, int length) {
@@ -1532,6 +1615,10 @@ public class VirtualCpu {
             throw new IllegalStateException("RET without CALL: Call stack underflow");
         }
         pc = callStack.pop();
+        if (inInterruptHandler && !interruptStack.isEmpty() && !interruptStack.peek().restoreRegs()) {
+            interruptStack.pop();
+            inInterruptHandler = !interruptStack.isEmpty();
+        }
     }
 
     private void execPush(String arg) {

@@ -6,6 +6,7 @@ import games.jvrcruz.siliconcraft.compiler.n2.N2Compiler;
 import games.jvrcruz.siliconcraft.network.FramebufferCodec;
 import games.jvrcruz.siliconcraft.vm.DriveStorage;
 import games.jvrcruz.siliconcraft.vm.VirtualCpu;
+import games.jvrcruz.siliconcraft.vm.network.NetworkPolicy.ListenOptions;
 import games.jvrcruz.siliconcraft.vm.network.NetworkPort;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -58,6 +59,16 @@ class HardwareUpgradeTest {
     }
 
     @Test
+    void listenPortConfigSupportsCommaSeparatedPortsAndTheWildcard() {
+        assertEquals(Set.of(), ListenOptions.parsePorts(""));
+        assertEquals(Set.of(80, 8443, 65535), ListenOptions.parsePorts("80, 8443, 65535"));
+        assertEquals(Set.of(-1, 8443), ListenOptions.parsePorts("-1, 8443"));
+        assertThrows(IllegalArgumentException.class, () -> ListenOptions.parsePorts("8080,"));
+        assertThrows(IllegalArgumentException.class, () -> ListenOptions.parsePorts("65536"));
+        assertThrows(IllegalArgumentException.class, () -> ListenOptions.parsePorts("0"));
+    }
+
+    @Test
     void networkLibraryUsesAssemblyAndHonorsDisabledPort() {
         var compile = N2Compiler.compile("""
                 import <Network>
@@ -66,13 +77,24 @@ class HardwareUpgradeTest {
                     network_http(NET_GET, "https://example.org/", 0, 0)
                     local received = network_result(0, 0)
                     network_status()
+                    network_http3(NET_GET, "https://example.org/", 0, 0)
+                    network_websocket("wss://example.org/")
+                    network_send_text(1, 0, 0)
+                    network_tls(1)
+                    network_open(NET_IMAPS, "example.org", 993)
+                    network_listen(NET_WSS, 8443)
+                    network_accept(1)
+                    network_respond(2, 200, 0, 0)
                 end
                 """);
         assertTrue(compile.success(), compile.errors().toString());
-        assertTrue(Assembler.assemble(compile.assembly()).requiredInstructions().containsAll(Set.of("NHTTP", "NSTATUS", "NRESULT")));
+        var assembled = Assembler.assemble(compile.assembly());
+        assertTrue(assembled.success(), assembled.errors().toString());
+        assertTrue(assembled.requiredInstructions().containsAll(Set.of(
+                "NHTTP", "NSTATUS", "NRESULT", "NHTTP3", "NWSOPEN", "NWSTEXT", "NTLS", "NOPEN", "NLISTEN", "NACCEPT", "NRESPOND")));
 
         VirtualCpu cpu = new VirtualCpu();
-        cpu.configure(InstructionValidator.ALL_INSTRUCTIONS_SET, 65536, Assembler.assemble(compile.assembly()).bytecode(), false, 0);
+        cpu.configure(InstructionValidator.ALL_INSTRUCTIONS_SET, 65536, assembled.bytecode(), false, 0);
         cpu.powerOn();
         for (int i = 0; i < 1500 && cpu.getNetworkPort().status() == NetworkPort.IDLE; i++) cpu.step();
         assertEquals(NetworkPort.DISABLED, cpu.getNetworkPort().status());

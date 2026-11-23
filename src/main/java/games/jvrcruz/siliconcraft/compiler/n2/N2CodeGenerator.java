@@ -33,6 +33,11 @@ public class N2CodeGenerator {
     // Imported symbols
     private final Map<String, N2Library.SymbolInfo> importedSymbols = new HashMap<>();
 
+    private final Map<String, Integer> functionArities = new HashMap<>();
+    private final Set<String> networkFunctions = new LinkedHashSet<>();
+    private final Deque<String> networkLinkQueue = new ArrayDeque<>();
+    private boolean linkingNetworkRuntime;
+
     public N2CodeGenerator(N2AST.ProgramNode program, String sourceFileName) {
         this.program = program;
         this.sourceFileName = sourceFileName != null ? sourceFileName : "main.n2";
@@ -41,6 +46,9 @@ public class N2CodeGenerator {
     public List<String> generate() {
         processImports();
         analyzeClassesAndFields();
+        for (var node : program.statements) {
+            if (node instanceof N2AST.FunctionNode function) functionArities.put(function.name, function.params.size());
+        }
 
         // 1. Entry jump to start
         emit("JMP _start", "JMP");
@@ -79,21 +87,7 @@ public class N2CodeGenerator {
         int heapInitialization = lines.size();
         emit("MOV [_this_ptr], 0", "MOV");
 
-        // Initialize string literals in heap memory
-        for (Map.Entry<String, String> entry : stringPool.entrySet()) {
-            String value = entry.getKey();
-            String label = entry.getValue();
-            int len = value.length();
-            emit("MOV A, " + (len + 1), "MOV");
-            emit("CALL _alloc", "CALL");
-            emit("MOV [" + label + "], A", "MOV");
-            emit("MOV B, A", "MOV");
-            for (int i = 0; i < len; i++) {
-                emit("MOV [B], " + (int) value.charAt(i), "MOV");
-                emit("INC B", "INC");
-            }
-            emit("MOV [B], 0", "MOV");
-        }
+        int stringInitialization = lines.size();
 
         // Generate top-level statements
         for (N2AST.Node node : program.statements) {
@@ -116,8 +110,10 @@ public class N2CodeGenerator {
 
         emit("HLT", "HLT");
 
+        linkNetworkRuntime();
+        initializeStrings(stringInitialization);
         if (lines.contains("CALL _alloc")) {
-            int heapBase = Math.max(16384, 5 + globalVars.size() + dataLines.size());
+            int heapBase = Math.max(16384, 6 + globalVars.size() + dataLines.size());
             lines.add(heapInitialization, "GALLOC 0, " + heapBase);
             emitLabel("_alloc");
             emit("GALLOC A, " + heapBase, "GALLOC");
@@ -131,6 +127,7 @@ public class N2CodeGenerator {
         emit("_tmp_b: DB 0");
         emit("_tmp_c: DB 0");
         emit("_tmp_d: DB 0");
+        emit("_pcall_val: DB 0");
 
         for (String g : globalVars) {
             emit("g_" + g + ": DB 0");
@@ -141,6 +138,65 @@ public class N2CodeGenerator {
         }
 
         return lines;
+    }
+
+    private void initializeStrings(int index) {
+        if (stringPool.isEmpty()) return;
+        var init = new ArrayList<String>();
+        for (var entry : stringPool.entrySet()) {
+            String text = entry.getKey();
+            init.add("MOV A, " + (text.length() + 1));
+            init.add("CALL _alloc");
+            init.add("MOV [" + entry.getValue() + "], A");
+            init.add("MOV B, A");
+            for (int i = 0; i < text.length(); i++) {
+                init.add("MOV [B], " + (int) text.charAt(i));
+                init.add("INC B");
+            }
+            init.add("MOV [B], 0");
+        }
+        lines.addAll(index, init);
+        requiredInstructions.addAll(List.of("MOV", "INC", "CALL"));
+    }
+
+    private void queueNetworkFunction(String name) {
+        if (networkFunctions.add(name)) networkLinkQueue.addLast(name);
+    }
+
+    private void linkNetworkRuntime() {
+        if (networkLinkQueue.isEmpty()) return;
+        Map<String, N2AST.FunctionNode> functions;
+        try {
+            functions = N2NetworkRuntime.load();
+        } catch (java.io.IOException error) {
+            errors.add(error.getMessage());
+            return;
+        }
+        for (String function : functions.keySet()) {
+            if (functionArities.containsKey(function)) {
+                errors.add("Function name '" + function + "' is reserved by the Network library");
+                return;
+            }
+        }
+        var userImports = new HashMap<>(importedSymbols);
+        importedSymbols.putAll(N2Library.getLibrary("network"));
+        importedSymbols.putAll(N2Library.getLibrary("std"));
+        linkingNetworkRuntime = true;
+        try {
+            while (!networkLinkQueue.isEmpty()) {
+                String name = networkLinkQueue.removeFirst();
+                var function = functions.get(name);
+                if (function == null) {
+                    errors.add("Missing Network library function '" + name + "'");
+                    continue;
+                }
+                generateFunction(function);
+            }
+        } finally {
+            linkingNetworkRuntime = false;
+            importedSymbols.clear();
+            importedSymbols.putAll(userImports);
+        }
     }
 
     public Set<String> getRequiredInstructions() {
@@ -275,10 +331,10 @@ public class N2CodeGenerator {
 
     private void findStringVarsAndFields(List<N2AST.Node> stmts) {
         for (N2AST.Node stmt : stmts) {
-            if (stmt instanceof N2AST.VarDeclNode vd && vd.initExpr instanceof N2AST.StringNode) {
+            if (stmt instanceof N2AST.VarDeclNode vd && isTextExpression(vd.initExpr)) {
                 stringVars.add(vd.name);
             } else if (stmt instanceof N2AST.AssignNode an) {
-                if (an.target instanceof N2AST.VarTarget vt && an.value instanceof N2AST.StringNode) {
+                if (an.target instanceof N2AST.VarTarget vt && isTextExpression(an.value)) {
                     stringVars.add(vt.name);
                 } else if (an.target instanceof N2AST.FieldTarget ft) {
                     if (an.value instanceof N2AST.StringNode || (an.value instanceof N2AST.VariableNode vn && (vn.name.contains("name") || vn.name.contains("str") || stringVars.contains(vn.name)))) {
@@ -410,15 +466,30 @@ public class N2CodeGenerator {
                 currentLocals.add(decl.name);
                 String slot = "v_" + currentFunction + "_" + decl.name;
                 dataLines.add(slot + ": DB 0");
+                for (String sec : decl.secondaryNames) {
+                    currentLocals.add(sec);
+                    dataLines.add("v_" + currentFunction + "_" + sec + ": DB 0");
+                }
                 if (decl.initExpr != null) {
                     generateExpression(decl.initExpr);
                     emit("MOV [" + slot + "], A", "MOV");
+                    if (!decl.secondaryNames.isEmpty()) {
+                        String secSlot = "v_" + currentFunction + "_" + decl.secondaryNames.get(0);
+                        emit("MOV [" + secSlot + "], [_pcall_val]", "MOV");
+                    }
                 }
             } else {
                 globalVars.add(decl.name);
+                for (String sec : decl.secondaryNames) {
+                    globalVars.add(sec);
+                }
                 if (decl.initExpr != null) {
                     generateExpression(decl.initExpr);
                     emit("MOV [g_" + decl.name + "], A", "MOV");
+                    if (!decl.secondaryNames.isEmpty()) {
+                        String secSlot = "g_" + decl.secondaryNames.get(0);
+                        emit("MOV [" + secSlot + "], [_pcall_val]", "MOV");
+                    }
                 }
             }
         } else if (stmt instanceof N2AST.AssignNode assign) {
@@ -470,6 +541,10 @@ public class N2CodeGenerator {
                 }
             }
             emit("MOV [" + slot + "], A", "MOV");
+            if (!assign.secondaryTargets.isEmpty() && assign.secondaryTargets.get(0) instanceof N2AST.VarTarget secVt) {
+                String secSlot = resolveVarSlot(secVt.name);
+                emit("MOV [" + secSlot + "], [_pcall_val]", "MOV");
+            }
         } else if (assign.target instanceof N2AST.FieldTarget ft) {
             // Field write: obj.field = val or this.field = val
             generateExpression(assign.value);
@@ -814,6 +889,16 @@ public class N2CodeGenerator {
 
     private void generateCall(N2AST.CallNode call) {
         String name = call.callee;
+        if (linkingNetworkRuntime) {
+            if (name.startsWith(N2NetworkRuntime.PREFIX)) {
+                generateNetworkRuntimeCall(call);
+                return;
+            }
+            if (importedSymbols.containsKey(name)) {
+                generateSystemLibCall(name, call.args, call.getLine(), call.getColumn());
+                return;
+            }
+        }
 
         // Check if name is a known class (constructor call: ClassName(args))
         if (classFieldOffsets.containsKey(name)) {
@@ -843,7 +928,65 @@ public class N2CodeGenerator {
         emit("CALL fn_" + name, "CALL");
     }
 
+    private void generateNetworkRuntimeCall(N2AST.CallNode call) {
+        switch (call.callee) {
+            case "__net_alloc" -> {
+                generateExpression(call.args.getFirst());
+                emit("CALL _alloc", "CALL");
+            }
+            case "__net_peek" -> {
+                generateExpression(call.args.getFirst());
+                emit("MOV A, [A]", "MOV");
+            }
+            case "__net_invoke" -> {
+                for (var arg : call.args.subList(1, call.args.size())) {
+                    generateExpression(arg);
+                    emit("PUSH A", "PUSH");
+                }
+                generateExpression(call.args.getFirst());
+                emit("CALL A", "CALL");
+            }
+            default -> {
+                for (var arg : call.args) {
+                    generateExpression(arg);
+                    emit("PUSH A", "PUSH");
+                }
+                queueNetworkFunction(call.callee);
+                emit("CALL fn_" + call.callee, "CALL");
+            }
+        }
+    }
+
+    private void generateHttpHelper(String name, N2NetworkRuntime.Api api, List<N2AST.ExprNode> args, int line, int col) {
+        String location = "Line " + line + ":" + col + ": ";
+        if (args.size() != api.arity()) {
+            errors.add(location + name + " expects " + api.arity() + " arguments");
+            return;
+        }
+        if (api.callbackArity() >= 0 && (!(args.getLast() instanceof N2AST.VariableNode callback)
+                || !Objects.equals(functionArities.get(callback.name), api.callbackArity()))) {
+            errors.add(location + name + " requires a named " + api.callbackArity() + "-parameter callback");
+            return;
+        }
+        for (int i = 0; i < args.size(); i++) {
+            if (api.callbackArity() >= 0 && i == args.size() - 1) {
+                emit("MOV A, fn_" + ((N2AST.VariableNode) args.get(i)).name, "MOV");
+            } else {
+                generateExpression(args.get(i));
+            }
+            emit("PUSH A", "PUSH");
+        }
+        String target = N2NetworkRuntime.PREFIX + name;
+        queueNetworkFunction(target);
+        emit("CALL fn_" + target, "CALL");
+    }
+
     private void generateSystemLibCall(String name, List<N2AST.ExprNode> args, int line, int col) {
+        var httpHelper = N2NetworkRuntime.APIS.get(name);
+        if (httpHelper != null) {
+            generateHttpHelper(name, httpHelper, args, line, col);
+            return;
+        }
         switch (name) {
             case "print", "println" -> {
                 boolean isPrintln = true;
@@ -968,6 +1111,81 @@ public class N2CodeGenerator {
                     emit("HLT", "HLT");
                     emitLabel(passLbl);
                 }
+            }
+            case "error" -> {
+                if (!args.isEmpty()) {
+                    generateExpression(args.get(0));
+                } else {
+                    emit("MOV A, 4", "MOV");
+                }
+                emit("MOV [_pcall_val], A", "MOV");
+                emit("INT 4", "INT");
+            }
+            case "pcall" -> {
+                if (args.isEmpty()) {
+                    errors.add("Line " + line + ":" + col + ": pcall requires a target function argument");
+                    break;
+                }
+                N2AST.ExprNode fnArg = args.get(0);
+                String targetFn = null;
+                if (fnArg instanceof N2AST.VariableNode vn) {
+                    targetFn = "fn_" + vn.name;
+                } else if (fnArg instanceof N2AST.StringNode sn) {
+                    targetFn = "fn_" + sn.value;
+                }
+
+                if (targetFn == null) {
+                    errors.add("Line " + line + ":" + col + ": pcall first argument must be a function name");
+                    break;
+                }
+
+                int id = ++labelCounter;
+                String catchLbl = "_pcall_catch_" + id;
+                String failLbl = "_pcall_fail_" + id;
+                String endLbl = "_pcall_end_" + id;
+
+                // Evaluate extra arguments to pass to targetFn
+                for (int i = 1; i < args.size(); i++) {
+                    generateExpression(args.get(i));
+                    emit("PUSH A", "PUSH");
+                }
+
+                // Register exception vectors (0..4) to catch handler
+                emit("MOV [_pcall_val], 0", "MOV");
+                emit("MOV [_tmp_d], 0", "MOV");
+                emit("IVEC 0, " + catchLbl, "IVEC");
+                emit("IVEC 1, " + catchLbl, "IVEC");
+                emit("IVEC 2, " + catchLbl, "IVEC");
+                emit("IVEC 3, " + catchLbl, "IVEC");
+                emit("IVEC 4, " + catchLbl, "IVEC");
+
+                // Protected call
+                emit("CALL " + targetFn, "CALL");
+
+                // Check if exception occurred (_tmp_d == 1)
+                emit("CMP [_tmp_d], 0", "CMP");
+                emit("JNZ " + failLbl, "JNZ");
+
+                // Normal completion: store return value into _pcall_val and set status A = 1 (true)
+                emit("MOV [_pcall_val], A", "MOV");
+                emit("MOV A, 1", "MOV");
+                emit("JMP " + endLbl, "JMP");
+
+                emitLabel(failLbl);
+                emit("MOV A, 0", "MOV");
+                emit("JMP " + endLbl, "JMP");
+
+                // Exception catch handler
+                emitLabel(catchLbl);
+                emit("MOV [_tmp_d], 1", "MOV");
+                String keepErrLbl = "_pcall_keep_" + id;
+                emit("CMP [_pcall_val], 0", "CMP");
+                emit("JNZ " + keepErrLbl, "JNZ");
+                emit("MOV [_pcall_val], A", "MOV");
+                emitLabel(keepErrLbl);
+                emit("RET", "RET");
+
+                emitLabel(endLbl);
             }
             case "sqrt" -> {
                 if (!args.isEmpty()) {
@@ -1126,7 +1344,9 @@ public class N2CodeGenerator {
             }
             case "drive_count" -> emit("SCOUNT A", "SCOUNT");
             case "network_open", "network_send", "network_receive", "network_close", "network_http",
-                    "network_status", "network_length", "network_result" -> generateNetworkInstruction(name, args, line, col);
+                    "network_websocket", "network_send_text", "network_tls", "network_http3", "network_http_text", "network_http3_text",
+                    "network_listen", "network_accept", "network_respond",
+                    "network_status", "network_length", "network_result", "network_ready", "network_utf8", "network_respond_text" -> generateNetworkInstruction(name, args, line, col);
             case "peripheral_scan", "peripheral_info", "peripheral_wrap", "peripheral_call", "peripheral_call_string", "peripheral_status",
                     "peripheral_result", "speaker_sample_rate", "speaker_tone", "note_block_get",
                     "note_block_set", "note_block_play", "note_block_play_instrument" -> generatePeripheralInstruction(name, args, line, col);
@@ -1202,10 +1422,20 @@ public class N2CodeGenerator {
             case "network_send" -> "NSEND";
             case "network_receive" -> "NRECV";
             case "network_close" -> "NCLOSE";
-            case "network_http" -> "NHTTP";
+            case "network_http", "network_http_text" -> "NHTTP";
+            case "network_websocket" -> "NWSOPEN";
+            case "network_send_text" -> "NWSTEXT";
+            case "network_tls" -> "NTLS";
+            case "network_http3", "network_http3_text" -> "NHTTP3";
+            case "network_listen" -> "NLISTEN";
+            case "network_accept" -> "NACCEPT";
+            case "network_respond" -> "NRESPOND";
+            case "network_respond_text" -> "NRESPONDT";
             case "network_status" -> "NSTATUS";
             case "network_length" -> "NLEN";
             case "network_result" -> "NRESULT";
+            case "network_ready" -> "NREADY";
+            case "network_utf8" -> "NUTF8";
             default -> throw new IllegalArgumentException(name);
         };
         for (N2AST.ExprNode arg : args) {
@@ -1214,7 +1444,8 @@ public class N2CodeGenerator {
         }
         for (int i = args.size() - 1; i >= 0; i--) emit("POP " + "ABCD".charAt(i), "POP");
         String[] suffix = {"", ", A", ", A, B", ", A, B, C", ", A, B, C, D"};
-        emit(opcode + " A" + suffix[arity], opcode);
+        String textFlag = name.equals("network_http_text") || name.equals("network_http3_text") ? ", 1" : "";
+        emit(opcode + " A" + suffix[arity] + textFlag, opcode);
     }
 
     private void generatePeripheralInstruction(String name, List<N2AST.ExprNode> args, int line, int col) {
@@ -1460,8 +1691,13 @@ public class N2CodeGenerator {
         emit("POP A", "POP");
     }
 
+    private boolean isTextExpression(N2AST.ExprNode expression) {
+        return expression instanceof N2AST.StringNode || expression instanceof N2AST.CallNode call
+                && importedSymbols.containsKey(call.callee) && (call.callee.equals("http_text") || call.callee.equals("http_body"));
+    }
+
     private boolean isStringValued(N2AST.ExprNode arg) {
-        if (arg instanceof N2AST.StringNode) return true;
+        if (isTextExpression(arg)) return true;
         if (arg instanceof N2AST.VariableNode v) {
             return stringVars.contains(v.name);
         }

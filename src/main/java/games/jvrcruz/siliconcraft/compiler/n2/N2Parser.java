@@ -224,7 +224,19 @@ public class N2Parser {
         // Could be an assignment or an expression statement
         N2AST.ExprNode expr = parseExpression();
 
-        // Check if this was an assignment target: ident = ..., obj.field = ..., container[idx] = ...
+        // Check if this was an assignment target: ident = ..., a, b = ..., obj.field = ..., container[idx] = ...
+        if (check(N2TokenType.COMMA)) {
+            N2AST.AssignTarget firstTarget = convertExprToAssignTarget(expr);
+            List<N2AST.AssignTarget> secondary = new ArrayList<>();
+            while (match(N2TokenType.COMMA)) {
+                N2AST.ExprNode nextExpr = parseExpression();
+                secondary.add(convertExprToAssignTarget(nextExpr));
+            }
+            N2Token op = consume(N2TokenType.ASSIGN, "Expected '=' after multiple assignment targets");
+            N2AST.ExprNode val = parseExpression();
+            return new N2AST.AssignNode(firstTarget, secondary, op.text(), val, expr.getLine(), expr.getColumn());
+        }
+
         if (checkAssignOp()) {
             N2Token op = advance();
             N2AST.AssignTarget target = convertExprToAssignTarget(expr);
@@ -259,13 +271,18 @@ public class N2Parser {
         N2Token kw = advance(); // 'local' or consumed 'global'
         N2Token nameToken = consume(N2TokenType.IDENTIFIER, "Expected variable name");
         String name = nameToken.text();
+        List<String> secondaryNames = new ArrayList<>();
+        while (match(N2TokenType.COMMA)) {
+            N2Token nextName = consume(N2TokenType.IDENTIFIER, "Expected variable name after ','");
+            secondaryNames.add(nextName.text());
+        }
 
         N2AST.ExprNode init = null;
         if (match(N2TokenType.ASSIGN)) {
             init = parseExpression();
         }
 
-        return new N2AST.VarDeclNode(name, isLocal, init, kw.line(), kw.column());
+        return new N2AST.VarDeclNode(name, secondaryNames, isLocal, init, kw.line(), kw.column());
     }
 
     private N2AST.IfNode parseIf() {

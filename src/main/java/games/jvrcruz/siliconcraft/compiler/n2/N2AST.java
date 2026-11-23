@@ -109,12 +109,18 @@ public class N2AST {
 
     public static class VarDeclNode extends BaseNode {
         public final String name;
+        public final List<String> secondaryNames;
         public final boolean isLocal;
         public final ExprNode initExpr;
 
         public VarDeclNode(String name, boolean isLocal, ExprNode initExpr, int line, int column) {
+            this(name, List.of(), isLocal, initExpr, line, column);
+        }
+
+        public VarDeclNode(String name, List<String> secondaryNames, boolean isLocal, ExprNode initExpr, int line, int column) {
             super(line, column);
             this.name = name;
+            this.secondaryNames = secondaryNames != null ? secondaryNames : List.of();
             this.isLocal = isLocal;
             this.initExpr = initExpr;
         }
@@ -176,12 +182,18 @@ public class N2AST {
 
     public static class AssignNode extends BaseNode {
         public final AssignTarget target;
+        public final List<AssignTarget> secondaryTargets;
         public final String op; // "=", "+=", "-=", etc.
         public final ExprNode value;
 
         public AssignNode(AssignTarget target, String op, ExprNode value, int line, int column) {
+            this(target, List.of(), op, value, line, column);
+        }
+
+        public AssignNode(AssignTarget target, List<AssignTarget> secondaryTargets, String op, ExprNode value, int line, int column) {
             super(line, column);
             this.target = target;
+            this.secondaryTargets = secondaryTargets != null ? secondaryTargets : List.of();
             this.op = op;
             this.value = value;
         }

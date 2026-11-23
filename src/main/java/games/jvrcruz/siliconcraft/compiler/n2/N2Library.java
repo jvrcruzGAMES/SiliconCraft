@@ -37,6 +37,8 @@ public class N2Library {
         addFunc(std, "max", 2, "std");
         addFunc(std, "clamp", 3, "std");
         addFunc(std, "assert", 1, "std");
+        addFunc(std, "pcall", 1, "std");
+        addFunc(std, "error", 1, "std");
 
         registerLib("std", std);
         registerLib("lib/std", std);
@@ -194,11 +196,28 @@ public class N2Library {
         addFunc(network, "network_receive", 2, "Network");
         addFunc(network, "network_close", 1, "Network");
         addFunc(network, "network_http", 4, "Network");
+        addFunc(network, "network_http3", 4, "Network");
+        addFunc(network, "network_http_text", 4, "Network");
+        addFunc(network, "network_http3_text", 4, "Network");
+        addFunc(network, "network_listen", 2, "Network");
+        addFunc(network, "network_accept", 1, "Network");
+        addFunc(network, "network_respond", 4, "Network");
+        addFunc(network, "network_websocket", 1, "Network");
+        addFunc(network, "network_send_text", 3, "Network");
+        addFunc(network, "network_tls", 1, "Network");
         addFunc(network, "network_status", 0, "Network");
         addFunc(network, "network_length", 0, "Network");
         addFunc(network, "network_result", 2, "Network");
         addConst(network, "NET_TCP", NetworkPort.TCP, "Network");
         addConst(network, "NET_UDP", NetworkPort.UDP, "Network");
+        addConst(network, "NET_SMTP", NetworkPort.SMTP, "Network");
+        addConst(network, "NET_SMTPS", NetworkPort.SMTPS, "Network");
+        addConst(network, "NET_IMAP", NetworkPort.IMAP, "Network");
+        addConst(network, "NET_IMAPS", NetworkPort.IMAPS, "Network");
+        addConst(network, "NET_HTTP", NetworkPort.HTTP, "Network");
+        addConst(network, "NET_HTTPS", NetworkPort.HTTPS, "Network");
+        addConst(network, "NET_WS", NetworkPort.WS, "Network");
+        addConst(network, "NET_WSS", NetworkPort.WSS, "Network");
         addConst(network, "NET_GET", 0, "Network");
         addConst(network, "NET_POST", 1, "Network");
         addConst(network, "NET_PUT", 2, "Network");
@@ -214,6 +233,14 @@ public class N2Library {
         addConst(network, "NET_LIMIT", NetworkPort.LIMIT, "Network");
         addConst(network, "NET_INVALID", NetworkPort.INVALID, "Network");
         addConst(network, "NET_TIMEOUT", NetworkPort.TIMEOUT, "Network");
+        addFunc(network, "network_respond_text", 4, "Network");
+        addFunc(network, "network_ready", 0, "Network");
+        addFunc(network, "network_utf8", 4, "Network");
+        addConst(network, "NET_BUSY", -7, "Network");
+        addConst(network, "NET_ANY", -1, "Network");
+        for (var api : N2NetworkRuntime.APIS.entrySet()) {
+            addFunc(network, api.getKey(), api.getValue().arity(), "Network");
+        }
         registerLib("Network", network);
         registerLib("lib/network", network);
 
