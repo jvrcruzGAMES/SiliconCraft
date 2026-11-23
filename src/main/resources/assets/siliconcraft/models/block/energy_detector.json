@@ -1,0 +1,12 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "particle": "siliconcraft:block/serial_expansion",
+    "down": "siliconcraft:block/serial_expansion",
+    "up": "siliconcraft:block/serial_expansion",
+    "south": "siliconcraft:block/serial_expansion",
+    "west": "siliconcraft:block/serial_expansion",
+    "east": "siliconcraft:block/serial_expansion",
+    "north": "siliconcraft:block/energy_detector"
+  }
+}

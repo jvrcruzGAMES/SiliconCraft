@@ -41,5 +41,17 @@ public class ModCreativeTabs {
                         output.accept(ModItems.SPEAKER_ITEM.get());
                         output.accept(ModItems.SERIAL_CABLE_ITEM.get());
                         output.accept(ModItems.SERIAL_EXPANSION_ITEM.get());
+                        output.accept(ModItems.CHAT_BOX_ITEM.get());
+                        output.accept(ModItems.DISTANCE_DETECTOR_ITEM.get());
+                        output.accept(ModItems.ENVIRONMENT_DETECTOR_ITEM.get());
+                        output.accept(ModItems.PLAYER_DETECTOR_ITEM.get());
+                        output.accept(ModItems.ENERGY_DETECTOR_ITEM.get());
+                        output.accept(ModItems.FLUID_DETECTOR_ITEM.get());
+                        output.accept(ModItems.GAS_DETECTOR_ITEM.get());
+                        output.accept(ModItems.BLOCK_READER_ITEM.get());
+                        output.accept(ModItems.INVENTORY_MANAGER_ITEM.get());
+                        output.accept(ModItems.REDSTONE_INTEGRATOR_ITEM.get());
+                        output.accept(ModItems.MEMORY_CARD.get());
+                        CompassPeripherals.fillTab(output);
                     }).build());
 }

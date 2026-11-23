@@ -231,6 +231,8 @@ public class VirtualCpu {
     private static final int OP_NREADY = 96;
     private static final int OP_NUTF8 = 97;
     private static final int OP_NRESPONDT = 98;
+    private static final int OP_PLEN = 99;
+    private static final int OP_PRESULTS = 100;
 
     private final NetworkPort networkPort = new NetworkPort();
 
@@ -343,6 +345,8 @@ public class VirtualCpu {
         OPCODE_MAP.put("NREADY", OP_NREADY);
         OPCODE_MAP.put("NUTF8", OP_NUTF8);
         OPCODE_MAP.put("NRESPONDT", OP_NRESPONDT);
+        OPCODE_MAP.put("PLEN", OP_PLEN);
+        OPCODE_MAP.put("PRESULTS", OP_PRESULTS);
         OPCODE_MAP.put("HLT", OP_HLT);
     }
 
@@ -1229,6 +1233,8 @@ public class VirtualCpu {
                 case OP_PSTATUS -> setDestination(ci.rawArgs.trim(), peripheralBus.status());
                 case OP_PSCAN -> submitPeripheralRequest(ci.rawArgs, PeripheralBus.Operation.SCAN);
                 case OP_PRESULT -> setDestination(ci.rawArgs.trim(), peripheralBus.consumeResult());
+                case OP_PLEN -> setDestination(ci.rawArgs, peripheralBus.textLength());
+                case OP_PRESULTS -> readPeripheralText(ci.rawArgs);
                 case OP_NOPEN -> submitNetwork(ci.rawArgs, NetworkPort.Operation.OPEN);
                 case OP_NSEND -> submitNetwork(ci.rawArgs, NetworkPort.Operation.SEND);
                 case OP_NRECV -> submitNetwork(ci.rawArgs, NetworkPort.Operation.RECEIVE);
@@ -1309,9 +1315,22 @@ public class VirtualCpu {
             setDestination(operands[0], 0);
             return;
         }
-        String text = stringCall ? readGuestString(arg0, 64) : null;
+        String text = stringCall ? readGuestString(arg0, 256) : null;
         boolean accepted = peripheralBus.submit(operation, side, method, arg0, arg1, text);
         setDestination(operands[0], accepted ? 1 : 0);
+    }
+
+    private void readPeripheralText(String args) {
+        String[] operands = splitArgs(args, 0);
+        if (operands.length != 3) throw new IllegalArgumentException("PRESULTS requires dst, address, capacity");
+        int address = resolveValue(operands[1]);
+        int capacity = resolveValue(operands[2]);
+        verifyRamBuffer(address, capacity);
+        String text = peripheralBus.consumeText();
+        int count = Math.min(text.length(), Math.max(0, capacity - 1));
+        for (int i = 0; i < count; i++) ram[address + i] = text.charAt(i);
+        if (capacity > 0) ram[address + count] = 0;
+        setDestination(operands[0], count);
     }
 
     private String readGuestString(int address, int limit) {
@@ -1375,7 +1394,7 @@ public class VirtualCpu {
     }
 
     private byte[] copyNetworkBytes(int address, int length) {
-        verifyNetworkRange(address, length);
+        verifyRamBuffer(address, length);
         if (length > networkPort.transferLimit()) throw new IllegalArgumentException("Network payload exceeds transfer limit");
         byte[] bytes = new byte[length];
         for (int i = 0; i < length; i++) bytes[i] = (byte) ram[address + i];
@@ -1387,7 +1406,7 @@ public class VirtualCpu {
         if (parts.length != 3) throw new IllegalArgumentException("NRESULT requires dest, ram_dest, length");
         int address = resolveValue(parts[1]);
         int length = resolveValue(parts[2]);
-        verifyNetworkRange(address, length);
+        verifyRamBuffer(address, length);
         NetworkPort.Result result = networkPort.takeResult();
         if (result != null) {
             int count = Math.min(length, result.data().length);
@@ -1403,7 +1422,7 @@ public class VirtualCpu {
         int count = resolveValue(parts[2]);
         int target = resolveValue(parts[3]);
         int capacity = resolveValue(parts[4]);
-        verifyNetworkRange(target, capacity);
+        verifyRamBuffer(target, capacity);
         int limit = networkPort.transferLimit();
         if (count == -1) {
             byte[] bytes;
@@ -1439,9 +1458,9 @@ public class VirtualCpu {
         }
     }
 
-    private void verifyNetworkRange(int address, int length) {
+    private void verifyRamBuffer(int address, int length) {
         if (address < 0 || length < 0 || (long) address + length > ram.length) {
-            throw new IndexOutOfBoundsException("Network buffer extends outside RAM");
+            throw new IndexOutOfBoundsException("Buffer extends outside RAM");
         }
     }
 

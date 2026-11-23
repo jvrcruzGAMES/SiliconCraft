@@ -315,3 +315,17 @@ import "logic.n"               ; Run high-level .n modules directly from assembl
 - **Cross-Language Interoperability**: Assembly files can include and call `.n` files, and `.n` files can call assembly routines.
 - **Entrypoint Discovery**: The Project Compiler automatically detects entrypoints (`main.asm`, `main.s`, `main.n`, `entry.*`, `start.*`).
 - **Standard Object Format (`.o`)**: The assembled output is a unified, fully linked bytecode file with the standard `.o` extension.
+
+## Peripheral strings
+
+`PCALLS dst, port, method, ptr, arg` reads a zero-terminated UTF-16 string from RAM, one code unit per cell. For a constant argument, give the data an explicit address with `ORG`.
+
+```assembly
+PCALLS A, 2, 0x401, 0x200, 0
+; Wait for completion and read PRESULT before issuing another request.
+
+ORG 0x200
+DB "Alex|Ready", 0
+```
+
+For a text response, use `PLEN dst` to size the buffer, then `PRESULTS dst, ptr, capacity` to copy and consume it. Capacity counts RAM cells and includes the zero terminator. Check `PSTATUS` before consuming a response. [Peripheral mailbox reference](peripherals.md#assembly-and-devicekit)

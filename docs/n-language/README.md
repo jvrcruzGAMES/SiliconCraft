@@ -19,7 +19,7 @@ Both standards compile down directly into cycle-accurate SiliconCraft assembly a
 | **Classes & OOP** | Simulated via tables | First-class `class Name { ... }` |
 | **Variable Scoping** | `var`, `let`, `const` | `global = ...`, `local name = ...` |
 | **Collections** | Tables `{}` | Lists `[]` and Maps `{}` |
-| **System Libraries** | Global builtins (`storage.*`, `audio.*`) | Modular `<std>`, `<math>`, `<Glass>`, `<AudioKit>`, `<DeviceKit>`, `<GameController>` |
+| **System Libraries** | Global builtins (`storage.*`, `audio.*`) | Modular `<std>`, `<math>`, `<Glass>`, `<AudioKit>`, `<DeviceKit>`, `<GameController>`, [`<Network>`](../network.md) |
 | **Project Imports** | `import "path.n"` | `import "path.n2"` (strict quotes) |
 | **Default in Compiler** | Legacy / Compatibility | **Default standard** |
 
@@ -30,24 +30,24 @@ Both standards compile down directly into cycle-accurate SiliconCraft assembly a
 In SiliconCraft, you can compile and flash programs using two dedicated blocks:
 
 1. **Code Compiler**:
-   - Compiles single-file scripts (`.n`, `.n2`, or `.asm`).
+   - Compiles single-file N programs (`.n` or `.n2`). Use the Assembly Writer for standalone Assembly.
    - Features an interactive **Standard Switch Button** in the UI:
-     - `[§aN2]`: Compiles using the modern N2 compiler (default).
-     - `[§eN1]`: Compiles using the classic N1 compiler.
+     - `N2`: Compiles using the modern N2 compiler (default).
+     - `N1`: Compiles using the classic N1 compiler.
    - Automatically detects whether an opened file is `.n` or `.n2` and adjusts the switch.
    - Verifies required instruction sets against your synthesized CPU SoC writeup before burning.
 
 2. **Project Compiler**:
    - Compiles complex, multi-file software projects from `.zip` archives or project directories.
-   - Entrypoint is `main.n2` for N2 projects or `main.n` for N1 projects.
+   - Use `main.n2` for N2 projects, `main.n` for N1 projects, or `main.asm` for Assembly projects.
    - Resolves modular imports recursively, detects circular dependencies, and links all modules into a single bytecode program.
-   - Features the same **Standard Switch Button** (`[§aN2]` / `[§eN1]`).
+   - Features the same **Standard Switch Button** (`N2` / `N1`).
 
 ---
 
 ## Documentation Navigation
 
-- **[N1 Language Guide](file:///home/jvrcruz/IdeaProjects/SiliconCraft/docs/n-language/n1.md)**: Full guide to the N1 language specification, table structures, memory pointers, and classic hardware APIs.
-- **[N2 Language Guide](file:///home/jvrcruz/IdeaProjects/SiliconCraft/docs/n-language/n2.md)**: Full guide to the N2 language specification, classes, constructors, methods, lists, maps, and system libraries (`<lib/*>`).
-- **[N1 Examples](file:///home/jvrcruz/IdeaProjects/SiliconCraft/docs/n-language/n1-examples/)**: Ready-to-use standalone scripts and modular projects for N1.
-- **[N2 Examples](file:///home/jvrcruz/IdeaProjects/SiliconCraft/docs/n-language/n2-examples/)**: Ready-to-use standalone scripts and OOP projects for N2.
+- **[N1 Language Guide](n1.md)**: Full guide to the N1 language specification, table structures, memory pointers, and classic hardware APIs.
+- **[N2 Language Guide](n2.md)**: Full guide to the N2 language specification, classes, constructors, methods, lists, maps, and system libraries.
+- **[N1 Examples](n1-examples/)**: Ready-to-use standalone scripts and modular projects for N1.
+- **[N2 Examples](n2-examples/)**: Ready-to-use standalone scripts and OOP projects for N2.

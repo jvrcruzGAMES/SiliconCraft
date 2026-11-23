@@ -64,7 +64,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 
@@ -472,11 +471,19 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
                     }
                     if (bus.pendingRequest() != request) return;
                     var context = new ComputerPeripheral.Context(level, worldPosition, endpoint.pos(), endpoint.face());
-                    OptionalInt result = request.operation() == PeripheralBus.Operation.CALL_STRING
-                            ? peripheral.callString(context, request.method(), request.text(), request.arg1())
-                            : peripheral.call(context, request.method(), request.arg0(), request.arg1());
-                    bus.complete(request, result.isPresent() ? PeripheralBus.OK : PeripheralBus.UNSUPPORTED,
-                            result.orElse(0));
+                    var result = request.operation() == PeripheralBus.Operation.CALL_STRING
+                            ? peripheral.invokeString(context, request.method(), request.text(), request.arg1())
+                            : peripheral.invoke(context, request.method(), request.arg0(), request.arg1());
+                    if (result.isEmpty()) {
+                        bus.complete(request, PeripheralBus.UNSUPPORTED, 0);
+                    } else {
+                        var response = result.get();
+                        if (response.text().length() > PeripheralBus.MAX_TEXT_RESULT) {
+                            bus.complete(request, PeripheralBus.FAILED, 0);
+                        } else {
+                            bus.complete(request, PeripheralBus.OK, response.value(), response.text());
+                        }
+                    }
                 }
             }
         } catch (RuntimeException e) {

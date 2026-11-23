@@ -71,15 +71,15 @@ SiliconCraft separates program writing and compilation from physical ROM/Storage
 1. Write an `.n` or `.n2` file on your computer (see [n-language/README.md](n-language/README.md)).
 2. Place and open the **Code Compiler** block.
 3. Insert your **Architecture Writeup** into the slot.
-4. Click **📁 Choose .n File** to select your `.n` source.
+4. Click **Choose File** and select your `.n` or `.n2` source. Check the N1 or N2 standard before compiling.
 5. The compiler verifies syntax and validates every required opcode against your architecture writeup.
 6. Click **[+ Compile & Add]** to compile and assemble it directly into a standard `.o` bytecode image in your Program Library.
 
 ### Option B: Multi-File & Assembly Projects with the Project Compiler
 For complex applications spanning multiple files, subdirectories, or mixed language codebases:
 1. Craft and place the **Project Compiler** block.
-2. Supports `.n`, `.asm`, `.s`, and `.S` source files.
-   - Entrypoints: `main.n`, `main.asm`, `main.s`, `entry.*`, or `start.*`.
+2. Supports `.n2`, `.n`, `.asm`, and `.s` source files.
+   - Use `main.n2`, `main.n`, `main.asm`, or `main.s` as a project entrypoint.
    - `.n` files can import assembly subroutines (`import "math_sub.asm"`).
    - `.asm` files can import other assembly files (`include "helper.asm"`, `.include`, `#include`, `.import`).
    - `.asm` files can run and import `.n` files (`include "logic.n"`).

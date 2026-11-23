@@ -1348,7 +1348,7 @@ public class N2CodeGenerator {
                     "network_listen", "network_accept", "network_respond",
                     "network_status", "network_length", "network_result", "network_ready", "network_utf8", "network_respond_text" -> generateNetworkInstruction(name, args, line, col);
             case "peripheral_scan", "peripheral_info", "peripheral_wrap", "peripheral_call", "peripheral_call_string", "peripheral_status",
-                    "peripheral_result", "speaker_sample_rate", "speaker_tone", "note_block_get",
+                    "peripheral_result", "peripheral_length", "peripheral_result_text", "peripheral_text", "peripheral_text_unit", "speaker_sample_rate", "speaker_tone", "note_block_get",
                     "note_block_set", "note_block_play", "note_block_play_instrument" -> generatePeripheralInstruction(name, args, line, col);
             // Keyboard handling (DeviceKit)
             case "read_key", "get_key" -> emit("INPAD A, -1", "INPAD");
@@ -1466,6 +1466,30 @@ public class N2CodeGenerator {
             }
             case "peripheral_status" -> emit("PSTATUS A", "PSTATUS");
             case "peripheral_result" -> emit("PRESULT A", "PRESULT");
+            case "peripheral_length" -> emit("PLEN A", "PLEN");
+            case "peripheral_text" -> {
+                emit("PLEN A", "PLEN");
+                emit("INC A", "INC");
+                emit("PUSH A", "PUSH");
+                emit("CALL _alloc", "CALL");
+                emit("POP B", "POP");
+                emit("PRESULTS C, A, B", "PRESULTS");
+            }
+            case "peripheral_text_unit" -> {
+                generateExpression(args.get(0));
+                emit("PUSH A", "PUSH");
+                generateExpression(args.get(1));
+                emit("POP B", "POP");
+                emit("ADD A, B", "ADD");
+                emit("MOV A, [A]", "MOV");
+            }
+            case "peripheral_result_text" -> {
+                generateExpression(args.get(0));
+                emit("PUSH A", "PUSH");
+                generateExpression(args.get(1));
+                emit("POP B", "POP");
+                emit("PRESULTS A, B, A", "PRESULTS");
+            }
             case "speaker_sample_rate" -> generatePeripheralCall(args, "0x100", "PCALL");
             case "speaker_tone" -> generatePeripheralCall(args, "0x101", "PCALL");
             case "note_block_get" -> generatePeripheralCall(args, "0x200", "PCALL");
@@ -1693,7 +1717,8 @@ public class N2CodeGenerator {
 
     private boolean isTextExpression(N2AST.ExprNode expression) {
         return expression instanceof N2AST.StringNode || expression instanceof N2AST.CallNode call
-                && importedSymbols.containsKey(call.callee) && (call.callee.equals("http_text") || call.callee.equals("http_body"));
+                && importedSymbols.containsKey(call.callee) && (call.callee.equals("http_text") || call.callee.equals("http_body")
+                || call.callee.equals("peripheral_text"));
     }
 
     private boolean isStringValued(N2AST.ExprNode arg) {

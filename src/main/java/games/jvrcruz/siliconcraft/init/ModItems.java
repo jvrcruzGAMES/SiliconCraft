@@ -48,4 +48,17 @@ public class ModItems {
     public static final DeferredItem<BlockItem> SERIAL_CABLE_ITEM = ITEMS.registerSimpleBlockItem("serial_cable", ModBlocks.SERIAL_CABLE);
     public static final DeferredItem<BlockItem> SERIAL_EXPANSION_ITEM = ITEMS.registerSimpleBlockItem("serial_expansion", ModBlocks.SERIAL_EXPANSION);
     public static final DeferredItem<BlockItem> SPEAKER_ITEM = ITEMS.registerSimpleBlockItem("speaker", ModBlocks.SPEAKER);
+    public static final DeferredItem<BlockItem> CHAT_BOX_ITEM = ITEMS.registerSimpleBlockItem("chat_box", ModBlocks.CHAT_BOX);
+    public static final DeferredItem<BlockItem> DISTANCE_DETECTOR_ITEM = ITEMS.registerSimpleBlockItem("distance_detector", ModBlocks.DISTANCE_DETECTOR);
+    public static final DeferredItem<BlockItem> ENVIRONMENT_DETECTOR_ITEM = ITEMS.registerSimpleBlockItem("environment_detector", ModBlocks.ENVIRONMENT_DETECTOR);
+    public static final DeferredItem<BlockItem> PLAYER_DETECTOR_ITEM = ITEMS.registerSimpleBlockItem("player_detector", ModBlocks.PLAYER_DETECTOR);
+    public static final DeferredItem<BlockItem> ENERGY_DETECTOR_ITEM = ITEMS.registerSimpleBlockItem("energy_detector", ModBlocks.ENERGY_DETECTOR);
+    public static final DeferredItem<BlockItem> FLUID_DETECTOR_ITEM = ITEMS.registerSimpleBlockItem("fluid_detector", ModBlocks.FLUID_DETECTOR);
+    public static final DeferredItem<BlockItem> GAS_DETECTOR_ITEM = ITEMS.registerSimpleBlockItem("gas_detector", ModBlocks.GAS_DETECTOR);
+    public static final DeferredItem<BlockItem> BLOCK_READER_ITEM = ITEMS.registerSimpleBlockItem("block_reader", ModBlocks.BLOCK_READER);
+    public static final DeferredItem<BlockItem> INVENTORY_MANAGER_ITEM = ITEMS.registerSimpleBlockItem("inventory_manager", ModBlocks.INVENTORY_MANAGER);
+    public static final DeferredItem<BlockItem> REDSTONE_INTEGRATOR_ITEM = ITEMS.registerSimpleBlockItem("redstone_integrator", ModBlocks.REDSTONE_INTEGRATOR);
+
+    public static final DeferredItem<games.jvrcruz.siliconcraft.item.MemoryCardItem> MEMORY_CARD =
+            ITEMS.register("memory_card", () -> new games.jvrcruz.siliconcraft.item.MemoryCardItem(new Item.Properties().stacksTo(1)));
 }

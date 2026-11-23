@@ -6,6 +6,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.capabilities.BlockCapability;
 
+import java.util.Optional;
 import java.util.OptionalInt;
 
 /**
@@ -33,6 +34,21 @@ public interface ComputerPeripheral {
     /** Called for a PCALLS request with a string copied out of guest RAM. */
     default OptionalInt callString(Context context, int method, String text, int argument) {
         return OptionalInt.empty();
+    }
+
+    default Optional<Result> invoke(Context context, int method, int arg0, int arg1) {
+        OptionalInt result = call(context, method, arg0, arg1);
+        return result.isPresent() ? Optional.of(Result.number(result.getAsInt())) : Optional.empty();
+    }
+
+    default Optional<Result> invokeString(Context context, int method, String text, int argument) {
+        OptionalInt result = callString(context, method, text, argument);
+        return result.isPresent() ? Optional.of(Result.number(result.getAsInt())) : Optional.empty();
+    }
+
+    record Result(int value, String text) {
+        public static Result number(int value) { return new Result(value, ""); }
+        public static Result text(String text) { return new Result(text.length(), text); }
     }
 
     record Context(ServerLevel level, BlockPos computerPos, BlockPos peripheralPos, Direction face) {}

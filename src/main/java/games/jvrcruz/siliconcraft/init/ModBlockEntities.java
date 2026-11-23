@@ -46,4 +46,10 @@ public class ModBlockEntities {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ProjectCompilerBlockEntity>> PROJECT_COMPILER =
             BLOCK_ENTITIES.register("project_compiler", () ->
                     BlockEntityType.Builder.of(ProjectCompilerBlockEntity::new, ModBlocks.PROJECT_COMPILER.get()).build(null));
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<PeripheralDeviceBlockEntity>> PERIPHERAL_DEVICE =
+            BLOCK_ENTITIES.register("peripheral_device", () -> BlockEntityType.Builder.of(PeripheralDeviceBlockEntity::new,
+                    ModBlocks.CHAT_BOX.get(), ModBlocks.DISTANCE_DETECTOR.get(), ModBlocks.ENVIRONMENT_DETECTOR.get(),
+                    ModBlocks.PLAYER_DETECTOR.get(), ModBlocks.ENERGY_DETECTOR.get(), ModBlocks.FLUID_DETECTOR.get(),
+                    ModBlocks.GAS_DETECTOR.get(), ModBlocks.BLOCK_READER.get(), ModBlocks.INVENTORY_MANAGER.get(),
+                    ModBlocks.REDSTONE_INTEGRATOR.get()).build(null));
 }

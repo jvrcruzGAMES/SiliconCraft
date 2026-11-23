@@ -62,5 +62,20 @@
   "config.jade.plugin_siliconcraft.machine_provider": "Machine Status & Progress",
   "config.jade.plugin_siliconcraft.machine_provider_desc": "Displays energy (FE), fuel burn ticks, progress bars, and operational state for SiliconCraft machines.",
   "config.jade.plugin_siliconcraft.speaker_provider": "Speaker Status",
-  "config.jade.plugin_siliconcraft.speaker_provider_desc": "Displays acoustic link status and coordinate binding to adjacent Personal Computers."
+  "config.jade.plugin_siliconcraft.speaker_provider_desc": "Displays acoustic link status and coordinate binding to adjacent Personal Computers.",
+  "block.siliconcraft.chat_box": "Chat Box",
+  "block.siliconcraft.distance_detector": "Distance Detector",
+  "block.siliconcraft.environment_detector": "Environment Detector",
+  "block.siliconcraft.player_detector": "Player Detector",
+  "block.siliconcraft.energy_detector": "Energy Detector",
+  "block.siliconcraft.fluid_detector": "Fluid Detector",
+  "block.siliconcraft.gas_detector": "Gas Detector",
+  "block.siliconcraft.block_reader": "Block Reader",
+  "block.siliconcraft.inventory_manager": "Inventory Manager",
+  "block.siliconcraft.redstone_integrator": "Redstone Integrator",
+  "item.siliconcraft.memory_card": "Memory Card",
+  "message.siliconcraft.memory_card.bound": "Memory Card bound to you",
+  "message.siliconcraft.memory_card.unbound": "Use to bind this card to your inventory",
+  "block.siliconcraft.digital_natures_compass": "Digital Nature's Compass",
+  "block.siliconcraft.digital_explorers_compass": "Digital Explorer's Compass"
 }

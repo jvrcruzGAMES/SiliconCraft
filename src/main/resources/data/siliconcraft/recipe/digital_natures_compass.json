@@ -1,0 +1,36 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "redstone",
+  "pattern": [
+    "ICI",
+    "DSD",
+    "IPI"
+  ],
+  "key": {
+    "I": {
+      "item": "minecraft:iron_ingot"
+    },
+    "C": {
+      "item": "minecraft:copper_ingot"
+    },
+    "D": {
+      "item": "siliconcraft:serial_cable"
+    },
+    "S": {
+      "item": "naturescompass:naturescompass"
+    },
+    "P": {
+      "item": "siliconcraft:chip"
+    }
+  },
+  "result": {
+    "id": "siliconcraft:digital_natures_compass",
+    "count": 1
+  },
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "naturescompass"
+    }
+  ]
+}

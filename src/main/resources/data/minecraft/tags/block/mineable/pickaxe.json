@@ -11,6 +11,24 @@
     "siliconcraft:computer",
     "siliconcraft:assembly_writer",
     "siliconcraft:code_compiler",
-    "siliconcraft:project_compiler"
+    "siliconcraft:project_compiler",
+    "siliconcraft:chat_box",
+    "siliconcraft:distance_detector",
+    "siliconcraft:environment_detector",
+    "siliconcraft:player_detector",
+    "siliconcraft:energy_detector",
+    "siliconcraft:fluid_detector",
+    "siliconcraft:gas_detector",
+    "siliconcraft:block_reader",
+    "siliconcraft:inventory_manager",
+    "siliconcraft:redstone_integrator",
+    {
+      "id": "siliconcraft:digital_natures_compass",
+      "required": false
+    },
+    {
+      "id": "siliconcraft:digital_explorers_compass",
+      "required": false
+    }
   ]
 }

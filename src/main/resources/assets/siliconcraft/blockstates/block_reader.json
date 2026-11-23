@@ -1,0 +1,27 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "siliconcraft:block/block_reader"
+    },
+    "facing=east": {
+      "model": "siliconcraft:block/block_reader",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "siliconcraft:block/block_reader",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "siliconcraft:block/block_reader",
+      "y": 270
+    },
+    "facing=up": {
+      "model": "siliconcraft:block/block_reader",
+      "x": 270
+    },
+    "facing=down": {
+      "model": "siliconcraft:block/block_reader",
+      "x": 90
+    }
+  }
+}

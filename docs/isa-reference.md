@@ -262,6 +262,8 @@ Directives allow placing raw binary data, tables, and external files directly in
 | `PWRAP` | `PWRAP dst, side` | Queue a request to wrap a peripheral manually. |
 | `PCALL` | `PCALL dst, side, method, arg0, arg1` | Queue an API call with two 32-bit arguments. |
 | `PCALLS` | `PCALLS dst, side, method, ptr, arg1` | Queue a call with a zero-terminated RAM string and a 32-bit argument. |
+| `PLEN` | `PLEN dst` | Read the completed response length in UTF-16 cells without consuming it. |
+| `PRESULTS` | `PRESULTS dst, ptr, capacity` | Consume the response, copy text to guest RAM with a zero terminator if capacity permits, and return the copied length. |
 | `PSTATUS` | `PSTATUS dst` | Read the request status. |
 | `PRESULT` | `PRESULT dst` | Read the result and clear a completed request. |
 

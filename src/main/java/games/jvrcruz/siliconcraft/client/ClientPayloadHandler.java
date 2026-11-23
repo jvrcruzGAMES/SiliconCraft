@@ -4,6 +4,10 @@ import games.jvrcruz.siliconcraft.blockentity.ComputerBlockEntity;
 import games.jvrcruz.siliconcraft.client.audio.ComputerAudioPlayer;
 import games.jvrcruz.siliconcraft.compat.sable.SubLevelCoordinates;
 import games.jvrcruz.siliconcraft.network.PlayAudioPacket;
+import games.jvrcruz.siliconcraft.network.PeripheralNoticePacket;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.toasts.SystemToast;
+import net.minecraft.network.chat.Component;
 import games.jvrcruz.siliconcraft.network.StopAudioPacket;
 import games.jvrcruz.siliconcraft.network.SyncFramebufferPacket;
 import games.jvrcruz.siliconcraft.network.FramebufferCodec;
@@ -46,6 +50,19 @@ public class ClientPayloadHandler {
                         level.random.nextDouble(), 0.0, 0.0);
             } else {
                 ComputerAudioPlayer.playScreenAudio(packet.computerPos(), packet.pcmSamples(), packet.sampleRate());
+            }
+        });
+    }
+
+    public static void handlePeripheralNotice(PeripheralNoticePacket packet, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            Minecraft client = Minecraft.getInstance();
+            Component title = Component.translatable("block.siliconcraft.chat_box");
+            Component message = Component.literal(packet.message());
+            if (packet.narration()) {
+                client.getNarrator().say(title.copy().append(": ").append(message));
+            } else {
+                SystemToast.add(client.getToasts(), SystemToast.SystemToastId.PERIODIC_NOTIFICATION, title, message);
             }
         });
     }

@@ -617,3 +617,11 @@ cold_boot_reset:
 ```
 
 
+
+## Peripheral example
+
+The Environment Detector example wraps a device to the north and prints its biome ID. The Assembly version reads a RAM buffer with `PRESULTS`. The N2 version reads a managed string with `DeviceKit`.
+
+- [Assembly source](examples/environment-detector.asm)
+- [N2 source](n-language/n2-examples/environment-detector.n2)
+- [Device method reference](peripherals.md#siliconcraft-peripheral-blocks)

@@ -34,6 +34,8 @@ public class ModMessages {
         registrar.playToClient(SyncTerminalPacket.TYPE, SyncTerminalPacket.STREAM_CODEC, ModMessages::handleSyncTerminal);
         registrar.playToClient(SyncFramebufferPacket.TYPE, SyncFramebufferPacket.STREAM_CODEC, (pkt, ctx) -> games.jvrcruz.siliconcraft.client.ClientPayloadHandler.handleSyncFramebuffer(pkt, ctx));
         registrar.playToClient(PlayAudioPacket.TYPE, PlayAudioPacket.STREAM_CODEC, (pkt, ctx) -> games.jvrcruz.siliconcraft.client.ClientPayloadHandler.handlePlayAudio(pkt, ctx));
+        registrar.playToClient(PeripheralNoticePacket.TYPE, PeripheralNoticePacket.STREAM_CODEC,
+                (packet, context) -> games.jvrcruz.siliconcraft.client.ClientPayloadHandler.handlePeripheralNotice(packet, context));
         registrar.playToClient(StopAudioPacket.TYPE, StopAudioPacket.STREAM_CODEC, (pkt, ctx) -> games.jvrcruz.siliconcraft.client.ClientPayloadHandler.handleStopAudio(pkt, ctx));
     }
 

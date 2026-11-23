@@ -109,4 +109,19 @@ public class ModBlocks {
     public static final DeferredBlock<Block> SERIAL_EXPANSION = BLOCKS.register("serial_expansion",
             () -> new Block(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
                     .strength(2.0F).sound(SoundType.METAL)));
+    public static final DeferredBlock<PeripheralDeviceBlock> CHAT_BOX = peripheral("chat_box", PeripheralDeviceBlock.Kind.CHAT);
+    public static final DeferredBlock<PeripheralDeviceBlock> DISTANCE_DETECTOR = peripheral("distance_detector", PeripheralDeviceBlock.Kind.DISTANCE);
+    public static final DeferredBlock<PeripheralDeviceBlock> ENVIRONMENT_DETECTOR = peripheral("environment_detector", PeripheralDeviceBlock.Kind.ENVIRONMENT);
+    public static final DeferredBlock<PeripheralDeviceBlock> PLAYER_DETECTOR = peripheral("player_detector", PeripheralDeviceBlock.Kind.PLAYER);
+    public static final DeferredBlock<PeripheralDeviceBlock> ENERGY_DETECTOR = peripheral("energy_detector", PeripheralDeviceBlock.Kind.ENERGY);
+    public static final DeferredBlock<PeripheralDeviceBlock> FLUID_DETECTOR = peripheral("fluid_detector", PeripheralDeviceBlock.Kind.FLUID);
+    public static final DeferredBlock<PeripheralDeviceBlock> GAS_DETECTOR = peripheral("gas_detector", PeripheralDeviceBlock.Kind.GAS);
+    public static final DeferredBlock<PeripheralDeviceBlock> BLOCK_READER = peripheral("block_reader", PeripheralDeviceBlock.Kind.BLOCK);
+    public static final DeferredBlock<PeripheralDeviceBlock> INVENTORY_MANAGER = peripheral("inventory_manager", PeripheralDeviceBlock.Kind.INVENTORY);
+    public static final DeferredBlock<PeripheralDeviceBlock> REDSTONE_INTEGRATOR = peripheral("redstone_integrator", PeripheralDeviceBlock.Kind.REDSTONE);
+
+    private static DeferredBlock<PeripheralDeviceBlock> peripheral(String name, PeripheralDeviceBlock.Kind kind) {
+        return BLOCKS.register(name, () -> new PeripheralDeviceBlock(kind, BlockBehaviour.Properties.of()
+                .mapColor(MapColor.METAL).strength(2.5F, 3.0F).requiresCorrectToolForDrops().sound(SoundType.METAL)));
+    }
 }

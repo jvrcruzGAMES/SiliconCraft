@@ -1,0 +1,27 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "siliconcraft:block/player_detector"
+    },
+    "facing=east": {
+      "model": "siliconcraft:block/player_detector",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "siliconcraft:block/player_detector",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "siliconcraft:block/player_detector",
+      "y": 270
+    },
+    "facing=up": {
+      "model": "siliconcraft:block/player_detector",
+      "x": 270
+    },
+    "facing=down": {
+      "model": "siliconcraft:block/player_detector",
+      "x": 90
+    }
+  }
+}

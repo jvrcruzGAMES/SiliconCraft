@@ -7,6 +7,8 @@ import games.jvrcruz.siliconcraft.vm.PeripheralBus;
 import games.jvrcruz.siliconcraft.vm.VirtualCpu;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -207,6 +209,61 @@ class PeripheralInstructionsTest {
         assertEquals(0x203, override.method());
         assertEquals("flute", override.text());
         assertEquals(24, override.arg1());
+    }
+
+    @Test
+    void assemblyTextResultReservesTerminatorAndConsumesMailbox() {
+        var assembled = Assembler.assemble(List.of("PCALL A, 2, 0x420, 0, 0", "PLEN B", "PRESULTS C, 10, 3",
+                "PLEN D", "HLT"));
+        assertTrue(assembled.success());
+        VirtualCpu cpu = new VirtualCpu();
+        cpu.configure(InstructionValidator.ALL_INSTRUCTIONS_SET, 256, assembled.bytecode(), false, 0);
+        cpu.powerOn();
+        cpu.step();
+        PeripheralBus bus = cpu.getPeripheralBus();
+        assertNotNull(bus.pendingRequest());
+        bus.complete(bus.pendingRequest(), PeripheralBus.OK, 4, "é日ab");
+        cpu.tick(16);
+
+        assertEquals(4, cpu.getRegB());
+        assertEquals(2, cpu.getRegC());
+        assertEquals(0, cpu.getRegD());
+        assertEquals('é', cpu.getRam()[10]);
+        assertEquals('日', cpu.getRam()[11]);
+        assertEquals(0, cpu.getRam()[12]);
+        assertEquals(PeripheralBus.IDLE, bus.status());
+    }
+
+    @Test
+    void documentedPeripheralExamplesReadTextFromHost() throws Exception {
+        var assemblyExample = Assembler.assemble(Files.readAllLines(Path.of("docs/examples/environment-detector.asm")));
+        assertTrue(assemblyExample.success());
+        var n2Example = N2Compiler.compile(Files.readString(Path.of("docs/n-language/n2-examples/environment-detector.n2")));
+        assertTrue(n2Example.success(), n2Example.errors().toString());
+        var compiledExample = Assembler.assemble(n2Example.assembly());
+        assertTrue(compiledExample.success());
+        for (var program : List.of(assemblyExample, compiledExample)) {
+            assertTrue(program.requiredInstructions().containsAll(Set.of("PCALL", "PLEN", "PRESULTS", "PWRAP")));
+            VirtualCpu cpu = new VirtualCpu();
+            cpu.configure(InstructionValidator.ALL_INSTRUCTIONS_SET, 65536, program.bytecode(), false, 0);
+            cpu.powerOn();
+            PeripheralBus bus = cpu.getPeripheralBus();
+            for (int i = 0; i < 1000 && cpu.getState() == VirtualCpu.State.RUNNING; i++) {
+                cpu.step();
+                var request = bus.pendingRequest();
+                if (request == null) continue;
+                assertEquals(2, request.side());
+                if (request.operation() == PeripheralBus.Operation.WRAP) {
+                    bus.complete(request, PeripheralBus.OK, 1);
+                } else {
+                    assertEquals(0x420, request.method());
+                    String biome = "minecraft:plains";
+                    bus.complete(request, PeripheralBus.OK, biome.length(), biome);
+                }
+            }
+            assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+            assertTrue(String.join("\n", cpu.getTerminalOutput()).contains("minecraft:plains"));
+        }
     }
 
     @Test

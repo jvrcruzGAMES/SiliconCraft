@@ -6,7 +6,7 @@
 
 **SiliconCraft** is a modular personal computing, microcontroller, and custom silicon architecture mod for Minecraft (NeoForge 1.21.1).
 
-Design your own silicon chips from raw wafers, assemble modular personal computers, write programs in the high-level **N language** or native assembly, render hardware-accelerated 960×540 retro graphics, synthesize 8-bit PCM audio, connect physical gamepads, and automate your world with custom virtual hardware—all running on dedicated background worker threads with **zero server tick lag**.
+Design your own silicon chips from raw wafers, assemble modular personal computers, write programs in the high-level **N language** or native assembly, render hardware-accelerated 960×540 retro graphics, synthesize 8-bit PCM audio, connect physical gamepads, and automate your world with custom virtual hardware—with the virtual CPU running on background workers and world interactions handled by the server tick.
 
 ---
 
@@ -132,7 +132,11 @@ SiliconCraft computers and machines can be assembled into Sable sub-levels with 
 
 ## N2 networking
 
-[Network](docs/network.md) provides server-originated HTTP, HTTPS, TCP, and UDP with administrator controls.
+N2 supports HTTP request and routing helpers, HTTP/3, WebSocket and secure WebSocket, and raw TCP and UDP sockets. The Minecraft server runs connections and controls whether guest programs can open listening ports. [Network guide](docs/network.md)
+
+## Peripherals
+
+Connect built-in peripherals to computers directly or through Serial Cables and Serial Expansions. Programs use the same peripheral instructions from Assembly and N2 DeviceKit. [Peripheral guide and examples](docs/peripherals.md)
 
 ## AeroSilicon
 

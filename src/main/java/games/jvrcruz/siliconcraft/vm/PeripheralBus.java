@@ -21,7 +21,9 @@ public final class PeripheralBus {
     private long session;
     private Request request;
     private int status;
+    public static final int MAX_TEXT_RESULT = 8192;
     private int result;
+    private String text = "";
 
     public synchronized boolean submit(Operation operation, int side, int method, int arg0, int arg1, String text) {
         if (status != IDLE) {
@@ -37,10 +39,15 @@ public final class PeripheralBus {
     }
 
     public synchronized void complete(Request completed, int status, int value) {
+        complete(completed, status, value, "");
+    }
+
+    public synchronized void complete(Request completed, int status, int value, String text) {
         if (request == completed) {
             request = null;
             this.status = status;
             result = value;
+            this.text = text;
         }
     }
 
@@ -55,6 +62,15 @@ public final class PeripheralBus {
         status = IDLE;
         int value = result;
         result = 0;
+        text = "";
+        return value;
+    }
+
+    public synchronized int textLength() { return text.length(); }
+
+    public synchronized String consumeText() {
+        String value = text;
+        consumeResult();
         return value;
     }
 
@@ -63,5 +79,6 @@ public final class PeripheralBus {
         request = null;
         status = IDLE;
         result = 0;
+        text = "";
     }
 }

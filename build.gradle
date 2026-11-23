@@ -12,6 +12,10 @@ repositories {
     mavenLocal()
     mavenCentral()
     maven {
+        url = 'https://modmaven.dev'
+        content { includeGroup 'mekanism' }
+    }
+    maven {
         name = 'Sable Companion'
         url = 'https://maven.ryanhcode.dev/releases'
         content { includeGroup 'dev.ryanhcode.sable-companion' }
@@ -46,9 +50,10 @@ evaluationDependsOn(':aerosilicon')
 sourceSets { serverRuntime }
 configurations {
     aerosiliconDevelopment
+    optionalModDevelopment
     clientDevelopment
-    runtimeClasspath.extendsFrom aerosiliconDevelopment, clientDevelopment
-    serverRuntimeRuntimeClasspath.extendsFrom implementation, runtimeOnly, aerosiliconDevelopment
+    runtimeClasspath.extendsFrom aerosiliconDevelopment, optionalModDevelopment, clientDevelopment
+    serverRuntimeRuntimeClasspath.extendsFrom implementation, runtimeOnly, aerosiliconDevelopment, optionalModDevelopment
 }
 
 neoForge {
@@ -157,6 +162,22 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 dependencies {
     [
+            'maven.modrinth:natures-compass:nFniEtJV',
+            'maven.modrinth:explorers-compass:hIJ2Ev1Q',
+            'curse.maven:curios-309927:6529130',
+            'curse.maven:jei-238222:9717805',
+            'maven.modrinth:jade:15.10.3+neoforge'
+    ].each { mod ->
+        compileOnly(mod)
+        optionalModDevelopment(mod)
+    }
+    def mekanism = 'mekanism:Mekanism:1.21.1-10.7.19.85'
+    compileOnly "${mekanism}:api"
+    optionalModDevelopment mekanism
+    optionalModDevelopment 'curse.maven:mezzconfig-1689768:9527937'
+    optionalModDevelopment 'curse.maven:mezzconfiggui-1700987:9701162'
+
+    [
             'tech.kwik:flupke:0.9.4',
             'tech.kwik:kwik:0.10.8',
             'tech.kwik:qpack:2.0.1',
@@ -171,11 +192,6 @@ dependencies {
     aerosiliconDevelopment "maven.modrinth:create:${aerosilicon_create_release}"
     aerosiliconDevelopment "maven.modrinth:create-aeronautics:${aerosilicon_aeronautics_release}"
     aerosiliconDevelopment "maven.modrinth:sable:${aerosilicon_sable_release}"
-    implementation "curse.maven:jei-238222:9717805"
-    runtimeOnly "curse.maven:mezzconfig-1689768:9527937"
-    runtimeOnly "curse.maven:mezzconfiggui-1700987:9701162"
-
-    implementation "maven.modrinth:jade:15.10.3+neoforge"
     compileOnly 'dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0'
     serverRuntimeRuntimeOnly sourceSets.main.output
     compileOnly("dev.isxander:controlify:2.4.4+1.21.1-neoforge") {
