@@ -36,6 +36,20 @@ public class N2Compiler {
             N2Parser parser = new N2Parser(tokens, fileName);
             N2AST.ProgramNode program = parser.parse();
 
+            if (program.imports.stream().anyMatch(imp -> !imp.isLibrary && imp.alias != null)) {
+                return new CompileResult(false, List.of(), List.of("Module aliases require project compilation"), Set.of());
+            }
+
+            if (program.imports.stream().anyMatch(imp -> imp.alias != null)) {
+                var linked = new N2AST.ProgramNode(1, 1);
+                program.imports.stream().filter(imp -> imp.alias == null).forEach(linked.imports::add);
+                var errors = new ArrayList<String>();
+                N2ModuleAliases.merge(Map.of(fileName == null ? "main.n2" : fileName, program), Map.of(),
+                        Set.of(fileName == null ? "main.n2" : fileName), linked, errors);
+                if (!errors.isEmpty()) return new CompileResult(false, List.of(), errors, Set.of());
+                program = linked;
+            }
+
             N2CodeGenerator codegen = new N2CodeGenerator(program, fileName);
             List<String> assembly = codegen.generate();
             List<String> errors = codegen.getErrors();

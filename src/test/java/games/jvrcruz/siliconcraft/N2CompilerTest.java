@@ -262,6 +262,122 @@ public class N2CompilerTest {
     }
 
     @Test
+    void bundledLibraryAliasWorksInAStandaloneProgram() {
+        var result = N2Compiler.compile("""
+                import <std> as Console
+                import <DeviceKit> as Device
+                func main()
+                    Console.print(Device.PERIPHERAL_NORTH)
+                    Device.peripheral_wrap(Device.PERIPHERAL_NORTH)
+                end
+                """);
+        assertTrue(result.success(), result.errors().toString());
+        var assembled = Assembler.assemble(result.assembly());
+        assertTrue(assembled.success(), assembled.errors().toString());
+        var cpu = runCpu(assembled.bytecode(), 800);
+        assertTrue(cpu.getTerminalOutput().contains("2"));
+        var request = cpu.getPeripheralBus().pendingRequest();
+        assertNotNull(request);
+        assertEquals(2, request.side());
+        assertTrue(result.requiredInstructions().contains("PWRAP"));
+
+        var unqualified = N2Compiler.compile("import <DeviceKit> as Device\nperipheral_wrap(2)");
+        assertFalse(unqualified.success());
+    }
+
+    @Test
+    void bundledLibraryAliasesAreFileLocalInProjects() {
+        var files = Map.of("main.n2", """
+                import <std> as Library
+                import "helper" as Helper
+                Library.print(Helper.getPort())
+                """.lines().toList(), "helper.n2", """
+                import <DeviceKit> as Library
+                func getPort()
+                    return Library.PERIPHERAL_NORTH
+                end
+                """.lines().toList());
+        var result = N2Compiler.compileProject(files, "main.n2");
+        assertTrue(result.success(), result.errors().toString());
+        var assembled = Assembler.assemble(result.assembly());
+        assertTrue(assembled.success(), assembled.errors().toString());
+        assertTrue(runCpu(assembled.bytecode(), 800).getTerminalOutput().contains("2"));
+    }
+
+    @Test
+    void moduleAliasesKeepExportsSeparateAndShareStateAcrossAliases() {
+        var files = Map.of(
+                "main.n2", """
+                        import <std>
+                        import "modules/counter" as Left
+                        import "modules/counter" as Same
+                        import "other" as Right
+                        func main()
+                            Left.count = 40
+                            print(Left.bump())
+                            print(Same.count)
+                            print(Right.bump())
+                        end
+                        """.lines().toList(),
+                "modules/counter.n2", """
+                        import "step" as Helper
+                        global count = 1
+                        func bump()
+                            count += Helper.step()
+                            return count
+                        end
+                        """.lines().toList(),
+                "modules/step.n2", List.of("func step()", "return 2", "end"),
+                "other.n2", List.of("global count = 90", "func bump()", "count += 1", "return count", "end")
+        );
+        var result = N2Compiler.compileProject(files, "main.n2");
+        assertTrue(result.success(), result.errors().toString());
+        var assembled = Assembler.assemble(result.assembly());
+        assertTrue(assembled.success(), assembled.errors().toString());
+        var cpu = runCpu(assembled.bytecode(), 800);
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState(), cpu.getErrorMessage());
+        assertEquals(List.of("42", "42", "91", "[EXECUTION HALTED]"), cpu.getTerminalOutput());
+    }
+
+    @Test
+    void moduleAliasCanConstructAnExportedClass() {
+        var files = Map.of("main.n2", """
+                import <std>
+                import "widgets" as Widgets
+                func main()
+                    local first = new Widgets.Widget(7)
+                    local second = Widgets.Widget(11)
+                    print(first.read() + second.read())
+                end
+                """.lines().toList(), "widgets.n2", """
+                class Widget {
+                    func init(value)
+                        this.value = value
+                    end
+                    func read()
+                        return this.value
+                    end
+                }
+                """.lines().toList());
+        var result = N2Compiler.compileProject(files, "main.n2");
+        assertTrue(result.success(), result.errors().toString());
+        var assembled = Assembler.assemble(result.assembly());
+        assertTrue(assembled.success(), assembled.errors().toString());
+        var cpu = runCpu(assembled.bytecode(), 800);
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState(), cpu.getErrorMessage());
+        assertTrue(cpu.getTerminalOutput().contains("18"));
+    }
+
+    @Test
+    void moduleAliasReportsAnUnknownExportInTheImportingFile() {
+        var files = Map.of("main.n2", List.of("import \"helper\" as Helper", "Helper.missing()"),
+                "helper.n2", List.of("global value = 1"));
+        var result = N2Compiler.compileProject(files, "main.n2");
+        assertFalse(result.success());
+        assertTrue(result.errors().stream().anyMatch(error -> error.contains("main.n2") && error.contains("missing")), result.errors().toString());
+    }
+
+    @Test
     public void testRejectionOfAngleBracketsForProjectFiles() {
         String invalidCode = """
                 import <player.n2>

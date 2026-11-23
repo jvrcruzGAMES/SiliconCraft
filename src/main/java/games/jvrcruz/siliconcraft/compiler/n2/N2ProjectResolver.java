@@ -81,7 +81,13 @@ public class N2ProjectResolver {
         N2AST.ProgramNode mergedProgram = new N2AST.ProgramNode(1, 1);
         Set<String> seenLibImports = new HashSet<>();
 
-        resolveFileRecursive(entrypoint, files, alreadyImported, currentlyImporting, mergedProgram, seenLibImports, errors);
+        var modules = new LinkedHashMap<String, N2AST.ProgramNode>();
+        var aliases = new HashMap<String, Map<String, String>>();
+        var unqualified = new HashSet<String>();
+        unqualified.add(entrypoint);
+        resolveFileRecursive(entrypoint, files, alreadyImported, currentlyImporting, mergedProgram, seenLibImports,
+                modules, aliases, unqualified, errors);
+        N2ModuleAliases.merge(modules, aliases, unqualified, mergedProgram, errors);
         return mergedProgram;
     }
 
@@ -92,6 +98,9 @@ public class N2ProjectResolver {
             Set<String> currentlyImporting,
             N2AST.ProgramNode mergedProgram,
             Set<String> seenLibImports,
+            Map<String, N2AST.ProgramNode> modules,
+            Map<String, Map<String, String>> aliases,
+            Set<String> unqualified,
             List<String> errors
     ) {
         if (currentlyImporting.contains(currentFile)) {
@@ -115,7 +124,9 @@ public class N2ProjectResolver {
         // Check if current file is assembly
         String lower = currentFile.toLowerCase(Locale.ROOT);
         if (lower.endsWith(".asm") || lower.endsWith(".s")) {
-            mergedProgram.statements.add(new N2AST.InlineAssemblyNode(new ArrayList<>(lines), 1, 1));
+            var assembly = new N2AST.ProgramNode(1, 1);
+            assembly.statements.add(new N2AST.InlineAssemblyNode(new ArrayList<>(lines), 1, 1));
+            modules.put(currentFile, assembly);
             currentlyImporting.remove(currentFile);
             alreadyImported.add(currentFile);
             return;
@@ -142,6 +153,7 @@ public class N2ProjectResolver {
         // Process imports in fileAst
         for (N2AST.ImportNode imp : fileAst.imports) {
             if (imp.isLibrary) {
+                if (imp.alias != null) continue;
                 // Deduplicate library imports
                 String key = imp.path + ":" + String.join(",", imp.symbols);
                 if (!seenLibImports.contains(key)) {
@@ -154,13 +166,25 @@ public class N2ProjectResolver {
                 if (resolvedTarget == null) {
                     errors.add(currentFile + ":" + imp.getLine() + ": Cannot resolve project import '\"" + imp.path + "\"'");
                 } else {
-                    resolveFileRecursive(resolvedTarget, files, alreadyImported, currentlyImporting, mergedProgram, seenLibImports, errors);
+                    if (imp.alias == null) {
+                        unqualified.add(resolvedTarget);
+                    } else {
+                        String extension = resolvedTarget.toLowerCase(Locale.ROOT);
+                        var bindings = aliases.computeIfAbsent(currentFile, ignored -> new LinkedHashMap<>());
+                        if (extension.endsWith(".asm") || extension.endsWith(".s")) {
+                            errors.add(currentFile + ":" + imp.getLine() + ": Assembly modules do not support import aliases");
+                        } else if (bindings.putIfAbsent(imp.alias, resolvedTarget) != null) {
+                            errors.add(currentFile + ":" + imp.getLine() + ": Duplicate module alias '" + imp.alias + "'");
+                        }
+                    }
+                    resolveFileRecursive(resolvedTarget, files, alreadyImported, currentlyImporting, mergedProgram,
+                            seenLibImports, modules, aliases, unqualified, errors);
                 }
             }
         }
 
         // Append fileAst statements
-        mergedProgram.statements.addAll(fileAst.statements);
+        modules.put(currentFile, fileAst);
 
         currentlyImporting.remove(currentFile);
         alreadyImported.add(currentFile);

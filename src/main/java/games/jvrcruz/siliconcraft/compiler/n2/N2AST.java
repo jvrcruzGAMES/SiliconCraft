@@ -45,9 +45,16 @@ public class N2AST {
         public final boolean isLibrary; // true for <lib/*>, false for "project_file"
         public final List<String> symbols; // empty list means wildcard / import all
 
+        public final String alias;
+
         public ImportNode(String path, boolean isLibrary, List<String> symbols, int line, int column) {
+            this(path, isLibrary, symbols, null, line, column);
+        }
+
+        public ImportNode(String path, boolean isLibrary, List<String> symbols, String alias, int line, int column) {
             super(line, column);
             this.path = path;
+            this.alias = alias;
             this.isLibrary = isLibrary;
             this.symbols = symbols != null ? symbols : new ArrayList<>();
         }
@@ -383,6 +390,15 @@ public class N2AST {
             super(line, column);
             this.callee = callee;
             this.args = args != null ? args : new ArrayList<>();
+        }
+    }
+
+    public static final class SystemCallNode extends CallNode {
+        public final N2Library.SymbolInfo symbol;
+
+        public SystemCallNode(N2Library.SymbolInfo symbol, List<ExprNode> args, int line, int column) {
+            super(symbol.name(), args, line, column);
+            this.symbol = symbol;
         }
     }
 

@@ -84,14 +84,14 @@ public class N2Parser {
             // import <lib/*>  OR  import "project_file.n2"
             if (check(N2TokenType.LIB_PATH)) {
                 N2Token libToken = advance();
-                return new N2AST.ImportNode(libToken.text(), true, Collections.emptyList(), line, col);
+                return new N2AST.ImportNode(libToken.text(), true, Collections.emptyList(), parseImportAlias(), line, col);
             } else if (check(N2TokenType.STRING)) {
                 N2Token strToken = advance();
                 String path = strToken.text();
                 if (path.startsWith("lib/")) {
                     throw new N2CompileException("System libraries must be imported using angle brackets: import <" + path + ">, not quotes.", fileName, line, col);
                 }
-                return new N2AST.ImportNode(path, false, Collections.emptyList(), line, col);
+                return new N2AST.ImportNode(path, false, Collections.emptyList(), parseImportAlias(), line, col);
             } else if (check(N2TokenType.LT)) {
                 // User attempted <file.n2>
                 advance();
@@ -106,6 +106,12 @@ public class N2Parser {
                 throw new N2CompileException("Expected '<lib/...>' or '\"project_file\"' after import", fileName, line, col);
             }
         }
+    }
+
+    private String parseImportAlias() {
+        if (!check(N2TokenType.IDENTIFIER) || !peek().text().equals("as")) return null;
+        advance();
+        return consume(N2TokenType.IDENTIFIER, "Expected module name after 'as'").text();
     }
 
     private N2AST.ClassNode parseClass() {
@@ -187,7 +193,6 @@ public class N2Parser {
         }
         if (check(N2TokenType.KEYWORD_GLOBAL)) {
             if (peekNext().type() == N2TokenType.IDENTIFIER) {
-                advance(); // consume 'global' keyword
                 return parseVarDecl(false);
             } else {
                 N2Token gToken = advance();
@@ -550,10 +555,14 @@ public class N2Parser {
         // New Class instantiation: new Player(args)
         if (match(N2TokenType.KEYWORD_NEW)) {
             N2Token clsToken = consume(N2TokenType.IDENTIFIER, "Expected class name after 'new'");
+            String name = clsToken.text();
+            if (match(N2TokenType.DOT)) {
+                name += "." + consume(N2TokenType.IDENTIFIER, "Expected class name after '.'").text();
+            }
             consume(N2TokenType.LPAREN, "Expected '(' after class name in instantiation");
             List<N2AST.ExprNode> args = parseArgList();
             consume(N2TokenType.RPAREN, "Expected ')' after constructor arguments");
-            return new N2AST.NewNode(clsToken.text(), args, clsToken.line(), clsToken.column());
+            return new N2AST.NewNode(name, args, clsToken.line(), clsToken.column());
         }
 
         // List literal: [elem1, elem2, ...]

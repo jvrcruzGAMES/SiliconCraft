@@ -889,13 +889,17 @@ public class N2CodeGenerator {
 
     private void generateCall(N2AST.CallNode call) {
         String name = call.callee;
+        if (call instanceof N2AST.SystemCallNode system) {
+            generateSystemLibCall(system.symbol, call.args, call.getLine(), call.getColumn());
+            return;
+        }
         if (linkingNetworkRuntime) {
             if (name.startsWith(N2NetworkRuntime.PREFIX)) {
                 generateNetworkRuntimeCall(call);
                 return;
             }
             if (importedSymbols.containsKey(name)) {
-                generateSystemLibCall(name, call.args, call.getLine(), call.getColumn());
+                generateSystemLibCall(importedSymbols.get(name), call.args, call.getLine(), call.getColumn());
                 return;
             }
         }
@@ -908,7 +912,7 @@ public class N2CodeGenerator {
 
         // Check if calling an imported system library function
         if (importedSymbols.containsKey(name)) {
-            generateSystemLibCall(name, call.args, call.getLine(), call.getColumn());
+            generateSystemLibCall(importedSymbols.get(name), call.args, call.getLine(), call.getColumn());
             return;
         }
 
@@ -981,7 +985,8 @@ public class N2CodeGenerator {
         emit("CALL fn_" + target, "CALL");
     }
 
-    private void generateSystemLibCall(String name, List<N2AST.ExprNode> args, int line, int col) {
+    private void generateSystemLibCall(N2Library.SymbolInfo symbol, List<N2AST.ExprNode> args, int line, int col) {
+        String name = symbol.name();
         var httpHelper = N2NetworkRuntime.APIS.get(name);
         if (httpHelper != null) {
             generateHttpHelper(name, httpHelper, args, line, col);
@@ -1346,10 +1351,10 @@ public class N2CodeGenerator {
             case "network_open", "network_send", "network_receive", "network_close", "network_http",
                     "network_websocket", "network_send_text", "network_tls", "network_http3", "network_http_text", "network_http3_text",
                     "network_listen", "network_accept", "network_respond",
-                    "network_status", "network_length", "network_result", "network_ready", "network_utf8", "network_respond_text" -> generateNetworkInstruction(name, args, line, col);
+                    "network_status", "network_length", "network_result", "network_ready", "network_utf8", "network_respond_text" -> generateNetworkInstruction(name, symbol.arity(), args, line, col);
             case "peripheral_scan", "peripheral_info", "peripheral_wrap", "peripheral_call", "peripheral_call_string", "peripheral_status",
                     "peripheral_result", "peripheral_length", "peripheral_result_text", "peripheral_text", "peripheral_text_unit", "speaker_sample_rate", "speaker_tone", "note_block_get",
-                    "note_block_set", "note_block_play", "note_block_play_instrument" -> generatePeripheralInstruction(name, args, line, col);
+                    "note_block_set", "note_block_play", "note_block_play_instrument" -> generatePeripheralInstruction(name, symbol.arity(), args, line, col);
             // Keyboard handling (DeviceKit)
             case "read_key", "get_key" -> emit("INPAD A, -1", "INPAD");
             case "peek_key" -> emit("INPAD A, -2", "INPAD");
@@ -1411,8 +1416,7 @@ public class N2CodeGenerator {
         }
     }
 
-    private void generateNetworkInstruction(String name, List<N2AST.ExprNode> args, int line, int col) {
-        int arity = importedSymbols.get(name).arity();
+    private void generateNetworkInstruction(String name, int arity, List<N2AST.ExprNode> args, int line, int col) {
         if (args.size() != arity) {
             errors.add("Line " + line + ":" + col + ": " + name + " expects " + arity + " arguments");
             return;
@@ -1448,8 +1452,7 @@ public class N2CodeGenerator {
         emit(opcode + " A" + suffix[arity] + textFlag, opcode);
     }
 
-    private void generatePeripheralInstruction(String name, List<N2AST.ExprNode> args, int line, int col) {
-        int arity = importedSymbols.get(name).arity();
+    private void generatePeripheralInstruction(String name, int arity, List<N2AST.ExprNode> args, int line, int col) {
         if (args.size() != arity) {
             errors.add("Line " + line + ":" + col + ": " + name + " expects " + arity + " arguments");
             return;
@@ -1717,7 +1720,7 @@ public class N2CodeGenerator {
 
     private boolean isTextExpression(N2AST.ExprNode expression) {
         return expression instanceof N2AST.StringNode || expression instanceof N2AST.CallNode call
-                && importedSymbols.containsKey(call.callee) && (call.callee.equals("http_text") || call.callee.equals("http_body")
+                && (call instanceof N2AST.SystemCallNode || importedSymbols.containsKey(call.callee)) && (call.callee.equals("http_text") || call.callee.equals("http_body")
                 || call.callee.equals("peripheral_text"));
     }
 
