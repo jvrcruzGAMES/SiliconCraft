@@ -104,6 +104,25 @@ neoForge {
 
         // applies to all the run configs above
         configureEach {
+            // The bundled Aeronautics mods can initialize Create classes concurrently with Create.
+            // Its Registrate callbacks share mutable state during mod construction.
+            def fmlConfig = gameDirectory.file('config/fml.toml')
+            taskBefore(tasks.register("prepare${name.capitalize()}ModLoading") {
+                inputs.property('fmlConfigPath', fmlConfig.map { it.asFile.absolutePath })
+                doLast { task ->
+                    def config = new File(task.inputs.properties.fmlConfigPath as String)
+                    def original = config.exists() ? config.getText('UTF-8') : ''
+                    def maxThreads = ~/(?m)^[ \t]*maxThreads[ \t]*=[ \t]*[+-]?\d+/
+                    def updated = (original =~ maxThreads).find()
+                            ? original.replaceFirst(maxThreads, 'maxThreads = 1')
+                            : 'maxThreads = 1\n' + original
+                    if (original != updated) {
+                        config.parentFile.mkdirs()
+                        config.setText(updated, 'UTF-8')
+                    }
+                }
+            })
+
             // Recommended logging data for a userdev environment
             // The markers can be added/remove as needed separated by commas.
             // "SCAN": For mods scan.
