@@ -1,5 +1,7 @@
 # AeroSilicon
 
+See the [AeroSilicon guide](../docs/addons/aerosilicon/README.md) for runnable Assembly and N2 examples.
+
 A separate SiliconCraft addon for Minecraft 1.21.1 and NeoForge. It requires SiliconCraft, Create, Create: Aeronautics, and Sable. The bundled Aeronautics release includes Simulated, which supplies the sensor ingredients.
 
 Build from the project root with `./gradlew :aerosilicon:build`. The addon JAR is under `aerosilicon/build/libs`. The root IntelliJ client run and `./gradlew runClient` load both mods and their development dependencies. The dedicated server run also loads the addon stack.
@@ -65,4 +67,4 @@ Both methods return 1 for on, 0 for off, or −1 for an unknown nickname. Turnin
 peripheral_call_string(PERIPHERAL_EAST, 0x310, "Engine", 1)
 ```
 
-The equivalent assembly is `PCALLS A, 5, 0x310, engine_name, 1`, where `engine_name: DB "Engine", 0` defines the string in RAM.
+The equivalent assembly is `PCALLS A, 5, 0x310, 0x200, 1`. Use `ORG 0x200` followed by `DB "Engine", 0` to store the nickname at that RAM address.

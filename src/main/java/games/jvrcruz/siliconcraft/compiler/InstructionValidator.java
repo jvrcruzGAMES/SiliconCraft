@@ -19,7 +19,7 @@ public class InstructionValidator {
             // Audio Buffer & Sound
             "APUSH", "ABUFW", "ACLR", "ASTAT", "ATONE", "APLAY",
             // Adjacent peripherals
-            "PINFO", "PWRAP", "PCALL", "PCALLS", "PSTATUS", "PRESULT", "PSCAN",
+            "PINFO", "PWRAP", "PCALL", "PCALLS", "PSTATUS", "PRESULT", "PSCAN", "GALLOC",
             // Server network
             "NOPEN", "NSEND", "NRECV", "NCLOSE", "NHTTP", "NSTATUS", "NLEN", "NRESULT",
             // Interrupts & Exceptions

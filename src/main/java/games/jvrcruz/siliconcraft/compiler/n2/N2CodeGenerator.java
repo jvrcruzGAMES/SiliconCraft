@@ -45,14 +45,6 @@ public class N2CodeGenerator {
         // 1. Entry jump to start
         emit("JMP _start", "JMP");
 
-        // 2. Helper Allocator Subroutine (_alloc)
-        emitComment("--- Dynamic Memory Heap Allocator ---");
-        emitLabel("_alloc");
-        emit("MOV B, [_heap_ptr]", "MOV");
-        emit("ADD [_heap_ptr], A", "ADD");
-        emit("MOV A, B", "MOV");
-        emit("RET", "RET");
-
         // 2b. Helper String Pointer Print Subroutine (_print_str)
         emitComment("--- String Pointer Print Subroutine ---");
         emitLabel("_print_str");
@@ -84,7 +76,7 @@ public class N2CodeGenerator {
         // 5. Main Execution Entry Point (_start)
         emitComment("--- Execution Entry Point ---");
         emitLabel("_start");
-        emit("MOV [_heap_ptr], 16384", "MOV");
+        int heapInitialization = lines.size();
         emit("MOV [_this_ptr], 0", "MOV");
 
         // Initialize string literals in heap memory
@@ -124,9 +116,16 @@ public class N2CodeGenerator {
 
         emit("HLT", "HLT");
 
-        // 6. Data Section (Globals, Constants, Strings, Heap Pointer)
+        if (lines.contains("CALL _alloc")) {
+            int heapBase = Math.max(16384, 5 + globalVars.size() + dataLines.size());
+            lines.add(heapInitialization, "GALLOC 0, " + heapBase);
+            emitLabel("_alloc");
+            emit("GALLOC A, " + heapBase, "GALLOC");
+            emit("RET", "RET");
+        }
+
+        // 6. Data Section (Globals, Constants and Strings)
         emitComment("--- Data Section ---");
-        emit("_heap_ptr: DB 16384");
         emit("_this_ptr: DB 0");
         emit("_tmp_a: DB 0");
         emit("_tmp_b: DB 0");
@@ -359,6 +358,7 @@ public class N2CodeGenerator {
 
         // Default epilogue if no explicit return
         emitLabel(label + "_epilogue");
+        clearLocalSlots();
         emit("POP [_this_ptr]", "POP");
         emit("RET", "RET");
 
@@ -391,10 +391,17 @@ public class N2CodeGenerator {
 
         // Epilogue
         emitLabel(label + "_epilogue");
+        clearLocalSlots();
         emit("RET", "RET");
 
         currentFunction = null;
         currentLocals.clear();
+    }
+
+    private void clearLocalSlots() {
+        for (String name : currentLocals) {
+            emit("MOV [v_" + currentFunction + "_" + name + "], 0", "MOV");
+        }
     }
 
     private void generateStatement(N2AST.Node stmt) {

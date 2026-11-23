@@ -219,6 +219,7 @@ public class VirtualCpu {
     private static final int OP_NSTATUS = 84;
     private static final int OP_NLEN = 85;
     private static final int OP_NRESULT = 86;
+    private static final int OP_GALLOC = 87;
 
     private final NetworkPort networkPort = new NetworkPort();
 
@@ -320,6 +321,7 @@ public class VirtualCpu {
         OPCODE_MAP.put("NSTATUS", OP_NSTATUS);
         OPCODE_MAP.put("NLEN", OP_NLEN);
         OPCODE_MAP.put("NRESULT", OP_NRESULT);
+        OPCODE_MAP.put("GALLOC", OP_GALLOC);
         OPCODE_MAP.put("HLT", OP_HLT);
     }
 
@@ -1214,6 +1216,27 @@ public class VirtualCpu {
                 case OP_NSTATUS -> setDestination(ci.rawArgs, networkPort.status());
                 case OP_NLEN -> setDestination(ci.rawArgs, networkPort.resultLength());
                 case OP_NRESULT -> readNetworkResult(ci.rawArgs);
+                case OP_GALLOC -> {
+                    if (ci.srcType != TYPE_IMM || (ci.destType != TYPE_REG && ci.destType != TYPE_IMM)) {
+                        throw new IllegalArgumentException("GALLOC requires a size and an immediate heap base");
+                    }
+                    int size = ci.destType == TYPE_REG ? getReg(ci.destReg) : ci.destImm;
+                    int base = ci.srcImm;
+                    try {
+                        if (size == 0) {
+                            GuestHeap.initialize(ram, base);
+                            regA = 0;
+                        } else {
+                            int address = GuestHeap.allocate(ram, base, size,
+                                    regA, regB, regC, regD, dataStack, interruptStack);
+                            if (address == 0) pc = currentLineNum; // Retry after an interrupted collection.
+                            else regA = address;
+                        }
+                    } catch (IndexOutOfBoundsException e) {
+                        // The generated program cannot resume with a missing allocation.
+                        haltWithException(e.getMessage(), currentLineNum, ci.rawLine);
+                    }
+                }
                 case OP_HLT -> {
                     state = State.HALTED;
                     flushLineBuffer();
@@ -1584,6 +1607,10 @@ public class VirtualCpu {
             return;
         }
 
+        haltWithException(description, lineNum, lineCode);
+    }
+
+    private void haltWithException(String description, int lineNum, String lineCode) {
         state = State.ERROR;
         errorMessage = "Exception not handled: " + description + (lineNum >= 0 ? " at line " + lineNum + ": '" + lineCode + "'" : "");
         flushLineBuffer();

@@ -13,6 +13,7 @@ Welcome to the **SiliconCraft** documentation. SiliconCraft is a Minecraft 1.21.
 | **[isa-reference.md](isa-reference.md)** | Complete Instruction Set Architecture (ISA) reference detailing registers, status flags, and all 46+ opcodes (control, math, storage, framebuffer, and audio). |
 | **[assembly-syntax.md](assembly-syntax.md)** | Guide to writing `.s` and `.asm` files: syntax rules, labels, comments, number formats, RAM/storage addressing, and device operations. |
 | **[examples.md](examples.md)** | Ready-to-use assembly and `.n` programs (Fibonacci, Counters, Array processing, Framebuffer graphics, and Audio synthesis). |
+| **[AeroSilicon](addons/aerosilicon/README.md)** | Airship peripheral setup, method reference, and runnable Assembly and N2 examples. |
 
 ---
 

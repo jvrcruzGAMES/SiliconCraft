@@ -270,3 +270,11 @@ See [Adjacent peripherals and DeviceKit](peripherals.md) for port numbers, statu
 ### 14. Network
 
 See the [Network library](network.md) for the server config and `NOPEN`, `NSEND`, `NRECV`, `NCLOSE`, `NHTTP`, `NSTATUS`, `NLEN`, and `NRESULT` syntax.
+
+### 15. Managed Guest Heap
+
+| Instruction | Syntax | Effect |
+| --- | --- | --- |
+| `GALLOC` | `GALLOC size, base` | With a positive size in RAM cells, allocates zero-initialized memory and returns its address in `A`. The size can be an immediate or a register. The heap base is immediate. A size of zero initializes an empty heap at that base. |
+
+The collector treats values in RAM below the heap, CPU registers, the data stack, and saved interrupt registers as possible references. It follows references from reachable heap blocks. Reserve the RAM from the heap base onward for the allocator. An allocation that still cannot fit after collection stops the program with a memory error.

@@ -24,6 +24,52 @@ public class N2CompilerTest {
     }
 
     @Test
+    void collectsTemporaryObjectsInASmallHeap() {
+        var compiled = N2Compiler.compile("""
+                import <std>
+
+                class Node {
+                    func init(value)
+                        this.value = value
+                        this.next = 0
+                    end
+                }
+
+                func discard_cycle()
+                    local a = Node(11)
+                    local b = Node(22)
+                    a.next = b
+                    b.next = a
+                end
+
+                func main()
+                    local keep = [Node(97)]
+                    local iteration = 0
+                    while iteration < 1000 do
+                        discard_cycle()
+                        iteration = iteration + 1
+                    end
+                    print(keep[0].value)
+                    print("Finished")
+                end
+                """);
+        assertTrue(compiled.success(), compiled.errors().toString());
+        var assembled = Assembler.assemble(compiled.assembly());
+        assertTrue(assembled.requiredInstructions().contains("GALLOC"));
+
+        var cpu = new VirtualCpu();
+        cpu.configure(InstructionValidator.ALL_INSTRUCTIONS_SET, 16512, assembled.bytecode(), false, 0);
+        cpu.powerOn();
+        for (int cycle = 0; cycle < 250 && cpu.getState() == VirtualCpu.State.RUNNING; cycle++) {
+            cpu.tick(1000);
+        }
+
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        assertTrue(cpu.getTerminalOutput().contains("97"), cpu.getTerminalOutput().toString());
+        assertTrue(cpu.getTerminalOutput().contains("Finished"), cpu.getTerminalOutput().toString());
+    }
+
+    @Test
     public void testClassDefinitionAndInstantiation() {
         String code = """
                 import <lib/io>
