@@ -1,5 +1,6 @@
 package games.jvrcruz.siliconcraft.init;
 
+import games.jvrcruz.siliconcraft.compat.create.CreatePeripherals;
 import games.jvrcruz.siliconcraft.Siliconcraft;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -53,5 +54,6 @@ public class ModCreativeTabs {
                         output.accept(ModItems.REDSTONE_INTEGRATOR_ITEM.get());
                         output.accept(ModItems.MEMORY_CARD.get());
                         CompassPeripherals.fillTab(output);
+                        CreatePeripherals.fillTab(output);
                     }).build());
 }

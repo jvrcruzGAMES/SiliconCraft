@@ -15,7 +15,7 @@ Welcome to the **SiliconCraft** documentation. SiliconCraft is a Minecraft 1.21.
 | **[examples.md](examples.md)** | Ready-to-use assembly and `.n` programs (Fibonacci, Counters, Array processing, Framebuffer graphics, and Audio synthesis). |
 | **[Peripherals](peripherals.md)** | Built-in devices, serial wiring, DeviceKit, and the mod integration API. |
 | **[Network](network.md)** | N2 HTTP utilities, raw sockets, Assembly instructions, and server settings. |
-| **[AeroSilicon](addons/aerosilicon/README.md)** | Airship peripheral setup, method reference, and runnable Assembly and N2 examples. |
+| **[Airship Sensor and Digital Redstone Link](create-peripherals/README.md)** | Airship peripheral setup, method reference, and runnable Assembly and N2 examples. |
 
 ---
 

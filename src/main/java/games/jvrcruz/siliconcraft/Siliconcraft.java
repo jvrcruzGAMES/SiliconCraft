@@ -3,6 +3,7 @@ package games.jvrcruz.siliconcraft;
 import com.mojang.logging.LogUtils;
 import games.jvrcruz.siliconcraft.client.ClientModEvents;
 import games.jvrcruz.siliconcraft.init.*;
+import games.jvrcruz.siliconcraft.compat.create.CreatePeripherals;
 import games.jvrcruz.siliconcraft.network.ModMessages;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -30,6 +31,7 @@ public class Siliconcraft {
 
         // Register Deferred Registers
         CompassPeripherals.register();
+        CreatePeripherals.register();
         ModBlocks.BLOCKS.register(modEventBus);
         ModItems.ITEMS.register(modEventBus);
         ModBlockEntities.BLOCK_ENTITIES.register(modEventBus);

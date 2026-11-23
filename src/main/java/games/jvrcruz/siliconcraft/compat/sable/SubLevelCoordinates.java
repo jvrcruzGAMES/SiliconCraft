@@ -25,6 +25,10 @@ public final class SubLevelCoordinates {
         return localPosition;
     }
 
+    public static double distanceSquared(Level level, Vec3 first, Vec3 second) {
+        return SABLE_PRESENT ? SableIntegration.distanceSquared(level, first, second) : first.distanceToSqr(second);
+    }
+
     public static boolean sameSubLevel(Level level, BlockPos first, BlockPos second) {
         return !SABLE_PRESENT || SableIntegration.sameSubLevel(level, first, second);
     }
@@ -51,6 +55,10 @@ public final class SubLevelCoordinates {
                 return client.renderPose().transformPosition(localPosition);
             }
             return companion.projectOutOfSubLevel(level, (Position) localPosition);
+        }
+
+        static double distanceSquared(Level level, Vec3 first, Vec3 second) {
+            return SableCompanion.INSTANCE.distanceSquaredWithSubLevels(level, first, second);
         }
 
         static boolean sameSubLevel(Level level, BlockPos first, BlockPos second) {

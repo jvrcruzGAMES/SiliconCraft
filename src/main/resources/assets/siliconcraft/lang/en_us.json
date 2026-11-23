@@ -77,5 +77,13 @@
   "message.siliconcraft.memory_card.bound": "Memory Card bound to you",
   "message.siliconcraft.memory_card.unbound": "Use to bind this card to your inventory",
   "block.siliconcraft.digital_natures_compass": "Digital Nature's Compass",
-  "block.siliconcraft.digital_explorers_compass": "Digital Explorer's Compass"
+  "block.siliconcraft.digital_explorers_compass": "Digital Explorer's Compass",
+  "block.siliconcraft.airship_sensor": "Airship Sensor",
+  "block.siliconcraft.digital_redstone_link": "Digital Redstone Link",
+  "screen.siliconcraft.digital_redstone_link.nickname": "Nickname",
+  "screen.siliconcraft.digital_redstone_link.frequencies": "Frequency",
+  "screen.siliconcraft.digital_redstone_link.frequency_slot": "Click here with an item to set the frequency",
+  "screen.siliconcraft.digital_redstone_link.save": "Save",
+  "screen.siliconcraft.digital_redstone_link.saved": "Channel nickname saved",
+  "screen.siliconcraft.digital_redstone_link.invalid_name": "Choose a unique nickname of up to 32 characters"
 }

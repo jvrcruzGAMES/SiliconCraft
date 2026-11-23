@@ -29,6 +29,14 @@
     {
       "id": "siliconcraft:digital_explorers_compass",
       "required": false
+    },
+    {
+      "id": "siliconcraft:airship_sensor",
+      "required": false
+    },
+    {
+      "id": "siliconcraft:digital_redstone_link",
+      "required": false
     }
   ]
 }

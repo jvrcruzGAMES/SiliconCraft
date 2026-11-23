@@ -1,5 +1,6 @@
 package games.jvrcruz.siliconcraft.init;
 
+import games.jvrcruz.siliconcraft.compat.create.CreatePeripherals;
 import games.jvrcruz.siliconcraft.api.peripheral.ComputerPeripheral;
 import games.jvrcruz.siliconcraft.blockentity.PeripheralFlow;
 import net.neoforged.neoforge.capabilities.Capabilities;
@@ -9,6 +10,7 @@ public class ModCapabilities {
     public static void registerCapabilities(RegisterCapabilitiesEvent event) {
         BuiltinPeripherals.register(event);
         CompassPeripherals.registerCapabilities(event);
+        CreatePeripherals.registerCapabilities(event);
         event.registerBlockEntity(ComputerPeripheral.CAPABILITY,
                 ModBlockEntities.PERIPHERAL_DEVICE.get(), (entity, side) -> entity);
         event.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, ModBlockEntities.PERIPHERAL_DEVICE.get(),

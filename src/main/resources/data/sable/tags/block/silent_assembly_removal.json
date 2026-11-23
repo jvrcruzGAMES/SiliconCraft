@@ -9,6 +9,10 @@
     "siliconcraft:memory_forge",
     "siliconcraft:programmer",
     "siliconcraft:project_compiler",
-    "siliconcraft:soc_manufacturer"
+    "siliconcraft:soc_manufacturer",
+    {
+      "id": "siliconcraft:digital_redstone_link",
+      "required": false
+    }
   ]
 }

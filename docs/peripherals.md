@@ -323,3 +323,7 @@ func main()
     return 0
 end
 ```
+
+## Create peripherals
+
+See the [Airship Sensor and Digital Redstone Link guide](create-peripherals/README.md) for requirements, crafting recipes, and Assembly and N2 examples.

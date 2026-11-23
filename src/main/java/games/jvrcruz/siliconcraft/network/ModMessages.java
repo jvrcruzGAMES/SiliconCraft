@@ -1,5 +1,6 @@
 package games.jvrcruz.siliconcraft.network;
 
+import games.jvrcruz.siliconcraft.compat.create.CreatePeripherals;
 import games.jvrcruz.siliconcraft.Siliconcraft;
 import games.jvrcruz.siliconcraft.blockentity.*;
 import games.jvrcruz.siliconcraft.client.ClientProgramManager;
@@ -15,6 +16,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar(Siliconcraft.MODID).versioned("1.1.0");
+        CreatePeripherals.registerPayloads(registrar);
 
         registrar.playToServer(ChipForgePacket.TYPE, ChipForgePacket.STREAM_CODEC, ModMessages::handleChipForge);
         registrar.playToServer(ArchitectureWriterPacket.TYPE, ArchitectureWriterPacket.STREAM_CODEC, ModMessages::handleArchitectureWriter);

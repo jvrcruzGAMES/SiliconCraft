@@ -128,7 +128,7 @@ SiliconCraft is distributed under the project's open-source license. Contributio
 
 ## Sable compatibility
 
-SiliconCraft computers and machines can be assembled into Sable sub-levels with their inventories intact. Adjacent peripherals stay on the same structure, and positional speaker audio follows the structure. Sable is optional and AeroSilicon is only needed for its airship-specific peripherals.
+SiliconCraft computers and machines can be assembled into Sable sub-levels with their inventories intact. Adjacent peripherals stay on the same structure, and positional speaker audio follows the structure. Sable is optional.
 
 ## N2 networking
 
@@ -138,6 +138,6 @@ N2 supports HTTP request and routing helpers, HTTP/3, WebSocket and secure WebSo
 
 Connect built-in peripherals to computers directly or through Serial Cables and Serial Expansions. Programs use the same peripheral instructions from Assembly and N2 DeviceKit. [Peripheral guide and examples](docs/peripherals.md)
 
-## AeroSilicon
+## Create peripherals
 
-[AeroSilicon](aerosilicon/README.md) adds airship telemetry and named Redstone Link channels as SiliconCraft peripherals.
+The Airship Sensor uses Create: Aeronautics and Sable for airship telemetry. The Digital Redstone Link uses Create to control named wireless redstone channels. [Setup and examples](docs/create-peripherals/README.md)

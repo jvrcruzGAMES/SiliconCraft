@@ -1,0 +1,27 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "siliconcraft:block/airship_sensor"
+    },
+    "facing=east": {
+      "model": "siliconcraft:block/airship_sensor",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "siliconcraft:block/airship_sensor",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "siliconcraft:block/airship_sensor",
+      "y": 270
+    },
+    "facing=up": {
+      "model": "siliconcraft:block/airship_sensor",
+      "x": 270
+    },
+    "facing=down": {
+      "model": "siliconcraft:block/airship_sensor",
+      "x": 90
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "particle": "siliconcraft:block/airship_casing",
+    "north": "siliconcraft:block/digital_redstone_link_face",
+    "south": "siliconcraft:block/airship_casing",
+    "east": "siliconcraft:block/airship_casing",
+    "west": "siliconcraft:block/airship_casing",
+    "up": "siliconcraft:block/airship_casing",
+    "down": "siliconcraft:block/airship_casing"
+  }
+}
