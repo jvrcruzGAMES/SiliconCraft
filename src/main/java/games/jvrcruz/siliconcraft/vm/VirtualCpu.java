@@ -20,6 +20,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.BiConsumer;
 import java.util.function.LongSupplier;
+import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.InflaterInputStream;
 
@@ -2874,35 +2875,150 @@ public class VirtualCpu {
         compileBytecode();
     }
 
+    private static final int SPARSE_RAM_MAGIC = -1; // 0xFFFFFFFF distinguishes sparse format from legacy positive length
+    private static final int SPARSE_ZERO_GAP_THRESHOLD = 16;
+
     public byte[] getCompressedRam() {
         if (ram == null || ram.length == 0) return new byte[0];
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        // Batch the four-byte RAM writes before passing them to the compressor.
-        try (DataOutputStream dos = new DataOutputStream(
-                new BufferedOutputStream(new DeflaterOutputStream(baos), 32 * 1024))) {
-            dos.writeInt(ram.length);
-            for (int val : ram) {
-                dos.writeInt(val);
+
+        // Count non-zero runs separated by at least SPARSE_ZERO_GAP_THRESHOLD zero words
+        int chunkCount = 0;
+        int i = 0;
+        final int len = ram.length;
+        while (i < len) {
+            while (i < len && ram[i] == 0) i++;
+            if (i >= len) break;
+            chunkCount++;
+            while (i < len) {
+                if (ram[i] != 0) {
+                    i++;
+                } else {
+                    int zeroStart = i;
+                    while (i < len && ram[i] == 0 && (i - zeroStart) < SPARSE_ZERO_GAP_THRESHOLD) {
+                        i++;
+                    }
+                    if (i - zeroStart >= SPARSE_ZERO_GAP_THRESHOLD || i >= len) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(Math.min(65536, 32 + chunkCount * 64));
+        Deflater deflater = new Deflater(Deflater.BEST_SPEED);
+        try (DeflaterOutputStream dos = new DeflaterOutputStream(baos, deflater, 32 * 1024)) {
+            byte[] buf = new byte[32 * 1024];
+            ByteBuffer bb = ByteBuffer.wrap(buf);
+
+            // Header: [SPARSE_RAM_MAGIC (-1), totalRamLength, chunkCount]
+            bb.putInt(SPARSE_RAM_MAGIC);
+            bb.putInt(len);
+            bb.putInt(chunkCount);
+
+            i = 0;
+            while (i < len) {
+                while (i < len && ram[i] == 0) i++;
+                if (i >= len) break;
+                int runStart = i;
+                int lastNonZero = i;
+                while (i < len) {
+                    if (ram[i] != 0) {
+                        lastNonZero = i;
+                        i++;
+                    } else {
+                        int zeroStart = i;
+                        while (i < len && ram[i] == 0 && (i - zeroStart) < SPARSE_ZERO_GAP_THRESHOLD) {
+                            i++;
+                        }
+                        if (i - zeroStart >= SPARSE_ZERO_GAP_THRESHOLD || i >= len) {
+                            break;
+                        }
+                    }
+                }
+                int runLen = lastNonZero - runStart + 1;
+
+                // Ensure space in buffer for chunk header (8 bytes)
+                if (bb.remaining() < 8) {
+                    dos.write(buf, 0, bb.position());
+                    bb.clear();
+                }
+                bb.putInt(runStart);
+                bb.putInt(runLen);
+
+                int offset = runStart;
+                int remaining = runLen;
+                while (remaining > 0) {
+                    if (bb.remaining() < 4) {
+                        dos.write(buf, 0, bb.position());
+                        bb.clear();
+                    }
+                    int batch = Math.min(remaining, bb.remaining() >> 2);
+                    bb.asIntBuffer().put(ram, offset, batch);
+                    bb.position(bb.position() + (batch << 2));
+                    offset += batch;
+                    remaining -= batch;
+                }
+            }
+
+            if (bb.position() > 0) {
+                dos.write(buf, 0, bb.position());
             }
         } catch (IOException e) {
             return new byte[0];
+        } finally {
+            deflater.end();
         }
         return baos.toByteArray();
     }
 
     public void loadCompressedRam(byte[] data) {
         if (data == null || data.length == 0) return;
-        try {
-            ByteArrayInputStream bais = new ByteArrayInputStream(data);
-            DataInputStream dis = new DataInputStream(new BufferedInputStream(new InflaterInputStream(bais), 32 * 1024));
-            int len = dis.readInt();
-            if (len > 0 && len <= 64 * 1024 * 1024) {
-                int targetLen = Math.max(this.ram.length, len);
-                if (this.ram.length != targetLen) {
-                    this.ram = new int[targetLen];
+        try (DataInputStream dis = new DataInputStream(
+                new BufferedInputStream(new InflaterInputStream(new ByteArrayInputStream(data)), 32 * 1024))) {
+            int firstWord = dis.readInt();
+            if (firstWord == SPARSE_RAM_MAGIC) {
+                int len = dis.readInt();
+                int chunkCount = dis.readInt();
+                if (len > 0 && len <= 64 * 1024 * 1024 && chunkCount >= 0) {
+                    int targetLen = Math.max(this.ram.length, len);
+                    if (this.ram.length != targetLen) {
+                        this.ram = new int[targetLen];
+                    } else {
+                        Arrays.fill(this.ram, 0);
+                    }
+                    byte[] buf = new byte[32 * 1024];
+                    ByteBuffer bb = ByteBuffer.wrap(buf);
+                    for (int c = 0; c < chunkCount; c++) {
+                        int start = dis.readInt();
+                        int runLen = dis.readInt();
+                        if (start < 0 || runLen < 0 || (long) start + runLen > this.ram.length) {
+                            break;
+                        }
+                        int offset = start;
+                        int remaining = runLen;
+                        while (remaining > 0) {
+                            int batch = Math.min(remaining, buf.length >> 2);
+                            dis.readFully(buf, 0, batch << 2);
+                            bb.position(0).limit(batch << 2);
+                            bb.asIntBuffer().get(this.ram, offset, batch);
+                            offset += batch;
+                            remaining -= batch;
+                        }
+                    }
                 }
-                for (int i = 0; i < len; i++) {
-                    this.ram[i] = dis.readInt();
+            } else {
+                // Legacy dense format backward compatibility: firstWord is ram.length
+                int len = firstWord;
+                if (len > 0 && len <= 64 * 1024 * 1024) {
+                    int targetLen = Math.max(this.ram.length, len);
+                    if (this.ram.length != targetLen) {
+                        this.ram = new int[targetLen];
+                    } else {
+                        Arrays.fill(this.ram, 0);
+                    }
+                    for (int i = 0; i < len; i++) {
+                        this.ram[i] = dis.readInt();
+                    }
                 }
             }
         } catch (IOException ignored) {}

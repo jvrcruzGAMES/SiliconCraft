@@ -840,6 +840,25 @@ public class VirtualCpuTest {
     }
 
     @Test
+    void testLegacyDenseRamBackwardCompatibility() throws Exception {
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        try (java.io.DataOutputStream dos = new java.io.DataOutputStream(new java.util.zip.DeflaterOutputStream(baos))) {
+            dos.writeInt(512);
+            for (int i = 0; i < 512; i++) {
+                dos.writeInt(i == 10 ? 12345 : (i == 500 ? -99 : 0));
+            }
+        }
+        VirtualCpu targetCpu = new VirtualCpu();
+        targetCpu.configure(Set.of("MOV", "HLT"), 256, List.of("HLT"), false, 0);
+        targetCpu.loadCompressedRam(baos.toByteArray());
+
+        assertEquals(512, targetCpu.getRam().length);
+        assertEquals(12345, targetCpu.getRam()[10]);
+        assertEquals(-99, targetCpu.getRam()[500]);
+        assertEquals(0, targetCpu.getRam()[0]);
+    }
+
+    @Test
     void testLoadProgramImageAndStatePreservation() {
         VirtualCpu cpu = new VirtualCpu();
         cpu.configure(Set.of("MOV", "ADD", "HLT"), 1024, List.of("MOV A, 1", "HLT"), false, 0);
