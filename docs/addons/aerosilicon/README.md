@@ -29,8 +29,9 @@ Pass zero for both arguments. Every reading is a signed integer scaled by 1000, 
 | `0x308` | Speed in blocks per second |
 | `0x309` | World X coordinate of the sensor's center, in blocks |
 | `0x30A` | World Z coordinate of the sensor's center, in blocks |
+| `0x30B` | Yaw angle of the sensor's facing direction in degrees (−180° to 180°: South = 0°, West = 90°, North = ±180°, East = −90°) |
 
-World coordinates (X, Y, Z projected out of the Sable sub-level into the base world) and pressure also work on stationary world blocks. Gimbal and velocity readings return zero outside a Sable sub-level. The facing-direction reading also returns zero when the magnitude of the projected speed is at most 0.05 blocks per second.
+World coordinates (X, Y, Z projected out of the Sable sub-level into the base world), yaw, and pressure also work on stationary world blocks. Gimbal and velocity readings return zero outside a Sable sub-level. The facing-direction reading also returns zero when the magnitude of the projected speed is at most 0.05 blocks per second.
 
 ## Airship Controller
 

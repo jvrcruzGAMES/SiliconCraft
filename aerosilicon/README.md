@@ -49,8 +49,9 @@ Use `PCALL` or `peripheral_call(side, method, 0, 0)`. Results are signed fixed-p
 | `0x308` | Speed in blocks per second |
 | `0x309` | World X coordinate in blocks |
 | `0x30A` | World Z coordinate in blocks |
+| `0x30B` | Yaw angle of the sensor face in degrees (−180° to 180°: South = 0°, West = 90°, North = ±180°, East = −90°) |
 
-The sensor reads world position (X, Y, Z projected out of the sub-level into the base world) and air pressure in the world. Its gimbal and velocity readings are zero when it is outside a Sable sub-level.
+The sensor reads world position (X, Y, Z projected out of the sub-level into the base world), sensor-face yaw, and air pressure in the world. Its gimbal and velocity readings are zero when it is outside a Sable sub-level.
 
 ### Airship Controller
 

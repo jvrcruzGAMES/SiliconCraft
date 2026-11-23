@@ -81,6 +81,21 @@ final class AirshipSensorBlock extends Block {
             }
             case 0x309 -> value = Sable.HELPER.projectOutOfSubLevel(level, localCenter).x;
             case 0x30A -> value = Sable.HELPER.projectOutOfSubLevel(level, localCenter).z;
+            case 0x30B -> {
+                var normal = level.getBlockState(pos).getValue(FACING).getNormal();
+                Vector3d facing = new Vector3d(normal.getX(), normal.getY(), normal.getZ());
+                if (subLevel != null) {
+                    subLevel.logicalPose().orientation().transform(facing);
+                }
+                if (facing.x * facing.x + facing.z * facing.z <= 1e-6) {
+                    var horizontal = new Vector3d(0, 0, normal.getY() > 0 ? -1 : 1);
+                    if (subLevel != null) {
+                        subLevel.logicalPose().orientation().transform(horizontal);
+                    }
+                    facing = horizontal;
+                }
+                value = facing.x * facing.x + facing.z * facing.z <= 1e-6 ? 0 : Math.toDegrees(Math.atan2(-facing.x, facing.z));
+            }
             default -> { return OptionalInt.empty(); }
         }
         return OptionalInt.of((int) Math.clamp(Math.round(value * 1000), Integer.MIN_VALUE, Integer.MAX_VALUE));
