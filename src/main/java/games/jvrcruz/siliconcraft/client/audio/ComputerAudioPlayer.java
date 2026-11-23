@@ -1,6 +1,10 @@
 package games.jvrcruz.siliconcraft.client.audio;
 
+import games.jvrcruz.siliconcraft.compat.sable.SubLevelCoordinates;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
 import org.lwjgl.openal.AL10;
 import org.lwjgl.system.MemoryUtil;
 
@@ -9,13 +13,14 @@ import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.DataLine;
 import javax.sound.sampled.SourceDataLine;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Predicate;
 
 public class ComputerAudioPlayer {
-    private static volatile ExecutorService AUDIO_EXECUTOR = createExecutor();
+    private static ExecutorService audioExecutor = createExecutor();
 
     private static ExecutorService createExecutor() {
         return Executors.newCachedThreadPool(r -> {
@@ -25,178 +30,114 @@ public class ComputerAudioPlayer {
         });
     }
 
-    private static synchronized ExecutorService getExecutor() {
-        if (AUDIO_EXECUTOR == null || AUDIO_EXECUTOR.isShutdown()) {
-            AUDIO_EXECUTOR = createExecutor();
+    private static ExecutorService getExecutor() {
+        if (audioExecutor.isShutdown()) {
+            audioExecutor = createExecutor();
         }
-        return AUDIO_EXECUTOR;
+        return audioExecutor;
     }
 
     private static class ActiveAudioStream {
         final BlockPos computerPos;
         final BlockPos worldPos;
-        volatile int source = 0;
-        volatile int buffer = 0;
-        volatile SourceDataLine javaSoundLine = null;
+        final ResourceKey<Level> dimension;
+        volatile Vec3 sourcePosition;
         volatile boolean stopped = false;
-        volatile Thread workerThread = null;
+        private Thread workerThread;
 
-        ActiveAudioStream(BlockPos computerPos, BlockPos worldPos) {
+        ActiveAudioStream(BlockPos computerPos, BlockPos worldPos, Level level) {
             this.computerPos = computerPos;
             this.worldPos = worldPos;
+            this.dimension = level == null ? null : level.dimension();
+            if (level != null) {
+                this.sourcePosition = SubLevelCoordinates.worldPosition(level, Vec3.atCenterOf(worldPos));
+            }
         }
 
-        void stop() {
+        synchronized boolean begin() {
+            if (stopped) return false;
+            workerThread = Thread.currentThread();
+            return true;
+        }
+
+        synchronized void finish() {
+            workerThread = null;
+        }
+
+        synchronized void stop() {
             stopped = true;
-            int src = source;
-            if (src != 0) {
-                try {
-                    AL10.alSourceStop(src);
-                } catch (Throwable ignored) {}
-            }
-            SourceDataLine line = javaSoundLine;
-            if (line != null) {
-                try {
-                    line.stop();
-                    line.flush();
-                } catch (Throwable ignored) {}
-            }
-            Thread t = workerThread;
-            if (t != null) {
-                t.interrupt();
-            }
+            if (workerThread != null) workerThread.interrupt();
         }
     }
 
-    private static final Map<BlockPos, Set<ActiveAudioStream>> ACTIVE_STREAMS = new ConcurrentHashMap<>();
+    private static final Set<ActiveAudioStream> ACTIVE_STREAMS = ConcurrentHashMap.newKeySet();
 
-    private static void registerStream(ActiveAudioStream stream) {
-        if (stream.computerPos != null) {
-            ACTIVE_STREAMS.computeIfAbsent(stream.computerPos, k -> Collections.synchronizedSet(new HashSet<>())).add(stream);
-        }
-        if (stream.worldPos != null && !stream.worldPos.equals(stream.computerPos)) {
-            ACTIVE_STREAMS.computeIfAbsent(stream.worldPos, k -> Collections.synchronizedSet(new HashSet<>())).add(stream);
-        }
-    }
-
-    private static void unregisterStream(ActiveAudioStream stream) {
-        if (stream.computerPos != null) {
-            Set<ActiveAudioStream> set = ACTIVE_STREAMS.get(stream.computerPos);
-            if (set != null) {
-                set.remove(stream);
-                if (set.isEmpty()) ACTIVE_STREAMS.remove(stream.computerPos);
-            }
-        }
-        if (stream.worldPos != null && !stream.worldPos.equals(stream.computerPos)) {
-            Set<ActiveAudioStream> set = ACTIVE_STREAMS.get(stream.worldPos);
-            if (set != null) {
-                set.remove(stream);
-                if (set.isEmpty()) ACTIVE_STREAMS.remove(stream.worldPos);
+    private static void stopMatching(Predicate<ActiveAudioStream> matches) {
+        for (ActiveAudioStream stream : ACTIVE_STREAMS) {
+            if (matches.test(stream) && ACTIVE_STREAMS.remove(stream)) {
+                stream.stop();
             }
         }
     }
 
     public static void stopAudio(BlockPos pos) {
-        if (pos == null) return;
-        Set<ActiveAudioStream> directStreams = ACTIVE_STREAMS.remove(pos);
-        if (directStreams != null) {
-            synchronized (directStreams) {
-                for (ActiveAudioStream s : directStreams) {
-                    s.stop();
-                }
-            }
-        }
-        for (Map.Entry<BlockPos, Set<ActiveAudioStream>> entry : ACTIVE_STREAMS.entrySet()) {
-            Set<ActiveAudioStream> set = entry.getValue();
-            synchronized (set) {
-                Iterator<ActiveAudioStream> it = set.iterator();
-                while (it.hasNext()) {
-                    ActiveAudioStream s = it.next();
-                    if (pos.equals(s.worldPos) || pos.equals(s.computerPos)) {
-                        s.stop();
-                        it.remove();
-                    }
-                }
-            }
-        }
+        if (pos != null) stopMatching(stream -> pos.equals(stream.computerPos) || pos.equals(stream.worldPos));
     }
 
     public static void stopScreenAudio(BlockPos computerPos) {
-        if (computerPos == null) return;
-        Set<ActiveAudioStream> set = ACTIVE_STREAMS.get(computerPos);
-        if (set != null) {
-            synchronized (set) {
-                Iterator<ActiveAudioStream> it = set.iterator();
-                while (it.hasNext()) {
-                    ActiveAudioStream s = it.next();
-                    if (s.worldPos == null) {
-                        s.stop();
-                        it.remove();
-                    }
-                }
+        if (computerPos != null) stopMatching(stream -> stream.worldPos == null && computerPos.equals(stream.computerPos));
+    }
+
+    public static synchronized void stopAllAudio() {
+        stopMatching(stream -> true);
+    }
+
+    public static void updateWorldAudio(Level level) {
+        for (ActiveAudioStream stream : ACTIVE_STREAMS) {
+            if (stream.worldPos == null) continue;
+            if (level == null || !level.dimension().equals(stream.dimension) || !level.isLoaded(stream.worldPos)) {
+                if (ACTIVE_STREAMS.remove(stream)) stream.stop();
+            } else {
+                stream.sourcePosition = SubLevelCoordinates.worldPosition(level, Vec3.atCenterOf(stream.worldPos));
             }
         }
     }
 
-    public static void stopAllAudio() {
-        for (Set<ActiveAudioStream> set : ACTIVE_STREAMS.values()) {
-            synchronized (set) {
-                for (ActiveAudioStream s : set) {
-                    s.stop();
-                }
-            }
-        }
-        ACTIVE_STREAMS.clear();
+    private static void updateSourcePosition(int source, Vec3 position) {
+        AL10.alSource3f(source, AL10.AL_POSITION, (float) position.x, (float) position.y, (float) position.z);
     }
 
-    public static void shutdown() {
+    public static synchronized void shutdown() {
         stopAllAudio();
-        synchronized (ComputerAudioPlayer.class) {
-            if (AUDIO_EXECUTOR != null && !AUDIO_EXECUTOR.isShutdown()) {
-                AUDIO_EXECUTOR.shutdownNow();
-            }
-        }
+        audioExecutor.shutdownNow();
     }
 
     public static void playScreenAudio(BlockPos computerPos, byte[] pcmSamples, int sampleRate) {
-        if (pcmSamples == null || pcmSamples.length == 0) return;
-        ActiveAudioStream stream = new ActiveAudioStream(computerPos, null);
-        registerStream(stream);
-
-        getExecutor().submit(() -> {
-            stream.workerThread = Thread.currentThread();
-            try {
-                if (playViaOpenAl(stream, pcmSamples, sampleRate, null)) {
-                    return;
-                }
-            } catch (Throwable ignored) {}
-
-            // Fallback to Java Sound
-            playViaJavaSound(stream, pcmSamples, sampleRate);
-        });
+        play(new ActiveAudioStream(computerPos, null, null), pcmSamples, sampleRate);
     }
 
-    public static void playWorldAudio(BlockPos computerPos, BlockPos worldPos, byte[] pcmSamples, int sampleRate) {
+    public static void playWorldAudio(Level level, BlockPos computerPos, BlockPos worldPos, byte[] pcmSamples, int sampleRate) {
+        play(new ActiveAudioStream(computerPos, worldPos, level), pcmSamples, sampleRate);
+    }
+
+    private static synchronized void play(ActiveAudioStream stream, byte[] pcmSamples, int sampleRate) {
         if (pcmSamples == null || pcmSamples.length == 0) return;
-        ActiveAudioStream stream = new ActiveAudioStream(computerPos, worldPos);
-        registerStream(stream);
-
+        ACTIVE_STREAMS.add(stream);
         getExecutor().submit(() -> {
-            stream.workerThread = Thread.currentThread();
             try {
-                if (playViaOpenAl(stream, pcmSamples, sampleRate, worldPos)) {
-                    return;
+                if (!stream.begin()) return;
+                if (!playViaOpenAl(stream, pcmSamples, sampleRate, stream.worldPos)) {
+                    playViaJavaSound(stream, pcmSamples, sampleRate);
                 }
-            } catch (Throwable ignored) {}
-
-            // Fallback to Java Sound
-            playViaJavaSound(stream, pcmSamples, sampleRate);
+            } finally {
+                stream.finish();
+                ACTIVE_STREAMS.remove(stream);
+            }
         });
     }
 
     private static boolean playViaOpenAl(ActiveAudioStream stream, byte[] pcmSamples, int sampleRate, BlockPos worldPos) {
         if (stream.stopped) {
-            unregisterStream(stream);
             return false;
         }
         int buffer = 0;
@@ -204,36 +145,33 @@ public class ComputerAudioPlayer {
         try {
             buffer = AL10.alGenBuffers();
             if (buffer == 0) {
-                unregisterStream(stream);
                 return false;
             }
 
             ByteBuffer byteBuf = MemoryUtil.memAlloc(pcmSamples.length);
-            byteBuf.put(pcmSamples);
-            byteBuf.flip();
-
-            AL10.alBufferData(buffer, AL10.AL_FORMAT_MONO8, byteBuf, sampleRate);
-            MemoryUtil.memFree(byteBuf);
+            try {
+                byteBuf.put(pcmSamples);
+                byteBuf.flip();
+                AL10.alBufferData(buffer, AL10.AL_FORMAT_MONO8, byteBuf, sampleRate);
+            } finally {
+                MemoryUtil.memFree(byteBuf);
+            }
 
             source = AL10.alGenSources();
             if (source == 0) {
                 AL10.alDeleteBuffers(buffer);
-                unregisterStream(stream);
                 return false;
             }
-
-            stream.buffer = buffer;
-            stream.source = source;
 
             if (stream.stopped) {
                 AL10.alDeleteSources(source);
                 AL10.alDeleteBuffers(buffer);
-                unregisterStream(stream);
                 return true;
             }
 
             AL10.alSourcei(source, AL10.AL_BUFFER, buffer);
 
+            Vec3 lastPosition = stream.sourcePosition;
             if (worldPos == null) {
                 // UI / Screen Audio: relative to listener
                 AL10.alSourcei(source, AL10.AL_SOURCE_RELATIVE, AL10.AL_TRUE);
@@ -241,7 +179,7 @@ public class ComputerAudioPlayer {
             } else {
                 // 3D World Audio at Speaker Position
                 AL10.alSourcei(source, AL10.AL_SOURCE_RELATIVE, AL10.AL_FALSE);
-                AL10.alSource3f(source, AL10.AL_POSITION, worldPos.getX() + 0.5f, worldPos.getY() + 0.5f, worldPos.getZ() + 0.5f);
+                updateSourcePosition(source, lastPosition);
                 AL10.alSourcef(source, AL10.AL_ROLLOFF_FACTOR, 1.0f);
                 AL10.alSourcef(source, AL10.AL_REFERENCE_DISTANCE, 4.0f);
                 AL10.alSourcef(source, AL10.AL_MAX_DISTANCE, 32.0f);
@@ -254,6 +192,11 @@ public class ComputerAudioPlayer {
             long elapsed = 0;
 
             while (elapsed < maxWait && !stream.stopped) {
+                Vec3 position = stream.sourcePosition;
+                if (position != null && !position.equals(lastPosition)) {
+                    updateSourcePosition(source, position);
+                    lastPosition = position;
+                }
                 int state = AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE);
                 if (state != AL10.AL_PLAYING) {
                     break;
@@ -266,7 +209,6 @@ public class ComputerAudioPlayer {
             AL10.alSourceStop(source);
             AL10.alDeleteSources(source);
             AL10.alDeleteBuffers(buffer);
-            unregisterStream(stream);
             return true;
         } catch (InterruptedException e) {
             if (source != 0) {
@@ -280,7 +222,6 @@ public class ComputerAudioPlayer {
                     AL10.alDeleteBuffers(buffer);
                 } catch (Throwable ignored) {}
             }
-            unregisterStream(stream);
             return true;
         } catch (Throwable e) {
             if (source != 0) {
@@ -293,46 +234,48 @@ public class ComputerAudioPlayer {
                     AL10.alDeleteBuffers(buffer);
                 } catch (Throwable ignored) {}
             }
-            unregisterStream(stream);
             return false;
         }
     }
 
     private static void playViaJavaSound(ActiveAudioStream stream, byte[] pcmSamples, int sampleRate) {
         if (stream.stopped) {
-            unregisterStream(stream);
             return;
         }
         try {
             AudioFormat format = new AudioFormat((float) sampleRate, 8, 1, false, false);
             DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
             if (!AudioSystem.isLineSupported(info)) {
-                unregisterStream(stream);
                 return;
             }
 
             try (SourceDataLine line = (SourceDataLine) AudioSystem.getLine(info)) {
-                stream.javaSoundLine = line;
                 line.open(format, Math.max(1024, pcmSamples.length));
+                if (stream.stopped) {
+                    return;
+                }
                 line.start();
 
                 int offset = 0;
                 while (offset < pcmSamples.length && !stream.stopped) {
-                    int chunk = Math.min(512, pcmSamples.length - offset);
-                    line.write(pcmSamples, offset, chunk);
-                    offset += chunk;
+                    int chunk = Math.min(line.available(), Math.min(512, pcmSamples.length - offset));
+                    if (chunk > 0) {
+                        offset += line.write(pcmSamples, offset, chunk);
+                    } else {
+                        Thread.sleep(10);
+                    }
                 }
 
-                if (!stream.stopped) {
-                    line.drain();
-                } else {
+                // Wait for playback without blocking cancellation in SourceDataLine.drain().
+                while (!stream.stopped && line.getLongFramePosition() < offset && line.isRunning()) {
+                    Thread.sleep(10);
+                }
+                if (stream.stopped) {
                     line.stop();
                     line.flush();
                 }
             }
         } catch (Throwable ignored) {
-        } finally {
-            unregisterStream(stream);
         }
     }
 }

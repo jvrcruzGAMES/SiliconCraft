@@ -12,6 +12,11 @@ repositories {
     mavenLocal()
     mavenCentral()
     maven {
+        name = 'Sable Companion'
+        url = 'https://maven.ryanhcode.dev/releases'
+        content { includeGroup 'dev.ryanhcode.sable-companion' }
+    }
+    maven {
         name = "CurseForge Maven"
         url = "https://cursemaven.com"
         content {
@@ -37,9 +42,21 @@ base {
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
+evaluationDependsOn(':aerosilicon')
+sourceSets { serverRuntime }
+configurations {
+    aerosiliconDevelopment
+    clientDevelopment
+    runtimeClasspath.extendsFrom aerosiliconDevelopment, clientDevelopment
+    serverRuntimeRuntimeClasspath.extendsFrom implementation, runtimeOnly, aerosiliconDevelopment
+}
+
 neoForge {
     // Specify the version of NeoForge to use.
     version = project.neo_version
+
+    // Dedicated servers do not load Controlify's client bootstrap.
+    addModdingDependenciesTo sourceSets.serverRuntime
 
     parchment {
         mappingsVersion = project.parchment_mappings_version
@@ -60,6 +77,7 @@ neoForge {
         }
 
         server {
+            sourceSet = sourceSets.serverRuntime
             server()
             programArgument '--nogui'
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
@@ -69,6 +87,7 @@ neoForge {
         // By default, the server will crash when no gametests are provided.
         // The gametest system is also enabled by default for other run configs under the /test command.
         gameTestServer {
+            sourceSet = sourceSets.serverRuntime
             type = "gameTestServer"
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
@@ -107,6 +126,9 @@ neoForge {
         "${mod_id}" {
             sourceSet(sourceSets.main)
         }
+        aerosilicon {
+            sourceSet(project(':aerosilicon').sourceSets.main)
+        }
     }
 }
 
@@ -115,12 +137,20 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 
 dependencies {
+    aerosiliconDevelopment "maven.modrinth:create:${aerosilicon_create_release}"
+    aerosiliconDevelopment "maven.modrinth:create-aeronautics:${aerosilicon_aeronautics_release}"
+    aerosiliconDevelopment "maven.modrinth:sable:${aerosilicon_sable_release}"
     implementation "curse.maven:jei-238222:9717805"
     runtimeOnly "curse.maven:mezzconfig-1689768:9527937"
     runtimeOnly "curse.maven:mezzconfiggui-1700987:9701162"
 
     implementation "maven.modrinth:jade:15.10.3+neoforge"
-    implementation("dev.isxander:controlify:2.4.4+1.21.1-neoforge") {
+    compileOnly 'dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0'
+    serverRuntimeRuntimeOnly sourceSets.main.output
+    compileOnly("dev.isxander:controlify:2.4.4+1.21.1-neoforge") {
+        transitive = false
+    }
+    clientDevelopment("dev.isxander:controlify:2.4.4+1.21.1-neoforge") {
         transitive = false
     }
 

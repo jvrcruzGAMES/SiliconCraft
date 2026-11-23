@@ -1,4 +1,8 @@
 {
+  "block.siliconcraft.serial_cable": "Serial Cable",
+  "block.siliconcraft.serial_expansion": "Serial Expansion",
+  "screen.siliconcraft.computer.controller.cursor": "Press %s together to regain cursor control",
+  "screen.siliconcraft.computer.controller.computer": "Press %s together to regain computer control",
   "itemGroup.siliconcraft": "Silicon Craft",
   "item.siliconcraft.silicon_powder": "Silicon Powder",
   "item.siliconcraft.chip": "Silicon Chip",

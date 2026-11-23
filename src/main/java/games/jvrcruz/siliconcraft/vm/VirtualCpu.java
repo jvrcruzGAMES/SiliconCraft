@@ -1,7 +1,11 @@
 package games.jvrcruz.siliconcraft.vm;
 
+import games.jvrcruz.siliconcraft.vm.network.NetworkPort;
+
 import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -58,13 +62,14 @@ public class VirtualCpu {
     private int storageSize = 0;
 
     public static final int MAX_DRIVES = 4;
-    private final byte[][] storageDrives = new byte[MAX_DRIVES][];
-    private final int[] driveCapacities = new int[MAX_DRIVES];
+    private final DriveStorage[] storageDrives = new DriveStorage[MAX_DRIVES];
+    private final byte[] storageBuffer = new byte[4096];
+    private final long[] driveCapacities = new long[MAX_DRIVES];
     private int selectedDrive = 0;
     private BiConsumer<Integer, byte[]> driveWriteListener;
 
-    public static final int FB_WIDTH = 480;
-    public static final int FB_HEIGHT = 270;
+    public static final int FB_WIDTH = 960;
+    public static final int FB_HEIGHT = 540;
     private volatile int displayMode = 0; // 0 = text mode, 1 = framebuffer mode
     private final int[] framebuffer = new int[FB_WIDTH * FB_HEIGHT];
     private volatile boolean fbDirty = false;
@@ -199,6 +204,33 @@ public class VirtualCpu {
     private static final int OP_APLAY = 69;
     private static final int OP_HLT = 70;
     private static final int OP_DIRECTIVE = 71;
+    private static final int OP_PINFO = 72;
+    private static final int OP_PWRAP = 73;
+    private static final int OP_PCALL = 74;
+    private static final int OP_PSTATUS = 75;
+    private static final int OP_PRESULT = 76;
+    private static final int OP_PCALLS = 77;
+    private static final int OP_PSCAN = 78;
+    private static final int OP_NOPEN = 79;
+    private static final int OP_NSEND = 80;
+    private static final int OP_NRECV = 81;
+    private static final int OP_NCLOSE = 82;
+    private static final int OP_NHTTP = 83;
+    private static final int OP_NSTATUS = 84;
+    private static final int OP_NLEN = 85;
+    private static final int OP_NRESULT = 86;
+
+    private final NetworkPort networkPort = new NetworkPort();
+
+    public NetworkPort getNetworkPort() {
+        return networkPort;
+    }
+
+    private final PeripheralBus peripheralBus = new PeripheralBus();
+
+    public PeripheralBus getPeripheralBus() {
+        return peripheralBus;
+    }
 
     private static final Map<String, Integer> OPCODE_MAP = new HashMap<>();
     static {
@@ -273,6 +305,21 @@ public class VirtualCpu {
         OPCODE_MAP.put("ASTAT", OP_ASTAT);
         OPCODE_MAP.put("ATONE", OP_ATONE);
         OPCODE_MAP.put("APLAY", OP_APLAY);
+        OPCODE_MAP.put("PINFO", OP_PINFO);
+        OPCODE_MAP.put("PWRAP", OP_PWRAP);
+        OPCODE_MAP.put("PCALL", OP_PCALL);
+        OPCODE_MAP.put("PCALLS", OP_PCALLS);
+        OPCODE_MAP.put("PSTATUS", OP_PSTATUS);
+        OPCODE_MAP.put("PRESULT", OP_PRESULT);
+        OPCODE_MAP.put("PSCAN", OP_PSCAN);
+        OPCODE_MAP.put("NOPEN", OP_NOPEN);
+        OPCODE_MAP.put("NSEND", OP_NSEND);
+        OPCODE_MAP.put("NRECV", OP_NRECV);
+        OPCODE_MAP.put("NCLOSE", OP_NCLOSE);
+        OPCODE_MAP.put("NHTTP", OP_NHTTP);
+        OPCODE_MAP.put("NSTATUS", OP_NSTATUS);
+        OPCODE_MAP.put("NLEN", OP_NLEN);
+        OPCODE_MAP.put("NRESULT", OP_NRESULT);
         OPCODE_MAP.put("HLT", OP_HLT);
     }
 
@@ -475,7 +522,7 @@ public class VirtualCpu {
         this.hasNvme = hasNvme;
         this.storageSize = storageSize;
         long targetStorageBytes = (long) Math.max(0, storageSize) * 1024L;
-        this.driveCapacities[0] = (int) Math.min(Integer.MAX_VALUE, targetStorageBytes);
+        this.driveCapacities[0] = Math.min(1L << 31, targetStorageBytes);
         int effectiveRam = Math.max(0, Math.min(ramSize, 64 * 1024 * 1024));
         this.ram = new int[effectiveRam];
         this.program.clear();
@@ -492,7 +539,7 @@ public class VirtualCpu {
         this.storageSize = storageSize;
         long targetStorageBytes = (long) Math.max(0, storageSize) * 1024L;
         if (this.driveCapacities[0] == 0 && targetStorageBytes > 0) {
-            this.driveCapacities[0] = (int) Math.min(Integer.MAX_VALUE, targetStorageBytes);
+            this.driveCapacities[0] = Math.min(1L << 31, targetStorageBytes);
         }
         int effectiveRam = Math.max(0, Math.min(totalRam, 64 * 1024 * 1024));
         if (this.ram.length != effectiveRam) {
@@ -702,6 +749,8 @@ public class VirtualCpu {
     }
 
     public void reset() {
+        networkPort.reset();
+        peripheralBus.reset();
         this.pc = 0;
         this.regA = 0;
         this.regB = 0;
@@ -731,7 +780,7 @@ public class VirtualCpu {
         this.utf8ByteBuf.reset();
         this.selectedDrive = 0;
         for (int i = 0; i < MAX_DRIVES; i++) {
-            if (getDriveCapacity(i) > 0 || (storageDrives[i] != null && storageDrives[i].length > 0)) {
+            if (getDriveCapacity(i) > 0) {
                 this.selectedDrive = i;
                 break;
             }
@@ -761,6 +810,8 @@ public class VirtualCpu {
         synchronized (executionLock) {
             flushLineBuffer();
             this.state = State.OFF;
+            networkPort.reset();
+            peripheralBus.reset();
             this.terminalOutput.add("[POWER OFF]");
             clearAudioQueue();
         }
@@ -1148,6 +1199,21 @@ public class VirtualCpu {
                 case OP_ASTAT -> setDestination(ci.rawArgs.trim(), audioCount);
                 case OP_ATONE -> execATone(ci.rawArgs);
                 case OP_APLAY -> audioTriggered = true;
+                case OP_PINFO -> submitPeripheralRequest(ci.rawArgs, PeripheralBus.Operation.INFO);
+                case OP_PWRAP -> submitPeripheralRequest(ci.rawArgs, PeripheralBus.Operation.WRAP);
+                case OP_PCALL -> submitPeripheralRequest(ci.rawArgs, PeripheralBus.Operation.CALL);
+                case OP_PCALLS -> submitPeripheralRequest(ci.rawArgs, PeripheralBus.Operation.CALL_STRING);
+                case OP_PSTATUS -> setDestination(ci.rawArgs.trim(), peripheralBus.status());
+                case OP_PSCAN -> submitPeripheralRequest(ci.rawArgs, PeripheralBus.Operation.SCAN);
+                case OP_PRESULT -> setDestination(ci.rawArgs.trim(), peripheralBus.consumeResult());
+                case OP_NOPEN -> submitNetwork(ci.rawArgs, NetworkPort.Operation.OPEN);
+                case OP_NSEND -> submitNetwork(ci.rawArgs, NetworkPort.Operation.SEND);
+                case OP_NRECV -> submitNetwork(ci.rawArgs, NetworkPort.Operation.RECEIVE);
+                case OP_NCLOSE -> submitNetwork(ci.rawArgs, NetworkPort.Operation.CLOSE);
+                case OP_NHTTP -> submitNetwork(ci.rawArgs, NetworkPort.Operation.HTTP);
+                case OP_NSTATUS -> setDestination(ci.rawArgs, networkPort.status());
+                case OP_NLEN -> setDestination(ci.rawArgs, networkPort.resultLength());
+                case OP_NRESULT -> readNetworkResult(ci.rawArgs);
                 case OP_HLT -> {
                     state = State.HALTED;
                     flushLineBuffer();
@@ -1170,6 +1236,105 @@ public class VirtualCpu {
 
         if (terminalOutput.size() > 60) {
             terminalOutput.remove(0);
+        }
+    }
+
+    private void submitPeripheralRequest(String args, PeripheralBus.Operation operation) {
+        String[] operands = splitArgs(args, 0);
+        boolean stringCall = operation == PeripheralBus.Operation.CALL_STRING;
+        boolean call = stringCall || operation == PeripheralBus.Operation.CALL;
+        if (operands.length != (call ? 5 : 2)) {
+            throw new IllegalArgumentException(operation + " requires a destination and side" +
+                    (call ? ", method, and two arguments" : ""));
+        }
+        int side = resolveValue(operands[1]);
+        int method = call ? resolveValue(operands[2]) : 0;
+        int arg0 = call ? resolveValue(operands[3]) : 0;
+        int arg1 = call ? resolveValue(operands[4]) : 0;
+        if (peripheralBus.status() != PeripheralBus.IDLE) {
+            setDestination(operands[0], 0);
+            return;
+        }
+        String text = stringCall ? readGuestString(arg0, 64) : null;
+        boolean accepted = peripheralBus.submit(operation, side, method, arg0, arg1, text);
+        setDestination(operands[0], accepted ? 1 : 0);
+    }
+
+    private String readGuestString(int address, int limit) {
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i <= limit; i++) {
+            if (address < 0 || address >= ram.length) {
+                throw new IndexOutOfBoundsException("Guest string extends outside RAM");
+            }
+            int value = ram[address++];
+            if (value == 0) return text.toString();
+            if (value < 0 || value > Character.MAX_VALUE) {
+                throw new IllegalArgumentException("Invalid character in guest string");
+            }
+            text.append((char) value);
+        }
+        throw new IllegalArgumentException("Guest string exceeds " + limit + " characters");
+    }
+
+    private void submitNetwork(String args, NetworkPort.Operation operation) {
+        String[] parts = splitArgs(args, 0);
+        int expected = switch (operation) {
+            case OPEN, SEND -> 4;
+            case RECEIVE -> 3;
+            case CLOSE -> 2;
+            case HTTP -> 5;
+        };
+        if (parts.length != expected) throw new IllegalArgumentException(operation + " has an invalid operand count");
+        if (networkPort.status() != NetworkPort.IDLE) {
+            setDestination(parts[0], 0);
+            return;
+        }
+
+        int arg0 = resolveValue(parts[1]);
+        int arg1 = 0;
+        String text = null;
+        byte[] data = null;
+        switch (operation) {
+            case OPEN -> {
+                text = readGuestString(resolveValue(parts[2]), NetworkPort.MAX_TEXT);
+                arg1 = resolveValue(parts[3]);
+            }
+            case HTTP -> {
+                text = readGuestString(resolveValue(parts[2]), NetworkPort.MAX_TEXT);
+                data = copyNetworkBytes(resolveValue(parts[3]), resolveValue(parts[4]));
+            }
+            case SEND -> data = copyNetworkBytes(resolveValue(parts[2]), resolveValue(parts[3]));
+            case RECEIVE -> arg1 = resolveValue(parts[2]);
+            case CLOSE -> {}
+        }
+        setDestination(parts[0], networkPort.submit(new NetworkPort.Request(operation, arg0, arg1, text, data)) ? 1 : 0);
+    }
+
+    private byte[] copyNetworkBytes(int address, int length) {
+        verifyNetworkRange(address, length);
+        if (length > networkPort.transferLimit()) throw new IllegalArgumentException("Network payload exceeds transfer limit");
+        byte[] bytes = new byte[length];
+        for (int i = 0; i < length; i++) bytes[i] = (byte) ram[address + i];
+        return bytes;
+    }
+
+    private void readNetworkResult(String args) {
+        String[] parts = splitArgs(args, 0);
+        if (parts.length != 3) throw new IllegalArgumentException("NRESULT requires dest, ram_dest, length");
+        int address = resolveValue(parts[1]);
+        int length = resolveValue(parts[2]);
+        verifyNetworkRange(address, length);
+        NetworkPort.Result result = networkPort.takeResult();
+        if (result != null) {
+            int count = Math.min(length, result.data().length);
+            for (int i = 0; i < count; i++) ram[address + i] = Byte.toUnsignedInt(result.data()[i]);
+        }
+        setDestination(parts[0], result == null ? 0 : result.value());
+    }
+
+    private void verifyNetworkRange(int address, int length) {
+        if (address < 0 || length < 0 || (long) address + length > ram.length) {
+            throw new IndexOutOfBoundsException("Network buffer extends outside RAM");
         }
     }
 
@@ -1621,8 +1786,8 @@ public class VirtualCpu {
         } else {
             dest = parts[0].trim();
         }
-        int sz = getDriveCapacity(d);
-        setDestination(dest, sz);
+        long sz = getDriveCapacity(d);
+        setDestination(dest, (int) sz);
         flagZ = (sz == 0);
         flagS = false;
     }
@@ -1642,10 +1807,11 @@ public class VirtualCpu {
         } else {
             throw new IllegalArgumentException("SREAD requires dest, [drive,] addr");
         }
-        byte[] drv = (d >= 0 && d < MAX_DRIVES) ? storageDrives[d] : null;
-        int cap = getDriveCapacity(d);
+        long cap = getDriveCapacity(d);
         if (addr >= 0 && addr < cap) {
-            int val = (drv != null && addr < drv.length) ? (drv[addr] & 0xFF) : 0;
+            DriveStorage drive = storageDrives[d];
+            if (drive != null) drive.read(addr, storageBuffer, 1);
+            int val = drive == null ? 0 : Byte.toUnsignedInt(storageBuffer[0]);
             setDestination(dest, val);
             flagZ = (val == 0);
             flagS = false;
@@ -1671,24 +1837,13 @@ public class VirtualCpu {
         } else {
             throw new IllegalArgumentException("SWRITE requires [drive,] addr, val");
         }
-        int cap = getDriveCapacity(d);
-        if (d >= 0 && d < MAX_DRIVES && addr >= 0 && addr < cap) {
-            byte[] drv = storageDrives[d];
-            if (drv == null || addr >= drv.length) {
-                int newLen = Math.max(addr + 1, Math.min(cap, drv == null ? 1024 : Math.max(drv.length * 2, addr + 1)));
-                byte[] newDrv = new byte[newLen];
-                if (drv != null) {
-                    System.arraycopy(drv, 0, newDrv, 0, drv.length);
-                }
-                storageDrives[d] = newDrv;
-                drv = newDrv;
-            }
-            drv[addr] = (byte) (val & 0xFF);
+        long cap = getDriveCapacity(d);
+        if (addr >= 0 && addr < cap) {
+            storageBuffer[0] = (byte) val;
+            writableDrive(d).write(addr, storageBuffer, 1);
             flagZ = false;
             flagS = false;
-            if (driveWriteListener != null) {
-                driveWriteListener.accept(d, drv);
-            }
+            notifyDriveWrite(d);
         } else {
             flagZ = true;
             flagS = true;
@@ -1713,23 +1868,7 @@ public class VirtualCpu {
         } else {
             throw new IllegalArgumentException("SBLKR requires ram_dest, [drive,] storage_addr, count");
         }
-        int cap = getDriveCapacity(d);
-        if (d < 0 || d >= MAX_DRIVES || cap <= 0 || count <= 0) {
-            flagZ = true;
-            return;
-        }
-        byte[] drv = storageDrives[d];
-        int copied = 0;
-        for (int i = 0; i < count; i++) {
-            int curS = sAddr + i;
-            int curR = rAddr + i;
-            if (curS >= 0 && curS < cap && curR >= 0 && curR < ram.length) {
-                int val = (drv != null && curS < drv.length) ? (drv[curS] & 0xFF) : 0;
-                ram[curR] = val;
-                copied++;
-            }
-        }
-        flagZ = (copied == 0);
+        transferStorage(d, sAddr, rAddr, count, false);
     }
 
     private void execSBlkw(String args) {
@@ -1750,40 +1889,42 @@ public class VirtualCpu {
         } else {
             throw new IllegalArgumentException("SBLKW requires [drive,] storage_addr, ram_src, count");
         }
-        int cap = getDriveCapacity(d);
-        if (d < 0 || d >= MAX_DRIVES || cap <= 0 || count <= 0) {
-            flagZ = true;
-            return;
-        }
-        int maxTargetAddr = sAddr + count - 1;
-        if (maxTargetAddr >= cap) {
-            maxTargetAddr = cap - 1;
-        }
-        byte[] drv = storageDrives[d];
-        if (maxTargetAddr >= 0 && (drv == null || maxTargetAddr >= drv.length)) {
-            int newLen = Math.max(maxTargetAddr + 1, Math.min(cap, drv == null ? 1024 : Math.max(drv.length * 2, maxTargetAddr + 1)));
-            byte[] newDrv = new byte[newLen];
-            if (drv != null) {
-                System.arraycopy(drv, 0, newDrv, 0, drv.length);
+        transferStorage(d, sAddr, rAddr, count, true);
+    }
+
+    private void transferStorage(int drive, int storageAddress, int ramAddress, int count, boolean write) {
+        long cap = getDriveCapacity(drive);
+        long offset = Math.max(0, Math.max(-(long) storageAddress, -(long) ramAddress));
+        long end = Math.min(count, Math.min(cap - storageAddress, (long) ram.length - ramAddress));
+        flagZ = offset >= end || cap == 0;
+        if (flagZ) return;
+        DriveStorage backing = write ? writableDrive(drive) : storageDrives[drive];
+
+        while (offset < end && !Thread.currentThread().isInterrupted()) {
+            int size = (int) Math.min(storageBuffer.length, end - offset);
+            int disk = (int) (storageAddress + offset);
+            int memory = (int) (ramAddress + offset);
+            if (write) {
+                for (int i = 0; i < size; i++) storageBuffer[i] = (byte) ram[memory + i];
+                backing.write(disk, storageBuffer, size);
+            } else if (backing != null) {
+                backing.read(disk, storageBuffer, size);
+                for (int i = 0; i < size; i++) ram[memory + i] = Byte.toUnsignedInt(storageBuffer[i]);
+            } else {
+                Arrays.fill(ram, memory, memory + size, 0);
             }
-            storageDrives[d] = newDrv;
-            drv = newDrv;
+            offset += size;
         }
-        int copied = 0;
-        for (int i = 0; i < count; i++) {
-            int curS = sAddr + i;
-            int curR = rAddr + i;
-            if (curS >= 0 && curS < cap && curR >= 0 && curR < ram.length) {
-                if (drv != null && curS < drv.length) {
-                    drv[curS] = (byte) (ram[curR] & 0xFF);
-                    copied++;
-                }
-            }
-        }
-        flagZ = (copied == 0);
-        if (copied > 0 && driveWriteListener != null) {
-            driveWriteListener.accept(d, drv);
-        }
+        if (write) notifyDriveWrite(drive);
+    }
+
+    private DriveStorage writableDrive(int drive) {
+        if (storageDrives[drive] == null) storageDrives[drive] = DriveStorage.inMemory(null);
+        return storageDrives[drive];
+    }
+
+    private void notifyDriveWrite(int drive) {
+        if (driveWriteListener != null) driveWriteListener.accept(drive, getStorageDrive(drive));
     }
 
     private void execSCount(String dest) {
@@ -1797,7 +1938,7 @@ public class VirtualCpu {
         int d = resolveValue(args.trim());
         if (d >= 0 && d < MAX_DRIVES) {
             selectedDrive = d;
-            int cap = getDriveCapacity(d);
+            long cap = getDriveCapacity(d);
             flagZ = (cap == 0);
             flagS = false;
         } else {
@@ -1822,7 +1963,7 @@ public class VirtualCpu {
         List<String> targetProgram = drivePrograms.get(drive);
         if (targetProgram == null || targetProgram.isEmpty()) {
             // Check if binary storage on drive contains plain UTF-8 text lines
-            byte[] bytes = storageDrives[drive];
+            byte[] bytes = readDrivePrefix(drive, 4 * 1024 * 1024);
             if (bytes != null && bytes.length > 0) {
                 int len = 0;
                 while (len < bytes.length && bytes[len] != 0) {
@@ -1855,6 +1996,8 @@ public class VirtualCpu {
         }
 
         // Load new program image
+        networkPort.reset();
+        peripheralBus.reset();
         this.program.clear();
         this.program.addAll(targetProgram);
         preprocessLabels();
@@ -1940,25 +2083,30 @@ public class VirtualCpu {
         int color = resolveValue(parts[4].trim());
         if ((color & 0xFF000000) == 0) color |= 0xFF000000;
 
-        int dx = Math.abs(x1 - x0);
-        int dy = Math.abs(y1 - y0);
-        int sx = x0 < x1 ? 1 : -1;
-        int sy = y0 < y1 ? 1 : -1;
-        int err = dx - dy;
+        long dx = Math.abs((long) x1 - x0);
+        long dy = Math.abs((long) y1 - y0);
+        boolean xMajor = dx >= dy;
+        long majorLength = xMajor ? dx : dy;
+        long minorLength = xMajor ? dy : dx;
+        long majorStart = xMajor ? x0 : y0;
+        long minorStart = xMajor ? y0 : x0;
+        int majorDirection = (xMajor ? x0 <= x1 : y0 <= y1) ? 1 : -1;
+        int minorDirection = (xMajor ? y0 <= y1 : x0 <= x1) ? 1 : -1;
+        int majorLimit = (xMajor ? FB_WIDTH : FB_HEIGHT) - 1;
 
-        while (true) {
-            if (x0 >= 0 && x0 < FB_WIDTH && y0 >= 0 && y0 < FB_HEIGHT) {
-                framebuffer[y0 * FB_WIDTH + x0] = color;
-            }
-            if (x0 == x1 && y0 == y1) break;
-            int e2 = 2 * err;
-            if (e2 > -dy) {
-                err -= dy;
-                x0 += sx;
-            }
-            if (e2 < dx) {
-                err += dx;
-                y0 += sy;
+        // Skip steps outside the visible major axis while preserving Bresenham's tie-breaking.
+        long firstStep = Math.max(0, majorDirection > 0 ? -majorStart : majorStart - majorLimit);
+        long lastStep = Math.min(majorLength, majorDirection > 0 ? majorLimit - majorStart : majorStart);
+        for (long step = firstStep; step <= lastStep; step++) {
+            // The numerator fits in an unsigned long even for opposite int extremes.
+            long minorStep = majorLength == 0 ? 0
+                    : Long.divideUnsigned(step * minorLength + (majorLength - 1) / 2, majorLength);
+            long major = majorStart + step * majorDirection;
+            long minor = minorStart + minorStep * minorDirection;
+            long x = xMajor ? major : minor;
+            long y = xMajor ? minor : major;
+            if (x >= 0 && x < FB_WIDTH && y >= 0 && y < FB_HEIGHT) {
+                framebuffer[(int) y * FB_WIDTH + (int) x] = color;
             }
         }
         fbDirty = true;
@@ -2602,6 +2750,8 @@ public class VirtualCpu {
     }
 
     public void loadProgramImage(List<String> lines) {
+        networkPort.reset();
+        peripheralBus.reset();
         this.program.clear();
         if (lines != null) {
             this.program.addAll(lines);
@@ -2612,25 +2762,25 @@ public class VirtualCpu {
 
     public byte[] getCompressedRam() {
         if (ram == null || ram.length == 0) return new byte[0];
-        try {
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            DataOutputStream dos = new DataOutputStream(new DeflaterOutputStream(baos));
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        // Batch the four-byte RAM writes before passing them to the compressor.
+        try (DataOutputStream dos = new DataOutputStream(
+                new BufferedOutputStream(new DeflaterOutputStream(baos), 32 * 1024))) {
             dos.writeInt(ram.length);
             for (int val : ram) {
                 dos.writeInt(val);
             }
-            dos.close();
-            return baos.toByteArray();
         } catch (IOException e) {
             return new byte[0];
         }
+        return baos.toByteArray();
     }
 
     public void loadCompressedRam(byte[] data) {
         if (data == null || data.length == 0) return;
         try {
             ByteArrayInputStream bais = new ByteArrayInputStream(data);
-            DataInputStream dis = new DataInputStream(new InflaterInputStream(bais));
+            DataInputStream dis = new DataInputStream(new BufferedInputStream(new InflaterInputStream(bais), 32 * 1024));
             int len = dis.readInt();
             if (len > 0 && len <= 64 * 1024 * 1024) {
                 int targetLen = Math.max(this.ram.length, len);
@@ -2668,64 +2818,61 @@ public class VirtualCpu {
     public boolean hasNvme() { return hasNvme; }
     public int getStorageSize() { return storageSize; }
     public byte[] getStorage() {
-        if (selectedDrive >= 0 && selectedDrive < MAX_DRIVES && storageDrives[selectedDrive] != null && storageDrives[selectedDrive].length > 0) {
-            return storageDrives[selectedDrive];
+        if (selectedDrive >= 0 && selectedDrive < MAX_DRIVES && storageDrives[selectedDrive] != null
+                && storageDrives[selectedDrive].length() > 0) {
+            return getStorageDrive(selectedDrive);
         }
         for (int i = 0; i < MAX_DRIVES; i++) {
-            if (storageDrives[i] != null && storageDrives[i].length > 0) {
-                return storageDrives[i];
-            }
+            if (storageDrives[i] != null && storageDrives[i].length() > 0) return getStorageDrive(i);
         }
-        return storageDrives[0] != null ? storageDrives[0] : new byte[0];
+        return new byte[0];
     }
 
     public void setStorage(byte[] data) {
-        int targetDrive = selectedDrive;
-        if (targetDrive < 0 || targetDrive >= MAX_DRIVES) targetDrive = 0;
+        int targetDrive = selectedDrive >= 0 && selectedDrive < MAX_DRIVES ? selectedDrive : 0;
         setStorageDrive(targetDrive, data);
-        if (driveWriteListener != null) {
-            driveWriteListener.accept(targetDrive, getStorageDrive(targetDrive));
+        notifyDriveWrite(targetDrive);
+    }
+
+    public void setDriveCapacity(int drive, long capacityBytes) {
+        if (drive >= 0 && drive < MAX_DRIVES) {
+            driveCapacities[drive] = Math.clamp(capacityBytes, 0L, 1L << 31);
         }
     }
 
-    public void setDriveCapacity(int drive, int capacityBytes) {
-        if (drive >= 0 && drive < MAX_DRIVES) {
-            this.driveCapacities[drive] = capacityBytes;
-        }
-    }
-
-    public int getDriveCapacity(int drive) {
-        if (drive >= 0 && drive < MAX_DRIVES) {
-            if (driveCapacities[drive] > 0) {
-                return driveCapacities[drive];
-            }
-            if (storageDrives[drive] != null) {
-                return storageDrives[drive].length;
-            }
-        }
-        return 0;
+    public long getDriveCapacity(int drive) {
+        if (drive < 0 || drive >= MAX_DRIVES) return 0;
+        if (driveCapacities[drive] > 0) return driveCapacities[drive];
+        return storageDrives[drive] == null ? 0 : storageDrives[drive].length();
     }
 
     public void setStorageDrive(int drive, byte[] data) {
-        if (drive >= 0 && drive < MAX_DRIVES) {
-            this.storageDrives[drive] = (data != null) ? data : new byte[0];
-            if (this.storageDrives[drive].length > this.driveCapacities[drive]) {
-                this.driveCapacities[drive] = this.storageDrives[drive].length;
-            }
-        }
+        if (drive < 0 || drive >= MAX_DRIVES) return;
+        storageDrives[drive] = data == null || data.length == 0 ? null : DriveStorage.inMemory(data);
+        if (data != null) driveCapacities[drive] = Math.max(driveCapacities[drive], data.length);
+    }
+
+    public void attachDrive(int drive, DriveStorage backing, long capacityBytes) {
+        storageDrives[drive] = backing;
+        setDriveCapacity(drive, capacityBytes);
     }
 
     public byte[] getStorageDrive(int drive) {
-        if (drive >= 0 && drive < MAX_DRIVES) {
-            return this.storageDrives[drive] != null ? this.storageDrives[drive] : new byte[0];
-        }
-        return new byte[0];
+        return readDrivePrefix(drive, 16 * 1024 * 1024);
+    }
+
+    private byte[] readDrivePrefix(int drive, int limit) {
+        if (drive < 0 || drive >= MAX_DRIVES || storageDrives[drive] == null) return new byte[0];
+        DriveStorage backing = storageDrives[drive];
+        byte[] bytes = new byte[(int) Math.min(backing.length(), limit)];
+        backing.read(0, bytes, bytes.length);
+        return bytes;
     }
 
     public int getStorageDriveCount() {
         int count = 0;
         for (int i = 0; i < MAX_DRIVES; i++) {
-            if (getDriveCapacity(i) > 0 || (storageDrives[i] != null && storageDrives[i].length > 0)) {
+            if (getDriveCapacity(i) > 0) {
                 count++;
             }
         }

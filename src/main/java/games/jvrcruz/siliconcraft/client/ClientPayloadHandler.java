@@ -2,12 +2,15 @@ package games.jvrcruz.siliconcraft.client;
 
 import games.jvrcruz.siliconcraft.blockentity.ComputerBlockEntity;
 import games.jvrcruz.siliconcraft.client.audio.ComputerAudioPlayer;
+import games.jvrcruz.siliconcraft.compat.sable.SubLevelCoordinates;
 import games.jvrcruz.siliconcraft.network.PlayAudioPacket;
 import games.jvrcruz.siliconcraft.network.StopAudioPacket;
 import games.jvrcruz.siliconcraft.network.SyncFramebufferPacket;
+import games.jvrcruz.siliconcraft.network.FramebufferCodec;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public class ClientPayloadHandler {
@@ -19,10 +22,11 @@ public class ClientPayloadHandler {
                 BlockEntity be = player.level().getBlockEntity(packet.pos());
                 if (be instanceof ComputerBlockEntity compBe) {
                     compBe.getCpu().setDisplayMode(packet.mode());
-                    int[] decompressed = SyncFramebufferPacket.decompress(packet.compressedPixels());
-                    if (decompressed.length > 0) {
-                        System.arraycopy(decompressed, 0, compBe.getCpu().getFramebuffer(), 0,
-                                Math.min(decompressed.length, compBe.getCpu().getFramebuffer().length));
+                    int[] decompressed = FramebufferCodec.decompress(packet.compressedPixels());
+                    int[] framebuffer = compBe.getCpu().getFramebuffer();
+                    int offset = packet.offset();
+                    if (decompressed.length > 0 && offset >= 0 && offset <= framebuffer.length - decompressed.length) {
+                        System.arraycopy(decompressed, 0, framebuffer, offset, decompressed.length);
                         compBe.getCpu().setFbDirty(true);
                     }
                 }
@@ -35,12 +39,11 @@ public class ClientPayloadHandler {
             Player player = context.player();
             if (player == null) return;
             if (packet.isWorldAudio()) {
-                ComputerAudioPlayer.playWorldAudio(packet.computerPos(), packet.audioPos(), packet.pcmSamples(), packet.sampleRate());
-                if (player.level() != null) {
-                    player.level().addParticle(ParticleTypes.NOTE,
-                            packet.audioPos().getX() + 0.5, packet.audioPos().getY() + 1.2, packet.audioPos().getZ() + 0.5,
-                            (player.level().random.nextDouble() * 24.0) / 24.0, 0.0, 0.0);
-                }
+                var level = player.level();
+                ComputerAudioPlayer.playWorldAudio(level, packet.computerPos(), packet.audioPos(), packet.pcmSamples(), packet.sampleRate());
+                Vec3 position = SubLevelCoordinates.worldPosition(level, Vec3.atBottomCenterOf(packet.audioPos()).add(0, 1.2, 0));
+                level.addParticle(ParticleTypes.NOTE, position.x, position.y, position.z,
+                        level.random.nextDouble(), 0.0, 0.0);
             } else {
                 ComputerAudioPlayer.playScreenAudio(packet.computerPos(), packet.pcmSamples(), packet.sampleRate());
             }

@@ -33,24 +33,19 @@ public class ComputerMenu extends AbstractContainerMenu {
         this.levelAccess = ContainerLevelAccess.create(blockEntity.getLevel(), blockEntity.getBlockPos());
         this.data = data;
 
-        // Machine Slots (0-1: Storage drives max 1 each; 2-5: RAM Modules) - Right side, oriented vertically
-        this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 0, 220, 176,
+        // Storage slots 0–1 and RAM slots 2–9.
+        this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 0, 226, 176,
                 stack -> stack.is(ModItems.STORAGE.get()),
                 Component.literal("Storage Slot 1 (Flash / NVMe)")));
-        this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 1, 220, 194,
+        this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 1, 226, 194,
                 stack -> stack.is(ModItems.STORAGE.get()),
                 Component.literal("Storage Slot 2 (Flash / NVMe)")));
 
-        for (int i = 0; i < 3; i++) {
-            final int slotNum = i + 1;
-            this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 2 + i, 186, 176 + i * 18,
-                    stack -> stack.is(ModItems.RAM.get()),
-                    Component.literal("RAM Slot " + slotNum + " (1 Module Max)")));
+        for (int i = 0; i < ComputerBlockEntity.RAM_SLOTS; i++) {
+            this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), ComputerBlockEntity.STORAGE_SLOTS + i,
+                    ramSlotX(i), ramSlotY(i), stack -> stack.is(ModItems.RAM.get()),
+                    Component.literal("RAM Slot " + (i + 1) + " (1 Module Max)")));
         }
-        // 4th RAM slot aligned with Hotbar row
-        this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 5, 186, 234,
-                stack -> stack.is(ModItems.RAM.get()),
-                Component.literal("RAM Slot 4 (1 Module Max)")));
 
         // Player Inventory (3 rows x 9 columns)
         for (int row = 0; row < 3; ++row) {
@@ -66,6 +61,9 @@ public class ComputerMenu extends AbstractContainerMenu {
 
         this.addDataSlots(data);
     }
+
+    public static int ramSlotX(int index) { return 180 + (index / 4) * 18; }
+    public static int ramSlotY(int index) { return 176 + (index % 4) * 18 + (index % 4 == 3 ? 4 : 0); }
 
     public static boolean isNvmeStorage(ItemStack stack) {
         if (!stack.is(ModItems.STORAGE.get())) return false;
@@ -91,15 +89,18 @@ public class ComputerMenu extends AbstractContainerMenu {
 
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
+        int hardwareEnd = ComputerBlockEntity.HARDWARE_SLOTS;
+        int hotbarStart = hardwareEnd + 27;
+        int inventoryEnd = hotbarStart + 9;
         ItemStack itemstack = ItemStack.EMPTY;
         Slot slot = this.slots.get(index);
         if (slot != null && slot.hasItem()) {
             ItemStack slotStack = slot.getItem();
             itemstack = slotStack.copy();
 
-            if (index < 6) {
+            if (index < hardwareEnd) {
                 // Moving from machine slots to player inventory
-                if (!this.moveItemStackTo(slotStack, 6, 42, true)) {
+                if (!this.moveItemStackTo(slotStack, hardwareEnd, inventoryEnd, true)) {
                     return ItemStack.EMPTY;
                 }
             } else {
@@ -107,11 +108,11 @@ public class ComputerMenu extends AbstractContainerMenu {
                 if (slotStack.is(ModItems.STORAGE.get())) {
                     if (!this.moveItemStackTo(slotStack, 0, 2, false)) return ItemStack.EMPTY;
                 } else if (slotStack.is(ModItems.RAM.get())) {
-                    if (!this.moveItemStackTo(slotStack, 2, 6, false)) return ItemStack.EMPTY;
-                } else if (index < 33) {
-                    if (!this.moveItemStackTo(slotStack, 33, 42, false)) return ItemStack.EMPTY;
+                    if (!this.moveItemStackTo(slotStack, ComputerBlockEntity.STORAGE_SLOTS, hardwareEnd, false)) return ItemStack.EMPTY;
+                } else if (index < hotbarStart) {
+                    if (!this.moveItemStackTo(slotStack, hotbarStart, inventoryEnd, false)) return ItemStack.EMPTY;
                 } else {
-                    if (!this.moveItemStackTo(slotStack, 6, 33, false)) return ItemStack.EMPTY;
+                    if (!this.moveItemStackTo(slotStack, hardwareEnd, hotbarStart, false)) return ItemStack.EMPTY;
                 }
             }
 

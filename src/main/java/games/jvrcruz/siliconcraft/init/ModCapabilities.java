@@ -5,6 +5,8 @@ import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 
 public class ModCapabilities {
     public static void registerCapabilities(RegisterCapabilitiesEvent event) {
+        BuiltinPeripherals.register(event);
+
         // Chip Forge
         event.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, ModBlockEntities.CHIP_FORGE.get(), (be, side) -> be.getEnergyStorage());
         event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.CHIP_FORGE.get(), (be, side) -> be.getItemHandler());

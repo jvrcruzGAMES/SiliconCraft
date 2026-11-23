@@ -14,7 +14,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 public class ModMessages {
     public static void register(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar(Siliconcraft.MODID).versioned("1.0.0");
+        PayloadRegistrar registrar = event.registrar(Siliconcraft.MODID).versioned("1.1.0");
 
         registrar.playToServer(ChipForgePacket.TYPE, ChipForgePacket.STREAM_CODEC, ModMessages::handleChipForge);
         registrar.playToServer(ArchitectureWriterPacket.TYPE, ArchitectureWriterPacket.STREAM_CODEC, ModMessages::handleArchitectureWriter);

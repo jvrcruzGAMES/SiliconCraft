@@ -21,11 +21,13 @@ public class Siliconcraft {
     public Siliconcraft(IEventBus modEventBus, ModContainer modContainer) {
         modEventBus.addListener(this::commonSetup);
         modEventBus.addListener(Config::onLoad);
+        modEventBus.addListener(NetworkConfig::onConfig);
         modEventBus.addListener(ModMessages::register);
         modEventBus.addListener(ModCapabilities::registerCapabilities);
 
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modEventBus.addListener(ClientModEvents::registerScreens);
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(ClientModEvents::updateAudio);
         }
 
         // Register Deferred Registers
@@ -37,6 +39,7 @@ public class Siliconcraft {
         ModCreativeTabs.CREATIVE_MODE_TABS.register(modEventBus);
 
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+        modContainer.registerConfig(ModConfig.Type.SERVER, NetworkConfig.SPEC, "siliconcraft-network.toml");
 
         // Register Server & Game Shutdown Handlers on NeoForge event bus
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.server.ServerStoppingEvent event) -> {

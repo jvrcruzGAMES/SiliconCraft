@@ -789,8 +789,8 @@ public class CompilerAndValidatorTest {
         assertEquals(0xFFFF0000, fb[12 * VirtualCpu.FB_WIDTH + 20]); // Inside rectangle
 
         List<String> output = cpu.getTerminalOutput();
-        assertTrue(output.contains("W: 480"), "Output should contain width 480: " + output);
-        assertTrue(output.contains("H: 270"), "Output should contain height 270: " + output);
+        assertTrue(output.contains("W: 960"), "Output should contain width 960: " + output);
+        assertTrue(output.contains("H: 540"), "Output should contain height 540: " + output);
         assertTrue(output.contains("Pix: -16776961"), "Output should contain 0xFF0000FF pixel value: " + output);
         assertTrue(output.contains("ASize: 2"), "Output should contain audio size 2: " + output);
     }

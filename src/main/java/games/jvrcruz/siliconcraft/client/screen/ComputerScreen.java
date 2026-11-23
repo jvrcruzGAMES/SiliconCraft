@@ -12,6 +12,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import games.jvrcruz.siliconcraft.compat.controlify.ExternalControllerManager;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -19,6 +20,9 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import java.util.List;
 
 public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
+    private static final ResourceLocation BACKGROUND = ResourceLocation.fromNamespaceAndPath(
+            "siliconcraft", "textures/gui/computer.png");
+    private boolean displayInitialized;
     private int lastCpuState = -1;
     private final ComputerDisplayRenderer displayRenderer = new ComputerDisplayRenderer();
 
@@ -73,20 +77,22 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
     @Override
     protected void renderBg(GuiGraphics guiGraphics, float partialTick, int mouseX, int mouseY) {
         int state = menu.getCpuState();
-        // Monitor outer chassis bezel
-        guiGraphics.fill(this.leftPos, this.topPos, this.leftPos + this.imageWidth, this.topPos + this.imageHeight, 0xFF1C1E22);
-        guiGraphics.fill(this.leftPos + 2, this.topPos + 2, this.leftPos + this.imageWidth - 2, this.topPos + this.imageHeight - 2, 0xFF2B2E36);
+        guiGraphics.blit(BACKGROUND, leftPos, topPos, 0, 0, imageWidth, imageHeight);
 
-        // CRT phosphor screen (240x135 - 16:9 aspect ratio)
-        int screenLeft = this.leftPos + 8;
-        int screenTop = this.topPos + 7;
-        int screenRight = this.leftPos + 248;
-        int screenBottom = this.topPos + 142;
-        guiGraphics.fill(screenLeft, screenTop, screenRight, screenBottom, 0xFF051009);
+        // The CRT keeps its 240 × 135 GUI area.
+        int screenLeft = leftPos + 8;
+        int screenTop = topPos + 7;
+        int screenRight = leftPos + 248;
+        int screenBottom = topPos + 142;
 
         // Direct OpenGL Framebuffer rendering (bypassing Minecraft UI engine)
         if (state != VirtualCpu.State.OFF.ordinal() && menu.getBlockEntity().getCpu().getDisplayMode() == 1) {
-            displayRenderer.updatePixels(menu.getBlockEntity().getCpu().getFramebuffer());
+            VirtualCpu cpu = menu.getBlockEntity().getCpu();
+            if (!displayInitialized || cpu.isFbDirty()) {
+                displayRenderer.updatePixels(cpu.getFramebuffer());
+                cpu.setFbDirty(false);
+                displayInitialized = true;
+            }
             displayRenderer.renderDirect(guiGraphics.pose().last().pose(), screenLeft, screenTop, screenRight, screenBottom);
         }
 
@@ -105,38 +111,6 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         guiGraphics.fill(ledX - 1, ledY - 1, ledX + 9, ledY + 9, 0xFF000000);
         guiGraphics.fill(ledX, ledY, ledX + 8, ledY + 8, ledColor);
 
-        // Player Inventory Panel (Left side)
-        guiGraphics.fill(this.leftPos + 8, this.topPos + 174, this.leftPos + 174, this.topPos + 232, 0xFF181A20);
-        for (int row = 0; row < 3; row++) {
-            for (int col = 0; col < 9; col++) {
-                renderSlotFrame(guiGraphics, this.leftPos + 10 + col * 18, this.topPos + 176 + row * 18);
-            }
-        }
-
-        // Player Hotbar Panel
-        guiGraphics.fill(this.leftPos + 8, this.topPos + 232, this.leftPos + 174, this.topPos + 252, 0xFF181A20);
-        for (int col = 0; col < 9; col++) {
-            renderSlotFrame(guiGraphics, this.leftPos + 10 + col * 18, this.topPos + 234);
-        }
-
-        // Expansion Slots Panels (Right side, oriented vertically)
-        // RAM panel (4 vertical slots: 3 matching main inv rows + 1 matching hotbar row)
-        guiGraphics.fill(this.leftPos + 182, this.topPos + 174, this.leftPos + 208, this.topPos + 252, 0xFF16181D);
-        for (int i = 0; i < 3; i++) {
-            renderSlotFrame(guiGraphics, this.leftPos + 186, this.topPos + 176 + i * 18);
-        }
-        renderSlotFrame(guiGraphics, this.leftPos + 186, this.topPos + 234);
-
-        // NVMe panel (2 vertical slots)
-        guiGraphics.fill(this.leftPos + 216, this.topPos + 174, this.leftPos + 242, this.topPos + 214, 0xFF16181D);
-        for (int i = 0; i < 2; i++) {
-            renderSlotFrame(guiGraphics, this.leftPos + 220, this.topPos + 176 + i * 18);
-        }
-    }
-
-    private void renderSlotFrame(GuiGraphics guiGraphics, int x, int y) {
-        guiGraphics.fill(x - 1, y - 1, x + 17, y + 17, 0xFF353A45);
-        guiGraphics.fill(x, y, x + 16, y + 16, 0xFF0D0F12);
     }
 
     @Override
@@ -196,8 +170,8 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         guiGraphics.drawString(this.font, statusText, 10, 165, 0x88CCFF, false);
 
         // Dedicated slot column header labels (at x=188 and x=220, completely free of any text collision)
-        guiGraphics.drawString(this.font, "RAM", 188, 165, 0x88CC88, false);
-        guiGraphics.drawString(this.font, "NVMe", 220, 165, 0x88CCFF, false);
+        guiGraphics.drawString(this.font, "RAM", 186, 165, 0x88CC88, false);
+        guiGraphics.drawString(this.font, "Drive", 222, 165, 0x88CCFF, false);
     }
 
     private double lastMouseX;
@@ -243,11 +217,11 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         this.lastMouseY = mouseY;
         super.mouseMoved(mouseX, mouseY);
         clearUnhoveredButtonFocus(mouseX, mouseY);
-        if (menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal()) {
+        if (!hasControllerCursor() && menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal()) {
             double relX = (mouseX - (this.leftPos + 8)) / 240.0;
             double relY = (mouseY - (this.topPos + 7)) / 135.0;
-            int crtX = (int) (relX * VirtualCpu.FB_WIDTH);
-            int crtY = (int) (relY * VirtualCpu.FB_HEIGHT);
+            int crtX = (int) Math.floor(relX * VirtualCpu.FB_WIDTH);
+            int crtY = (int) Math.floor(relY * VirtualCpu.FB_HEIGHT);
             if (crtX >= 0 && crtX < VirtualCpu.FB_WIDTH && crtY >= 0 && crtY < VirtualCpu.FB_HEIGHT) {
                 PacketDistributor.sendToServer(new ComputerInputPacket(menu.getBlockEntity().getBlockPos(), 1, crtX, crtY, 0));
             }
@@ -258,11 +232,11 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         this.lastMouseX = mouseX;
         this.lastMouseY = mouseY;
-        if (menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal()) {
+        if (!hasControllerCursor() && menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal()) {
             double relX = (mouseX - (this.leftPos + 8)) / 240.0;
             double relY = (mouseY - (this.topPos + 7)) / 135.0;
-            int crtX = (int) (relX * VirtualCpu.FB_WIDTH);
-            int crtY = (int) (relY * VirtualCpu.FB_HEIGHT);
+            int crtX = (int) Math.floor(relX * VirtualCpu.FB_WIDTH);
+            int crtY = (int) Math.floor(relY * VirtualCpu.FB_HEIGHT);
             if (crtX >= 0 && crtX < VirtualCpu.FB_WIDTH && crtY >= 0 && crtY < VirtualCpu.FB_HEIGHT) {
                 PacketDistributor.sendToServer(new ComputerInputPacket(menu.getBlockEntity().getBlockPos(), 2, crtX, crtY, button));
             }
@@ -356,9 +330,7 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
             if (k == 69 || k == 73) mask |= VirtualCpu.PAD_R;
         }
 
-        // External Controller Support (Active if Controlify is installed)
-        int controllerMask = ExternalControllerManager.pollControllerMask();
-        mask |= controllerMask;
+        mask |= computerControllerMask();
 
         if (mask != lastSentPadMask) {
             lastSentPadMask = mask;
@@ -366,11 +338,20 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         }
     }
 
+    protected boolean hasControllerCursor() {
+        return false;
+    }
+
+    protected int computerControllerMask() {
+        return ExternalControllerManager.pollControllerMask();
+    }
+
     @Override
     public void onClose() {
+        if (lastSentPadMask != 0) {
+            PacketDistributor.sendToServer(new ComputerInputPacket(menu.getBlockEntity().getBlockPos(), 3, 0, 0, 0));
+        }
         super.onClose();
-        heldKeyCodes.clear();
-        updateAndSendPadState();
         displayRenderer.close();
         if (menu != null && menu.getBlockEntity() != null) {
             ComputerAudioPlayer.stopScreenAudio(menu.getBlockEntity().getBlockPos());

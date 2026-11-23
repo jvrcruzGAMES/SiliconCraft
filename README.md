@@ -6,7 +6,7 @@
 
 **SiliconCraft** is a modular personal computing, microcontroller, and custom silicon architecture mod for Minecraft (NeoForge 1.21.1).
 
-Design your own silicon chips from raw wafers, assemble modular personal computers, write programs in the high-level **N language** or native assembly, render hardware-accelerated 480×270 retro graphics, synthesize 8-bit PCM audio, connect physical gamepads, and automate your world with custom virtual hardware—all running on dedicated background worker threads with **zero server tick lag**.
+Design your own silicon chips from raw wafers, assemble modular personal computers, write programs in the high-level **N language** or native assembly, render hardware-accelerated 960×540 retro graphics, synthesize 8-bit PCM audio, connect physical gamepads, and automate your world with custom virtual hardware—all running on dedicated background worker threads with **zero server tick lag**.
 
 ---
 
@@ -15,11 +15,11 @@ Design your own silicon chips from raw wafers, assemble modular personal compute
 ### 🖥️ Modular Personal Computers
 - **Custom Silicon Core**: Assemble a PC by inserting a fabricated **SoC (System-on-Chip)** into a **Computer Case**.
 - **Expansion Bays**:
-  - **4 RAM Slots**: Expand memory up to **4,096 KB** (4 MB) using forged RAM modules.
-  - **2 Storage Slots**: Support both non-volatile **Flash Storage** and high-speed **NVMe SSDs** (up to 1,024 MB per drive).
+  - **8 RAM Slots**: Expand memory by up to **16,384 KB** (16 MB) using forged RAM modules.
+  - **2 Storage Slots**: Support both non-volatile **Flash Storage** and high-speed **NVMe SSDs** (up to 2,048 MB per drive).
 - **Dual Display Modes**:
   - **Text Console Mode**: Crisp 40×13 retro terminal output with syntax coloring for logs, BIOS messages, and shells.
-  - **Framebuffer Mode**: 480×270 resolution with 32-bit ARGB color for games, raycasters, and animations.
+  - **Framebuffer Mode**: 960×540 resolution with 32-bit ARGB color for games, raycasters, and animations.
 - **Full State Persistence**:
   - CPU registers, flags, call/data stacks, interrupt tables (IVT), and RAM contents are **compressed and saved to disk**.
   - Your programs keep running across world saves, reloads, and dimensional travel without losing RAM contents or resetting.
@@ -38,7 +38,7 @@ Design your own silicon chips from raw wafers, assemble modular personal compute
 ---
 
 ### 💾 Memory Forge & Programmer
-- **Memory Forge**: Construct high-capacity RAM sticks (1,024 KB each) and solid-state drives (Flash drives and high-throughput NVMe SSDs).
+- **Memory Forge**: Construct high-capacity RAM sticks (2,048 KB each) and solid-state drives (Flash drives and high-throughput NVMe SSDs).
 - **Programmer**:
   - Browse, inspect, and burn software onto removable storage drives.
   - Tooltips clearly show the program's name, description, and required CPU instructions.
@@ -96,7 +96,7 @@ SiliconCraft works completely out-of-the-box as a standalone mod, but seamlessly
 1. Place a **Computer Case** on the ground.
 2. Right-click the case with your synthesized **SoC** in hand. The case will transform into a **Personal Computer**!
 3. Right-click the Personal Computer to open the chassis screen.
-4. Insert **RAM Modules** into the green RAM bays (up to 4 sticks) and **Storage Drives** into the blue NVMe/Flash bays.
+4. Insert **RAM Modules** into the green RAM bays (up to 8 sticks) and **Storage Drives** into the blue NVMe/Flash bays.
 
 ### 3. Power On & Run Programs
 1. Click the **⏻ ON** button to boot your computer.
@@ -111,10 +111,10 @@ SiliconCraft works completely out-of-the-box as a standalone mod, but seamlessly
 |---|---|
 | **Architecture** | 16/32-Bit Register & Stack Architecture |
 | **Clock Speed** | ~2.5 MHz (cooperative time-sliced execution) |
-| **RAM Module Capacity** | 1,024 KB (1 MB) per module (up to 4,096 KB total) |
-| **Storage Capacity** | Up to 1,024 MB (1 GB) Flash / NVMe per slot |
+| **RAM Module Capacity** | 2,048 KB (2 MB) per module, up to 16,384 KB across eight expansion slots |
+| **Storage Capacity** | Up to 2,048 MB (2 GiB) Flash / NVMe per slot |
 | **Display (Text)** | 40 Columns × 13 Rows CRT Phosphor Console |
-| **Display (Graphics)** | 480 × 270 Pixels, 32-Bit ARGB Color |
+| **Display (Graphics)** | 960 × 540 Pixels, 32-Bit ARGB Color |
 | **Audio Format** | 8,000 Hz, 8-Bit Unsigned PCM Mono |
 | **Audio Range** | Screen GUI (local) or 32-block radius (Speaker Block) |
 | **Controller Support** | 12-button standard gamepad (Keyboard or Controlify) |
@@ -125,3 +125,15 @@ SiliconCraft works completely out-of-the-box as a standalone mod, but seamlessly
 ## 📜 License
 
 SiliconCraft is distributed under the project's open-source license. Contributions, issues, and feature requests are welcome!
+
+## Sable compatibility
+
+SiliconCraft computers and machines can be assembled into Sable sub-levels with their inventories intact. Adjacent peripherals stay on the same structure, and positional speaker audio follows the structure. Sable is optional and AeroSilicon is only needed for its airship-specific peripherals.
+
+## N2 networking
+
+[Network](docs/network.md) provides server-originated HTTP, HTTPS, TCP, and UDP with administrator controls.
+
+## AeroSilicon
+
+[AeroSilicon](aerosilicon/README.md) adds airship telemetry and named Redstone Link channels as SiliconCraft peripherals.

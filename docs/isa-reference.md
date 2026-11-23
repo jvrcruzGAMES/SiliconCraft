@@ -27,7 +27,7 @@ The CPU provides four 32-bit integer registers:
   - Cleared to `0` (`false`) if non-negative.
 
 ### Memory Organization
-- **RAM Capacity**: Configured by the RAM module(s) installed in the SoC plus up to 4 RAM expansion slots on the Personal Computer.
+- **RAM Capacity**: Configured by the RAM module(s) installed in the SoC plus up to 8 RAM expansion slots on the Personal Computer.
 - **RAM Addressing**:
   - Direct literal address: `[0]`, `[15]`, `[0x20]`
   - Indirect register address: `[A]`, `[B]`, `[C]`, `[D]`
@@ -110,7 +110,7 @@ The CPU provides four 32-bit integer registers:
 | **`SCOUNT`** | `SCOUNT dest` | Stores total number of connected storage drives into `dest`. |
 | **`SSEL`** | `SSEL drive` | Sets the active default storage drive index. |
 | **`SDRV`** | `SDRV dest` | Stores currently active storage drive index into `dest`. |
-| **`SSIZE`** | `SSIZE dest[, drive]` | Stores storage drive capacity in bytes into `dest`. |
+| **`SSIZE`** | `SSIZE dest[, drive]` | Stores capacity in bytes as an unsigned 32-bit value. A full 2 GiB drive returns `0x80000000`. |
 | **`SREAD`** | `SREAD dest[, drive], addr` | Reads single byte from drive at `addr` into `dest`. |
 | **`SWRITE`** | `SWRITE [drive,] addr, val` | Writes single byte `val` to drive at `addr`. |
 | **`SBLKR`** | `SBLKR ramAddr, drvAddr, len` | Fast block read: copies `len` bytes from drive to RAM. |
@@ -121,12 +121,12 @@ The CPU provides four 32-bit integer registers:
 
 ### 6. Framebuffer Graphics
 
-The CRT display features a $480 \times 270$ (16:9 aspect ratio) direct pixel renderer canvas:
+The CRT display features a $960 \times 540$ (16:9 aspect ratio) direct pixel renderer canvas:
 
 | Opcode | Syntax | Description |
 |---|---|---|
-| **`FBWIDTH`** | `FBWIDTH dest` | Stores screen width in pixels (480) into `dest`. |
-| **`FBHEIGHT`** | `FBHEIGHT dest` | Stores screen height in pixels (270) into `dest`. |
+| **`FBWIDTH`** | `FBWIDTH dest` | Stores screen width in pixels (960) into `dest`. |
+| **`FBHEIGHT`** | `FBHEIGHT dest` | Stores screen height in pixels (540) into `dest`. |
 | **`FBSET`** | `FBSET x, y, color` | Sets pixel at `(x, y)` to 32-bit ARGB `color`. |
 | **`FBGET`** | `FBGET dest, x, y` | Reads 32-bit ARGB pixel color at `(x, y)` into `dest`. |
 | **`FBLINE`** | `FBLINE x0, y0, x1, y1, color` | Draws line using Bresenham's algorithm. |
@@ -252,3 +252,21 @@ Directives allow placing raw binary data, tables, and external files directly in
 | **`DL`** | `DL long1, long2, ...` | Emits 24-bit/32-bit little-endian longs (3 bytes per entry) into RAM. |
 | **`INCBIN`**| `INCBIN "path" [, offset, len]` | Includes raw binary file contents directly into RAM. |
 
+
+### 13. Adjacent Peripherals
+
+| Opcode | Syntax | Effect |
+|---|---|---|
+| `PSCAN` | `PSCAN dst, after` | Queue a scan for the next wired peripheral address, or −1 if there is none. |
+| `PINFO` | `PINFO dst, side` | Queue a request for the peripheral flags. |
+| `PWRAP` | `PWRAP dst, side` | Queue a request to wrap a peripheral manually. |
+| `PCALL` | `PCALL dst, side, method, arg0, arg1` | Queue an API call with two 32-bit arguments. |
+| `PCALLS` | `PCALLS dst, side, method, ptr, arg1` | Queue a call with a zero-terminated RAM string and a 32-bit argument. |
+| `PSTATUS` | `PSTATUS dst` | Read the request status. |
+| `PRESULT` | `PRESULT dst` | Read the result and clear a completed request. |
+
+See [Adjacent peripherals and DeviceKit](peripherals.md) for port numbers, status codes, built-in tools, and NeoForge capability registration.
+
+### 14. Network
+
+See the [Network library](network.md) for the server config and `NOPEN`, `NSEND`, `NRECV`, `NCLOSE`, `NHTTP`, `NSTATUS`, `NLEN`, and `NRESULT` syntax.

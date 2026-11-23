@@ -18,6 +18,10 @@ public class InstructionValidator {
             "FBMODE", "FBSET", "FBGET", "FBCLR", "FBRECT", "FBLINE", "FBLIT", "FBSWAP", "FBWIDTH", "FBHEIGHT",
             // Audio Buffer & Sound
             "APUSH", "ABUFW", "ACLR", "ASTAT", "ATONE", "APLAY",
+            // Adjacent peripherals
+            "PINFO", "PWRAP", "PCALL", "PCALLS", "PSTATUS", "PRESULT", "PSCAN",
+            // Server network
+            "NOPEN", "NSEND", "NRECV", "NCLOSE", "NHTTP", "NSTATUS", "NLEN", "NRESULT",
             // Interrupts & Exceptions
             "IVEC", "IRET", "CLI", "STI", "INT", "TIMER", "VBLANK"
     );

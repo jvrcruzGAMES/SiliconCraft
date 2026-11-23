@@ -115,7 +115,7 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
 
         // RAM
         ItemStack ramStack = new ItemStack(ModItems.RAM.get());
-        ramStack.set(ModDataComponents.RAM_DATA.get(), new RamData(1024 * 1024));
+        ramStack.set(ModDataComponents.RAM_DATA.get(), RamData.DEFAULT);
         memoryRecipes.add(new MemoryForgeJeiRecipe(
                 "Mode: RAM (1024 KB)",
                 List.of(new ItemStack(ModItems.SILICON_POWDER.get(), 2), new ItemStack(Items.GOLD_INGOT, 1)),
@@ -137,7 +137,7 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
 
         // Storage (Standard SATA SSD)
         ItemStack storageStack = new ItemStack(ModItems.STORAGE.get());
-        storageStack.set(ModDataComponents.STORAGE_DATA.get(), new StorageData(false, 1024 * 1024));
+        storageStack.set(ModDataComponents.STORAGE_DATA.get(), StorageData.DEFAULT);
         memoryRecipes.add(new MemoryForgeJeiRecipe(
                 "Mode: Storage (Standard Flash 1024 MB)",
                 List.of(new ItemStack(ModItems.SILICON_POWDER.get(), 4), new ItemStack(Items.GOLD_INGOT, 2)),
@@ -148,7 +148,7 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
 
         // NVMe Storage
         ItemStack nvmeStack = new ItemStack(ModItems.STORAGE.get());
-        nvmeStack.set(ModDataComponents.STORAGE_DATA.get(), new StorageData(true, 1024 * 1024));
+        nvmeStack.set(ModDataComponents.STORAGE_DATA.get(), new StorageData(true, StorageData.DRIVE_CAPACITY_KB));
         memoryRecipes.add(new MemoryForgeJeiRecipe(
                 "Mode: Storage (NVMe M.2 1024 MB)",
                 List.of(new ItemStack(ModItems.SILICON_POWDER.get(), 4), new ItemStack(Items.GOLD_INGOT, 2), new ItemStack(Items.DIAMOND, 1)),

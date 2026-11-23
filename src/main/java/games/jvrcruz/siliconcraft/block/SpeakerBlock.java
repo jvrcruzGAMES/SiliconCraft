@@ -1,8 +1,8 @@
 package games.jvrcruz.siliconcraft.block;
 
+import games.jvrcruz.siliconcraft.compat.sable.SubLevelCoordinates;
 import games.jvrcruz.siliconcraft.network.StopAudioPacket;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.ChunkPos;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import games.jvrcruz.siliconcraft.init.ModBlocks;
@@ -15,6 +15,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockBehaviour;
@@ -54,11 +55,13 @@ public class SpeakerBlock extends Block {
 
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hitResult) {
-        if (!level.isClientSide) {
+        if (level instanceof ServerLevel serverLevel) {
             boolean connected = false;
             for (Direction dir : Direction.values()) {
                 BlockPos neighbor = pos.relative(dir);
-                if (level.getBlockState(neighbor).is(ModBlocks.COMPUTER.get())) {
+                if (!SubLevelCoordinates.sameSubLevel(level, pos, neighbor)) continue;
+                LevelChunk chunk = serverLevel.getChunkSource().getChunkNow(neighbor.getX() >> 4, neighbor.getZ() >> 4);
+                if (chunk != null && chunk.getBlockState(neighbor).is(ModBlocks.COMPUTER.get())) {
                     connected = true;
                     player.displayClientMessage(Component.literal("Speaker connected to Personal Computer at [" +
                             neighbor.getX() + ", " + neighbor.getY() + ", " + neighbor.getZ() + "]")
@@ -79,7 +82,7 @@ public class SpeakerBlock extends Block {
         if (!state.is(newState.getBlock())) {
             if (!level.isClientSide && level instanceof ServerLevel serverLevel) {
                 StopAudioPacket packet = new StopAudioPacket(pos);
-                PacketDistributor.sendToPlayersTrackingChunk(serverLevel, new ChunkPos(pos), packet);
+                PacketDistributor.sendToPlayersInDimension(serverLevel, packet);
             }
             super.onRemove(state, level, pos, newState, isMoving);
         }

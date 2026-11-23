@@ -18,7 +18,7 @@ public class RamItem extends Item {
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
         RamData data = stack.get(ModDataComponents.RAM_DATA.get());
-        int cap = (data != null) ? data.capacity() : (1024 * 1024);
+        int cap = (data != null) ? data.capacity() : RamData.MODULE_CAPACITY;
         String capStr = (cap >= 1024) ? (cap / 1024) + " KB" : cap + " Bytes";
         tooltip.add(Component.translatable("tooltip.siliconcraft.ram.capacity", capStr).withStyle(ChatFormatting.GREEN));
         super.appendHoverText(stack, context, tooltip, flag);

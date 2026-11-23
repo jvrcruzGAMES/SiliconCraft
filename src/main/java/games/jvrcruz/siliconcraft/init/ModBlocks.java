@@ -101,4 +101,12 @@ public class ModBlocks {
                     .requiresCorrectToolForDrops()
                     .strength(2.5F, 3.0F)
                     .sound(SoundType.WOOD)));
+
+    public static final DeferredBlock<SerialCableBlock> SERIAL_CABLE = BLOCKS.register("serial_cable",
+            () -> new SerialCableBlock(BlockBehaviour.Properties.of().mapColor(MapColor.COLOR_ORANGE)
+                    .strength(0.8F).noOcclusion().sound(SoundType.COPPER)));
+
+    public static final DeferredBlock<Block> SERIAL_EXPANSION = BLOCKS.register("serial_expansion",
+            () -> new Block(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(2.0F).sound(SoundType.METAL)));
 }

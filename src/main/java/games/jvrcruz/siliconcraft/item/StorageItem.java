@@ -9,6 +9,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 
 import java.util.List;
+import java.util.UUID;
+import org.jetbrains.annotations.Nullable;
 
 public class StorageItem extends Item {
     public StorageItem(Properties properties) {
@@ -19,7 +21,7 @@ public class StorageItem extends Item {
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
         StorageData data = stack.get(ModDataComponents.STORAGE_DATA.get());
         boolean nvme = data != null && data.isNvme();
-        int cap = (data != null) ? data.capacity() : (1024 * 1024);
+        int cap = (data != null) ? data.capacity() : StorageData.DRIVE_CAPACITY_KB;
         if (nvme) {
             tooltip.add(Component.translatable("tooltip.siliconcraft.storage.nvme").withStyle(ChatFormatting.GOLD));
         } else {
@@ -55,12 +57,17 @@ public class StorageItem extends Item {
         return new byte[0];
     }
 
-    public static void setStorageBytes(ItemStack stack, byte[] data) {
-        if (stack == null || stack.isEmpty() || !(stack.getItem() instanceof StorageItem)) {
-            return;
-        }
+    public static @Nullable UUID getDriveId(ItemStack stack) {
+        var data = stack.get(net.minecraft.core.component.DataComponents.CUSTOM_DATA);
+        if (data == null) return null;
+        var tag = data.copyTag();
+        return tag.hasUUID("DriveId") ? tag.getUUID("DriveId") : null;
+    }
+
+    public static void setDriveId(ItemStack stack, UUID id) {
         net.minecraft.world.item.component.CustomData.update(net.minecraft.core.component.DataComponents.CUSTOM_DATA, stack, tag -> {
-            tag.putByteArray("BinaryStorage", data != null ? data : new byte[0]);
+            tag.putUUID("DriveId", id);
+            tag.remove("BinaryStorage");
         });
     }
 }

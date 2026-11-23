@@ -7,11 +7,16 @@ import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 
 public record RamData(int capacity) {
-    public static final RamData DEFAULT = new RamData(1024 * 1024);
+    public static final int MODULE_CAPACITY = 2048 * 1024;
+    public static final RamData DEFAULT = new RamData(MODULE_CAPACITY);
+
+    public RamData {
+        if (capacity == 1024 * 1024) capacity = MODULE_CAPACITY;
+    }
 
     public static final Codec<RamData> CODEC = RecordCodecBuilder.create(instance ->
         instance.group(
-            Codec.INT.optionalFieldOf("capacity", 1024 * 1024).forGetter(RamData::capacity)
+            Codec.INT.optionalFieldOf("capacity", MODULE_CAPACITY).forGetter(RamData::capacity)
         ).apply(instance, RamData::new)
     );
 

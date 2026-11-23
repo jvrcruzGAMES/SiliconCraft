@@ -111,9 +111,9 @@ Agents must adhere to these thread-safety requirements:
 
 ## 7. Hardware Specifications
 
-- **RAM Module Capacity**: 1024 KB (1,048,576 Bytes).
-- **Storage Drive Capacity** (Flash & NVMe): 1024 MB (1,048,576 KB / 1,073,741,824 Bytes).
-- **Framebuffer Resolution**: 480 × 270 pixels, 32-bit ARGB.
+- **RAM Module Capacity**: 2048 KB (2,097,152 Bytes), with eight expansion slots.
+- **Storage Drive Capacity** (Flash & NVMe): 2048 MB (2,097,152 KB / 2,147,483,648 Bytes), backed by sparse world files.
+- **Framebuffer Resolution**: 960 × 540 pixels, 32-bit ARGB.
 
 ---
 

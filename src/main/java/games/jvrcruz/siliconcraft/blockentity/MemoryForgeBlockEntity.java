@@ -163,13 +163,13 @@ public class MemoryForgeBlockEntity extends BaseMachineBlockEntity {
                 ItemStack resultStack;
                 if (mode == 0) {
                     resultStack = new ItemStack(ModItems.RAM.get());
-                    resultStack.set(ModDataComponents.RAM_DATA.get(), new RamData(1024 * 1024));
+                    resultStack.set(ModDataComponents.RAM_DATA.get(), RamData.DEFAULT);
                 } else if (mode == 1) {
                     resultStack = new ItemStack(ModItems.ROM.get());
                     resultStack.set(ModDataComponents.ROM_DATA.get(), new RomData(List.of()));
                 } else {
                     resultStack = new ItemStack(ModItems.STORAGE.get());
-                    resultStack.set(ModDataComponents.STORAGE_DATA.get(), new StorageData(nvmeEnabled, 1024 * 1024));
+                    resultStack.set(ModDataComponents.STORAGE_DATA.get(), new StorageData(nvmeEnabled, StorageData.DRIVE_CAPACITY_KB));
                 }
 
                 ItemStack out = itemHandler.getStackInSlot(4);

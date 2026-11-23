@@ -1118,6 +1118,11 @@ public class N2CodeGenerator {
                 }
             }
             case "drive_count" -> emit("SCOUNT A", "SCOUNT");
+            case "network_open", "network_send", "network_receive", "network_close", "network_http",
+                    "network_status", "network_length", "network_result" -> generateNetworkInstruction(name, args, line, col);
+            case "peripheral_scan", "peripheral_info", "peripheral_wrap", "peripheral_call", "peripheral_call_string", "peripheral_status",
+                    "peripheral_result", "speaker_sample_rate", "speaker_tone", "note_block_get",
+                    "note_block_set", "note_block_play", "note_block_play_instrument" -> generatePeripheralInstruction(name, args, line, col);
             // Keyboard handling (DeviceKit)
             case "read_key", "get_key" -> emit("INPAD A, -1", "INPAD");
             case "peek_key" -> emit("INPAD A, -2", "INPAD");
@@ -1176,6 +1181,78 @@ public class N2CodeGenerator {
             case "gc_button_menu" -> generateGamepadButtonCheck(args, 0x0010);
             case "gc_button_options" -> generateGamepadButtonCheck(args, 0x0020);
             default -> errors.add("Unimplemented library function: " + name);
+        }
+    }
+
+    private void generateNetworkInstruction(String name, List<N2AST.ExprNode> args, int line, int col) {
+        int arity = importedSymbols.get(name).arity();
+        if (args.size() != arity) {
+            errors.add("Line " + line + ":" + col + ": " + name + " expects " + arity + " arguments");
+            return;
+        }
+        String opcode = switch (name) {
+            case "network_open" -> "NOPEN";
+            case "network_send" -> "NSEND";
+            case "network_receive" -> "NRECV";
+            case "network_close" -> "NCLOSE";
+            case "network_http" -> "NHTTP";
+            case "network_status" -> "NSTATUS";
+            case "network_length" -> "NLEN";
+            case "network_result" -> "NRESULT";
+            default -> throw new IllegalArgumentException(name);
+        };
+        for (N2AST.ExprNode arg : args) {
+            generateExpression(arg);
+            emit("PUSH A", "PUSH");
+        }
+        for (int i = args.size() - 1; i >= 0; i--) emit("POP " + "ABCD".charAt(i), "POP");
+        String[] suffix = {"", ", A", ", A, B", ", A, B, C", ", A, B, C, D"};
+        emit(opcode + " A" + suffix[arity], opcode);
+    }
+
+    private void generatePeripheralInstruction(String name, List<N2AST.ExprNode> args, int line, int col) {
+        int arity = importedSymbols.get(name).arity();
+        if (args.size() != arity) {
+            errors.add("Line " + line + ":" + col + ": " + name + " expects " + arity + " arguments");
+            return;
+        }
+        switch (name) {
+            case "peripheral_scan", "peripheral_info", "peripheral_wrap" -> {
+                generateExpression(args.getFirst());
+                String opcode = switch (name) {
+                    case "peripheral_scan" -> "PSCAN";
+                    case "peripheral_info" -> "PINFO";
+                    default -> "PWRAP";
+                };
+                emit(opcode + " A, A", opcode);
+            }
+            case "peripheral_status" -> emit("PSTATUS A", "PSTATUS");
+            case "peripheral_result" -> emit("PRESULT A", "PRESULT");
+            case "speaker_sample_rate" -> generatePeripheralCall(args, "0x100", "PCALL");
+            case "speaker_tone" -> generatePeripheralCall(args, "0x101", "PCALL");
+            case "note_block_get" -> generatePeripheralCall(args, "0x200", "PCALL");
+            case "note_block_set" -> generatePeripheralCall(args, "0x201", "PCALL");
+            case "note_block_play" -> generatePeripheralCall(args, "0x202", "PCALL");
+            case "note_block_play_instrument" -> generatePeripheralCall(args, "0x203", "PCALLS");
+            case "peripheral_call" -> generatePeripheralCall(args, null, "PCALL");
+            case "peripheral_call_string" -> generatePeripheralCall(args, null, "PCALLS");
+        }
+    }
+
+    private void generatePeripheralCall(List<N2AST.ExprNode> args, String method, String opcode) {
+        for (N2AST.ExprNode arg : args) {
+            generateExpression(arg);
+            emit("PUSH A", "PUSH");
+        }
+        for (int i = args.size() - 1; i >= 0; i--) {
+            emit("POP " + "ABCD".charAt(i), "POP");
+        }
+        if (method == null) {
+            emit(opcode + " A, A, B, C, D", opcode);
+        } else {
+            String arg0 = args.size() >= 2 ? "B" : "0";
+            String arg1 = args.size() >= 3 ? "C" : "0";
+            emit(opcode + " A, A, " + method + ", " + arg0 + ", " + arg1, opcode);
         }
     }
 

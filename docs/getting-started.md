@@ -129,14 +129,14 @@ Click **Assemble SoC** to generate your integrated **SoC**.
 
 ### Expanding Hardware in the PC GUI
 Opening the Personal Computer interface provides dedicated hardware expansion slots:
-- **4 RAM Expansion Slots**: Insert up to 4 RAM modules (1 per slot). Each module provides **1024 KB** (1,048,576 Bytes), allowing a maximum expanded capacity of **4096 KB** (4 MB) of RAM!
+- **8 RAM Expansion Slots**: Insert up to 8 RAM modules (1 per slot). Each module provides **2048 KB**, for up to **16,384 KB** of expansion RAM.
 - **2 NVMe / Storage Drive Slots**: Insert up to 2 individual Storage Drives (1 per slot).
-  - Both **Flash** and **NVMe** drives provide an expansive **1024 MB** (1,073,741,824 Bytes / 1 GB) capacity per drive!
+  - Both **Flash** and **NVMe** drives provide an expansive **2048 MB** (2,147,483,648 bytes / 2 GiB) capacity per drive!
   - Each drive is treated independently (indexed as drive `0` and drive `1`).
   - Storage drives retain their binary content in item NBT when extracted and moved!
 
 ### Framebuffer Graphics (Direct Screen Canvas)
-The Personal Computer includes a dedicated **$480 \times 270$ CRT Framebuffer**:
+The Personal Computer includes a dedicated **$960 \times 540$ CRT Framebuffer**:
 - Programs can draw direct pixels, lines, rectangles, or flip entire color buffers (`FBSET`, `FBLINE`, `FBRECT`, `FBSWAP`, or in N: `fb.set()`, `fb.rect()`, etc.).
 - Rendering executes directly on the computer screen canvas without Minecraft GUI engine overhead.
 
@@ -227,3 +227,5 @@ SiliconCraft includes native support for the **Jade** (Just Enough Details) on-s
   - Active blueprints, target memory modes, and compiler architecture writeups.
 - **Speaker**:
   - Displays whether the speaker is connected to an adjacent Personal Computer along with the computer's coordinates.
+
+Drive data is stored in sparse files under `siliconcraft/drives` inside the world directory. Include that folder when backing up or moving a world. Drive items identify their backing file within that world.

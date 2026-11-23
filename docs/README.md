@@ -53,14 +53,14 @@ SiliconCraft features an accessible 4-register architecture with custom instruct
   - `Z` (Zero Flag): Set to `1` when an operation yields `0`; cleared to `0` otherwise.
   - `S` (Sign Flag): Set to `1` when an operation yields a negative value; cleared to `0` otherwise.
 - **Memory Addressing**:
-  - Linear addressable RAM configured by the SoC RAM modules plus up to 4 RAM expansion slots on the Personal Computer.
+  - Linear addressable RAM configured by the SoC RAM modules plus up to 8 RAM expansion slots on the Personal Computer.
   - Direct addressing: `[0x10]`, `[15]`
   - Indirect register addressing: `[A]`, `[B]`, `[C]`, `[D]`
 - **Persistent Storage Drives**:
   - Supports Flash drives and ultra-speed NVMe storage drives.
   - Treated individually (drive 0, drive 1, etc.) and retained in item NBT when extracted.
 - **Direct Renderer Framebuffer**:
-  - Hardware pixel graphics on the computer screen CRT canvas ($480 \times 270$ direct pixel operations, 16:9 aspect ratio).
+  - Hardware pixel graphics on the computer screen CRT canvas ($960 \times 540$ direct pixel operations, 16:9 aspect ratio).
   - Fast rectangle drawing, lines, and color buffer flipping.
 - **Hardware Audio Buffer & Speaker Block**:
   - Real-computer audio queue buffer with waveform frequency, duration, type, and volume.

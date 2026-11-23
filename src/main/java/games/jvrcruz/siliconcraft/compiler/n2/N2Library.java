@@ -1,5 +1,8 @@
 package games.jvrcruz.siliconcraft.compiler.n2;
 
+import games.jvrcruz.siliconcraft.vm.PeripheralBus;
+import games.jvrcruz.siliconcraft.vm.network.NetworkPort;
+
 import java.util.*;
 
 public class N2Library {
@@ -145,6 +148,38 @@ public class N2Library {
         addConst(deviceKit, "KEY_LEFT", 259, "DeviceKit");
         addConst(deviceKit, "KEY_RIGHT", 260, "DeviceKit");
 
+        // Adjacent block APIs
+        addFunc(deviceKit, "peripheral_scan", 1, "DeviceKit");
+        addFunc(deviceKit, "peripheral_info", 1, "DeviceKit");
+        addFunc(deviceKit, "peripheral_wrap", 1, "DeviceKit");
+        addFunc(deviceKit, "peripheral_call", 4, "DeviceKit");
+        addFunc(deviceKit, "peripheral_call_string", 4, "DeviceKit");
+        addFunc(deviceKit, "peripheral_status", 0, "DeviceKit");
+        addFunc(deviceKit, "peripheral_result", 0, "DeviceKit");
+        addFunc(deviceKit, "speaker_sample_rate", 1, "DeviceKit");
+        addFunc(deviceKit, "speaker_tone", 3, "DeviceKit");
+        addFunc(deviceKit, "note_block_get", 1, "DeviceKit");
+        addFunc(deviceKit, "note_block_set", 2, "DeviceKit");
+        addFunc(deviceKit, "note_block_play", 2, "DeviceKit");
+        addFunc(deviceKit, "note_block_play_instrument", 3, "DeviceKit");
+
+        addConst(deviceKit, "PERIPHERAL_DOWN", 0, "DeviceKit");
+        addConst(deviceKit, "PERIPHERAL_UP", 1, "DeviceKit");
+        addConst(deviceKit, "PERIPHERAL_NORTH", 2, "DeviceKit");
+        addConst(deviceKit, "PERIPHERAL_SOUTH", 3, "DeviceKit");
+        addConst(deviceKit, "PERIPHERAL_WEST", 4, "DeviceKit");
+        addConst(deviceKit, "PERIPHERAL_EAST", 5, "DeviceKit");
+        addConst(deviceKit, "PERIPHERAL_IDLE", PeripheralBus.IDLE, "DeviceKit");
+        addConst(deviceKit, "PERIPHERAL_PENDING", PeripheralBus.PENDING, "DeviceKit");
+        addConst(deviceKit, "PERIPHERAL_OK", PeripheralBus.OK, "DeviceKit");
+        addConst(deviceKit, "PERIPHERAL_MISSING", PeripheralBus.MISSING, "DeviceKit");
+        addConst(deviceKit, "PERIPHERAL_UNWRAPPED", PeripheralBus.UNWRAPPED, "DeviceKit");
+        addConst(deviceKit, "PERIPHERAL_UNSUPPORTED", PeripheralBus.UNSUPPORTED, "DeviceKit");
+        addConst(deviceKit, "PERIPHERAL_FAILED", PeripheralBus.FAILED, "DeviceKit");
+        addConst(deviceKit, "PERIPHERAL_PRESENT", PeripheralBus.PRESENT, "DeviceKit");
+        addConst(deviceKit, "PERIPHERAL_WRAPPED", PeripheralBus.WRAPPED, "DeviceKit");
+        addConst(deviceKit, "PERIPHERAL_AUTOMATIC", PeripheralBus.AUTOMATIC, "DeviceKit");
+
         registerLib("DeviceKit", deviceKit);
         registerLib("devicekit", deviceKit);
         registerLib("lib/devicekit", deviceKit);
@@ -152,6 +187,35 @@ public class N2Library {
         registerLib("lib/storage", deviceKit);
         registerLib("input", deviceKit);
         registerLib("lib/input", deviceKit);
+
+        Map<String, SymbolInfo> network = new LinkedHashMap<>();
+        addFunc(network, "network_open", 3, "Network");
+        addFunc(network, "network_send", 3, "Network");
+        addFunc(network, "network_receive", 2, "Network");
+        addFunc(network, "network_close", 1, "Network");
+        addFunc(network, "network_http", 4, "Network");
+        addFunc(network, "network_status", 0, "Network");
+        addFunc(network, "network_length", 0, "Network");
+        addFunc(network, "network_result", 2, "Network");
+        addConst(network, "NET_TCP", NetworkPort.TCP, "Network");
+        addConst(network, "NET_UDP", NetworkPort.UDP, "Network");
+        addConst(network, "NET_GET", 0, "Network");
+        addConst(network, "NET_POST", 1, "Network");
+        addConst(network, "NET_PUT", 2, "Network");
+        addConst(network, "NET_DELETE", 3, "Network");
+        addConst(network, "NET_PATCH", 4, "Network");
+        addConst(network, "NET_HEAD", 5, "Network");
+        addConst(network, "NET_IDLE", NetworkPort.IDLE, "Network");
+        addConst(network, "NET_PENDING", NetworkPort.PENDING, "Network");
+        addConst(network, "NET_OK", NetworkPort.OK, "Network");
+        addConst(network, "NET_DISABLED", NetworkPort.DISABLED, "Network");
+        addConst(network, "NET_DENIED", NetworkPort.DENIED, "Network");
+        addConst(network, "NET_IO_ERROR", NetworkPort.IO_ERROR, "Network");
+        addConst(network, "NET_LIMIT", NetworkPort.LIMIT, "Network");
+        addConst(network, "NET_INVALID", NetworkPort.INVALID, "Network");
+        addConst(network, "NET_TIMEOUT", NetworkPort.TIMEOUT, "Network");
+        registerLib("Network", network);
+        registerLib("lib/network", network);
 
         // --- 6. <GameController> (Apple Game Controller framework-like API) ---
         Map<String, SymbolInfo> gameCtrl = new LinkedHashMap<>();

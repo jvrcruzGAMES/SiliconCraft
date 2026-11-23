@@ -3,6 +3,7 @@ package games.jvrcruz.siliconcraft;
 import games.jvrcruz.siliconcraft.vm.VirtualCpu;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 
@@ -273,6 +274,25 @@ public class VirtualCpuTest {
         assertEquals(0xFFFF0000, fb[0 * VirtualCpu.FB_WIDTH + 3]);
         assertEquals(0xFF123456, fb[50 * VirtualCpu.FB_WIDTH + 50]);
         assertTrue(cpu.isFbDirty());
+    }
+
+    @Test
+    public void testFramebufferLineWithExtremeCoordinates() {
+        VirtualCpu cpu = new VirtualCpu();
+        cpu.configure(Set.of("FBLINE", "HLT"), 256, List.of(
+                "FBLINE -2147483648, -2147483648, 2147483647, 2147483647, 0xFF0000",
+                "FBLINE 2147483647, 10, -2147483648, 10, 0x00FF00",
+                "HLT"
+        ), false, 0);
+        cpu.powerOn();
+
+        assertTimeoutPreemptively(Duration.ofSeconds(1), () -> cpu.tick(3));
+        assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+        int[] fb = cpu.getFramebuffer();
+        assertEquals(0xFFFF0000, fb[0]);
+        assertEquals(0xFFFF0000, fb[269 * VirtualCpu.FB_WIDTH + 269]);
+        assertEquals(0xFF00FF00, fb[10 * VirtualCpu.FB_WIDTH]);
+        assertEquals(0xFF00FF00, fb[11 * VirtualCpu.FB_WIDTH - 1]);
     }
 
     @Test

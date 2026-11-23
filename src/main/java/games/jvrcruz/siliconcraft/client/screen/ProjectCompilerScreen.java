@@ -120,8 +120,8 @@ public class ProjectCompilerScreen extends BaseMachineScreen<ProjectCompilerMenu
         standardButton.setMessage(Component.literal(standard == 2 ? "§a[N2]" : "§e[N1]"));
         standardButton.setTooltip(Tooltip.create(Component.literal(
                 standard == 2
-                        ? "Compiler Standard: N2 (OOP, Classes, <lib/*>)\nClick to switch to N1 (Legacy)"
-                        : "Compiler Standard: N1 (Legacy Procedural)\nClick to switch to N2 (OOP)"
+                        ? "Compiler Standard: N2\nClick to switch to N1"
+                        : "Compiler Standard: N1\nClick to switch to N2"
         )));
     }
 

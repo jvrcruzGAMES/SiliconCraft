@@ -8,14 +8,10 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.util.zip.DeflaterOutputStream;
-import java.util.zip.InflaterInputStream;
+import java.util.ArrayList;
+import java.util.List;
 
-public record SyncFramebufferPacket(BlockPos pos, int mode, byte[] compressedPixels) implements CustomPacketPayload {
+public record SyncFramebufferPacket(BlockPos pos, int mode, int offset, byte[] compressedPixels) implements CustomPacketPayload {
     public static final Type<SyncFramebufferPacket> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(Siliconcraft.MODID, "sync_framebuffer"));
 
@@ -25,44 +21,21 @@ public record SyncFramebufferPacket(BlockPos pos, int mode, byte[] compressedPix
                     SyncFramebufferPacket::pos,
                     ByteBufCodecs.VAR_INT,
                     SyncFramebufferPacket::mode,
-                    ByteBufCodecs.BYTE_ARRAY,
+                    ByteBufCodecs.VAR_INT,
+                    SyncFramebufferPacket::offset,
+                    ByteBufCodecs.byteArray(FramebufferCodec.PACKET_BYTES),
                     SyncFramebufferPacket::compressedPixels,
                     SyncFramebufferPacket::new
             );
 
-    public static byte[] compress(int[] pixels) {
-        if (pixels == null) return new byte[0];
-        try {
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            try (DeflaterOutputStream dos = new DeflaterOutputStream(baos);
-                 DataOutputStream out = new DataOutputStream(dos)) {
-                out.writeInt(pixels.length);
-                for (int p : pixels) {
-                    out.writeInt(p);
-                }
-            }
-            return baos.toByteArray();
-        } catch (Exception e) {
-            return new byte[0];
+    public static List<SyncFramebufferPacket> frame(BlockPos pos, int mode, int[] pixels) {
+        if (mode != 1) return List.of(new SyncFramebufferPacket(pos, mode, 0, new byte[0]));
+        List<SyncFramebufferPacket> strips = new ArrayList<>();
+        for (int offset = 0; offset < pixels.length; offset += FramebufferCodec.PACKET_PIXELS) {
+            int count = Math.min(FramebufferCodec.PACKET_PIXELS, pixels.length - offset);
+            strips.add(new SyncFramebufferPacket(pos, mode, offset, FramebufferCodec.compress(pixels, offset, count)));
         }
-    }
-
-    public static int[] decompress(byte[] compressed) {
-        if (compressed == null || compressed.length == 0) return new int[0];
-        try {
-            ByteArrayInputStream bais = new ByteArrayInputStream(compressed);
-            try (InflaterInputStream iis = new InflaterInputStream(bais);
-                 DataInputStream in = new DataInputStream(iis)) {
-                int len = in.readInt();
-                int[] pixels = new int[len];
-                for (int i = 0; i < len; i++) {
-                    pixels[i] = in.readInt();
-                }
-                return pixels;
-            }
-        } catch (Exception e) {
-            return new int[0];
-        }
+        return strips;
     }
 
     @Override

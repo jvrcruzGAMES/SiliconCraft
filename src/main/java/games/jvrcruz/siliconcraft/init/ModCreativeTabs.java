@@ -39,5 +39,7 @@ public class ModCreativeTabs {
                         output.accept(ModItems.COMPUTER_CASE_ITEM.get());
                         output.accept(ModItems.COMPUTER_ITEM.get());
                         output.accept(ModItems.SPEAKER_ITEM.get());
+                        output.accept(ModItems.SERIAL_CABLE_ITEM.get());
+                        output.accept(ModItems.SERIAL_EXPANSION_ITEM.get());
                     }).build());
 }
