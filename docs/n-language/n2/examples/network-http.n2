@@ -1,0 +1,16 @@
+from <Network> import http_get, http_text, NET_OK
+import <std>
+
+func received(status, code, address, length)
+    if status == NET_OK then
+        println(code)
+        println(http_text(address, length))
+    else
+        println(status)
+    end
+    return code
+end
+
+func main()
+    http_get("https://example.org/", received)
+end

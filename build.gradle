@@ -228,6 +228,9 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    inputs.files(fileTree('docs') {
+        include '**/*.asm', '**/*.s', '**/*.n', '**/*.n2'
+    })
 }
 
 tasks.withType(Jar).configureEach {

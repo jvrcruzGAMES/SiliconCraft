@@ -13,7 +13,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Validates that all assembly examples presented in docs/examples.md
+ * Validates that all assembly examples presented in docs/assembly/examples/README.md
  * compile correctly, match their documented required CPU ISA instructions,
  * and execute with expected outcomes on the VirtualCpu.
  */

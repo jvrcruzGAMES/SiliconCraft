@@ -1,5 +1,7 @@
 # SiliconCraft
 
+[Documentation chapters](docs/README.md): [Getting Started](docs/getting-started/README.md) · [Assembly](docs/assembly/README.md) · [N1 (deprecated)](docs/n-language/n1/README.md) · [N2](docs/n-language/n2/README.md)
+
 [![Minecraft Version](https://img.shields.io/badge/Minecraft-1.21.1-brightgreen.svg)](https://neoforged.net/)
 [![Mod Loader](https://img.shields.io/badge/Loader-NeoForge-orange.svg)](https://neoforged.net/)
 [![Java](https://img.shields.io/badge/Java-21-blue.svg)](https://www.oracle.com/java/)
@@ -87,7 +89,7 @@ SiliconCraft works completely out-of-the-box as a standalone mod, but seamlessly
 | **Curios** | Modrinth / CurseForge | Client & Server | Inventory Manager access to accessory slots and item transfers. |
 | **Nature's Compass / Explorer's Compass** | Modrinth / CurseForge | Client & Server | Digital compass peripherals for biome and structure searches, respectively. |
 
-Sable Companion is included inside the mod JAR; it does not need a separate installation. Without Mekanism, the Gas Detector remains craftable but cannot handle chemicals, and radiation readings return empty text. Environment Detector world coordinates work with or without Sable. See the [peripheral reference](docs/peripherals.md) for details.
+Sable Companion is included inside the mod JAR; it does not need a separate installation. Without Mekanism, the Gas Detector remains craftable but cannot handle chemicals, and radiation readings return empty text. Environment Detector world coordinates work with or without Sable. See the [peripheral reference](docs/assembly/peripherals.md) for details.
 
 ---
 
@@ -97,7 +99,7 @@ Sable Companion is included inside the mod JAR; it does not need a separate inst
 1. Choose your instructions in the **Architecture Writer** and create an **Architecture Writeup**.
 2. Forge a chip using the writeup, **Silicon Powder**, and **Redstone Dust** in the **Chip Forge**.
 3. Compile a program and write it to a ROM chip using the **Programmer**.
-4. Combine the chip and programmed ROM with the required materials in the **SoC Manufacturer**. See the [getting started guide](docs/getting-started.md) for the full workflow.
+4. Combine the chip and programmed ROM with the required materials in the **SoC Manufacturer**. See the [getting started guide](docs/getting-started/README.md) for the full workflow.
 
 ### 2. Assemble Your Computer
 1. Place a **Computer Case** on the ground.
@@ -139,14 +141,14 @@ SiliconCraft computers and machines can be assembled into Sable sub-levels with 
 
 ## N2 networking
 
-N2 supports HTTP request and routing helpers, HTTP/3, WebSocket and secure WebSocket, and raw TCP and UDP sockets. The Minecraft server runs connections and controls whether guest programs can open listening ports. [Network guide](docs/network.md)
+N2 supports HTTP request and routing helpers, HTTP/3, WebSocket and secure WebSocket, and raw TCP and UDP sockets. The Minecraft server runs connections and controls whether guest programs can open listening ports. [Network guide](docs/n-language/n2/network.md)
 
 ## Peripherals
 
-Connect built-in peripherals to computers directly or through Serial Cables and Serial Expansions. Programs use the same peripheral instructions from Assembly and N2 DeviceKit. [Peripheral guide and examples](docs/peripherals.md)
+Connect built-in peripherals to computers directly or through Serial Cables and Serial Expansions. Programs use the same peripheral instructions from Assembly and N2 DeviceKit. [Assembly peripherals](docs/assembly/peripherals.md) · [N2 DeviceKit](docs/n-language/n2/peripherals.md)
 
-The Environment Detector can report its center as JSON world coordinates using `PERIPHERAL_ENV_POSITION` (`0x42D`). It works without Sable and follows the structure's world position when mounted on a Sable sublevel. [Method reference](docs/peripherals.md#environment-detector)
+The Environment Detector can report its center as JSON world coordinates using `PERIPHERAL_ENV_POSITION` (`0x42D`). It works without Sable and follows the structure's world position when mounted on a Sable sublevel. [Method reference](docs/assembly/peripherals.md#environment-detector)
 
 ## Create peripherals
 
-The Airship Sensor uses Create: Aeronautics and Sable for airship telemetry. The Digital Redstone Link uses Create to control named wireless redstone channels. [Setup and examples](docs/create-peripherals/README.md)
+The Airship Sensor uses Create: Aeronautics and Sable for airship telemetry. The Digital Redstone Link uses Create to control named wireless redstone channels. [Assembly setup and examples](docs/assembly/create-peripherals.md) · [N2 examples](docs/n-language/n2/create-peripherals.md)

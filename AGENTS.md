@@ -139,11 +139,11 @@ A standalone, cycle-accurate Rust implementation of the SiliconCraft Virtual CPU
 ## 10. Peripheral Methods & World Coordinates
 
 - Peripheral requests cross the synchronized `PeripheralBus` mailbox. World access and `ComputerPeripheral` calls run on the server thread through `ComputerBlockEntity`, never on CPU workers.
-- When adding a peripheral method, update its host implementation, the DeviceKit constants in `compiler/n2/N2Library.java`, [the peripheral reference](docs/peripherals.md), and relevant Assembly/N2 examples and tests. Peripheral method IDs are separate from CPU instruction opcodes.
+- When adding a peripheral method, update its host implementation, the DeviceKit constants in `compiler/n2/N2Library.java`, the [Assembly peripheral reference](docs/assembly/peripherals.md), the [N2 peripheral reference](docs/n-language/n2/peripherals.md), and relevant examples and tests. Peripheral method IDs are separate from CPU instruction opcodes.
 - **Environment Detector position**: `0x42D` / `PERIPHERAL_ENV_POSITION` returns JSON text containing numeric `x`, `y`, and `z` for the detector's center. Arguments are zero; consume text with `PRESULTS` or `peripheral_text()` after the mailbox reports success.
 - Use `SubLevelCoordinates.worldPosition` for world-space positions. Without Sable, the position is unchanged; the detector center is `(blockX + 0.5, blockY + 0.5, blockZ + 0.5)`. With Sable, transform sublevel positions into world space. Preserve fractional and negative coordinates and compute the position for each request so moving structures report current coordinates.
 - Keep optional Sable API access inside the guarded `SubLevelCoordinates.SableIntegration` class. Basic coordinate queries must work without the Sable mod.
-- [Assembly](docs/examples/environment-detector.asm) and [N2](docs/n-language/n2-examples/environment-detector.n2) examples print biome and position. `PeripheralInstructionsTest` executes both through the VM with host responses, including negative and fractional position values; this does not replace an in-game Sable integration test.
+- [Assembly](docs/assembly/examples/environment-detector.asm) and [N2](docs/n-language/n2/examples/environment-detector.n2) examples print biome and position. `PeripheralInstructionsTest` executes both through the VM with host responses, including negative and fractional position values; this does not replace an in-game Sable integration test.
 
 ## 11. Optional Dependencies & Packaging
 
@@ -160,3 +160,10 @@ A standalone, cycle-accurate Rust implementation of the SiliconCraft Virtual CPU
 - SiliconCraft uses the [MIT License](LICENSE). Keep `mod_license=MIT` and include `LICENSE` in JAR artifacts.
 - The shared CurseForge and mod-menu logo is [src/main/resources/siliconcraft.png](src/main/resources/siliconcraft.png), a 256 × 256 PNG with a circuit-board background and centered Minecraft bitmap-font `SC`. The metadata uses `logoFile = "siliconcraft.png"` and `logoBlur = false`. Use FFmpeg for the requested logo workflow.
 - Base public feature descriptions on registered content and implementation. The hardware workflow uses Architecture Writer, Chip Forge, Memory Forge, Programmer, and SoC Manufacturer. Silicon Powder is implemented; do not describe a Silicon Inscriber or Silicon Wafer as existing content.
+
+## 13. Documentation Chapters
+
+- [docs/README.md](docs/README.md) indexes four chapters: [Getting Started](docs/getting-started/README.md), [Assembly](docs/assembly/README.md), [deprecated N1](docs/n-language/n1/README.md), and [N2](docs/n-language/n2/README.md). Each chapter owns its guides, references, and examples.
+- Keep hardware/wiring and server settings under `docs/getting-started/`. Document Assembly peripheral/network instructions under `docs/assembly/`, and N2 DeviceKit/Network functions under `docs/n-language/n2/`. N1 compatibility examples belong under `docs/n-language/n1/`; clearly mark N1 deprecated and direct new programs to N2.
+- When changing a shared peripheral or networking API, update both language references and examples. Keep relative links, the root README, these guidelines, and test fixture paths synchronized when moving documentation. Do not recreate the retired top-level peripheral/network guides or the old `n1-examples` / `n2-examples` folders.
+- `DocumentationChapterExamplesTest` compiles and assembles the chapter source files, including multi-file projects. Gradle tracks example sources as test inputs so edits invalidate cached test results. `PeripheralInstructionsTest` executes the Assembly and N2 Environment Detector examples against simulated host responses.

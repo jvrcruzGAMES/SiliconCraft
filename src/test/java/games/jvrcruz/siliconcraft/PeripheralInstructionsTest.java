@@ -236,9 +236,9 @@ class PeripheralInstructionsTest {
 
     @Test
     void documentedPeripheralExamplesReadTextFromHost() throws Exception {
-        var assemblyExample = Assembler.assemble(Files.readAllLines(Path.of("docs/examples/environment-detector.asm")));
+        var assemblyExample = Assembler.assemble(Files.readAllLines(Path.of("docs/assembly/examples/environment-detector.asm")));
         assertTrue(assemblyExample.success());
-        var n2Example = N2Compiler.compile(Files.readString(Path.of("docs/n-language/n2-examples/environment-detector.n2")));
+        var n2Example = N2Compiler.compile(Files.readString(Path.of("docs/n-language/n2/examples/environment-detector.n2")));
         assertTrue(n2Example.success(), n2Example.errors().toString());
         var compiledExample = Assembler.assemble(n2Example.assembly());
         assertTrue(compiledExample.success());

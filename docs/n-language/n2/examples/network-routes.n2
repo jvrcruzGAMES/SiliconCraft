@@ -1,0 +1,26 @@
+import <Network>
+import <std>
+
+func home(address, length)
+    return http_reply(200, "Hello from SiliconCraft")
+end
+
+func echo(address, length)
+    return http_reply(201, http_body(address, length))
+end
+
+func main()
+    local listener = http_listen(NET_HTTP, 8080)
+    if listener < 0 then
+        println(listener)
+        return
+    end
+    local routes = [http_route(NET_GET, "/", home), http_route(NET_POST, "/echo", echo)]
+    http_serve(listener, routes)
+    if network_close(listener) == 1 then
+        while network_status() == NET_PENDING do
+            sleep(1)
+        end
+        network_result(0, 0)
+    end
+end
