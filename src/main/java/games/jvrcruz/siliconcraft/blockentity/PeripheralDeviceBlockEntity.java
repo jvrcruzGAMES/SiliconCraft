@@ -304,6 +304,10 @@ public final class PeripheralDeviceBlockEntity extends BlockEntity implements Co
             case 0x429 -> text(JSON.toJson(world.getServer().levelKeys().stream().map(key -> key.location().toString())
                     .sorted().skip(Math.max(0, arg)).limit(32).toList()));
             case 0x42c -> text(JSON.toJson(SubLevelCoordinates.nearbyStructures(world, scanBox(world, arg))));
+            case 0x42d -> {
+                Vec3 position = worldCenter(world);
+                yield text(JSON.toJson(Map.of("x", position.x, "y", position.y, "z", position.z)));
+            }
             case 0x42a -> text(JSON.toJson(world.getEntities(null, scanBox(world, arg))
                     .stream().limit(24).map(entity -> Map.of("type", BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString(),
                             "uuid", entity.getStringUUID(), "x", entity.getX(), "y", entity.getY(), "z", entity.getZ())).toList()));

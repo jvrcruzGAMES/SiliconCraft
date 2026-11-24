@@ -27,5 +27,13 @@ func main()
             print("Could not read the biome.")
         end
     end
+    if peripheral_call(port, PERIPHERAL_ENV_POSITION, 0, 0) == 1 then
+        if wait_request() then
+            print(peripheral_text())
+        else
+            peripheral_result()
+            print("Could not read the world position.")
+        end
+    end
     return 0
 end

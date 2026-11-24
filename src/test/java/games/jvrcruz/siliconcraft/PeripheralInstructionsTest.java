@@ -248,6 +248,8 @@ class PeripheralInstructionsTest {
             cpu.configure(InstructionValidator.ALL_INSTRUCTIONS_SET, 65536, program.bytecode(), false, 0);
             cpu.powerOn();
             PeripheralBus bus = cpu.getPeripheralBus();
+            List<Integer> methods = new ArrayList<>();
+            String position = "{\"x\":-12.75,\"y\":64.5,\"z\":123.125}";
             for (int i = 0; i < 1000 && cpu.getState() == VirtualCpu.State.RUNNING; i++) {
                 cpu.step();
                 var request = bus.pendingRequest();
@@ -256,13 +258,21 @@ class PeripheralInstructionsTest {
                 if (request.operation() == PeripheralBus.Operation.WRAP) {
                     bus.complete(request, PeripheralBus.OK, 1);
                 } else {
-                    assertEquals(0x420, request.method());
-                    String biome = "minecraft:plains";
-                    bus.complete(request, PeripheralBus.OK, biome.length(), biome);
+                    methods.add(request.method());
+                    assertEquals(0, request.arg0());
+                    assertEquals(0, request.arg1());
+                    String result = switch (request.method()) {
+                        case 0x420 -> "minecraft:plains";
+                        case 0x42d -> position;
+                        default -> throw new AssertionError("Unexpected method: " + request.method());
+                    };
+                    bus.complete(request, PeripheralBus.OK, result.length(), result);
                 }
             }
             assertEquals(VirtualCpu.State.HALTED, cpu.getState());
+            assertEquals(List.of(0x420, 0x42d), methods);
             assertTrue(String.join("\n", cpu.getTerminalOutput()).contains("minecraft:plains"));
+            assertTrue(String.join("\n", cpu.getTerminalOutput()).contains(position));
         }
     }
 

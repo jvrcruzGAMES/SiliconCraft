@@ -141,7 +141,7 @@ These blocks are in the SiliconCraft creative tab and have crafting recipes. The
 
 In the tables, names are the suffixes of N2 constants. For example, use `PERIPHERAL_ENV_BIOME` with `peripheral_call`, or `0x420` with `PCALL`. Leave unused arguments at zero. Rows marked **string input** use `PCALLS` or `peripheral_call_string`. Use `PRESULTS` for text in Assembly and `peripheral_text()` for a managed N2 string. JSON results are text. An empty event result means no event is available.
 
-The [Assembly example](examples/environment-detector.asm) and [N2 example](n-language/n2-examples/environment-detector.n2) read and print the biome ID from a detector to the computer's north.
+The [Assembly example](examples/environment-detector.asm) and [N2 example](n-language/n2-examples/environment-detector.n2) read and print the biome ID and world position from a detector to the computer's north.
 
 ### Chat Box
 
@@ -191,6 +191,9 @@ Recipe ingredient is a Daylight Detector.
 | `0x42A` | `ENV_ENTITIES` | Up to 24 loaded entities in a box extending 1–32 blocks around the detector. Pass the range in the first argument. Returns a JSON array of type IDs, UUIDs, and positions. |
 | `0x42B` | `ENV_RADIATION` | Mekanism radiation in Sv/h as decimal text. An empty result means Mekanism is absent. |
 | `0x42C` | `ENV_STRUCTURES` | Sable structures intersecting a 1–32-block scan radius, passed as the first argument. Returns up to 24 structure names and UUIDs as JSON. |
+| `0x42D` | `ENV_POSITION` | Detector center in world coordinates as JSON: `{"x":12.5,"y":64.5,"z":-3.5}`. Preserves fractional coordinates and transforms positions on Sable sublevels into world space. Unused arguments are zero. |
+
+`ENV_POSITION` works without Sable installed. In a normal world it returns the block center (`x + 0.5`, `y + 0.5`, `z + 0.5`). Sable's coordinate conversion is only used when Sable is present.
 
 ### Player Detector
 

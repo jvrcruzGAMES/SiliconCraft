@@ -200,6 +200,7 @@ public class N2Library {
         addConst(deviceKit, "PERIPHERAL_ENV_ENTITIES", 0x42a, "DeviceKit");
         addConst(deviceKit, "PERIPHERAL_ENV_RADIATION", 0x42b, "DeviceKit");
         addConst(deviceKit, "PERIPHERAL_ENV_STRUCTURES", 0x42c, "DeviceKit");
+        addConst(deviceKit, "PERIPHERAL_ENV_POSITION", 0x42d, "DeviceKit");
         addConst(deviceKit, "PERIPHERAL_COMPASS_LOCATE", 0x490, "DeviceKit");
         addConst(deviceKit, "PERIPHERAL_PLAYER_ONLINE", 0x430, "DeviceKit");
         addConst(deviceKit, "PERIPHERAL_PLAYER_RANGE", 0x431, "DeviceKit");
