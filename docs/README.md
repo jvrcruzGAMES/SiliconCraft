@@ -13,7 +13,7 @@ Welcome to the **SiliconCraft** documentation. SiliconCraft is a Minecraft 1.21.
 | **[isa-reference.md](isa-reference.md)** | Complete Instruction Set Architecture (ISA) reference detailing registers, status flags, and opcodes for control flow, arithmetic, storage, graphics, audio, peripherals, and networking. |
 | **[assembly-syntax.md](assembly-syntax.md)** | Guide to writing `.s` and `.asm` files: syntax rules, labels, comments, number formats, RAM/storage addressing, and device operations. |
 | **[examples.md](examples.md)** | Ready-to-use assembly and `.n` programs (Fibonacci, Counters, Array processing, Framebuffer graphics, and Audio synthesis). |
-| **[Peripherals](peripherals.md)** | Built-in devices, serial wiring, DeviceKit, and the mod integration API. |
+| **[Peripherals](peripherals.md)** | Built-in devices, serial wiring, DeviceKit, optional integration behavior, and Environment Detector world coordinates with or without Sable. |
 | **[Network](network.md)** | N2 HTTP utilities, raw sockets, Assembly instructions, and server settings. |
 | **[Airship Sensor and Digital Redstone Link](create-peripherals/README.md)** | Airship peripheral setup, method reference, and runnable Assembly and N2 examples. |
 

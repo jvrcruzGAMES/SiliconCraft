@@ -28,12 +28,11 @@ Design your own silicon chips from raw wafers, assemble modular personal compute
 
 ---
 
-### 🔬 Silicon Inscription & Architecture Synthesis
-- **Photolithography in Minecraft**: Use the **Silicon Inscriber** with silicon wafers, gold wire, and redstone to synthesize custom instruction sets.
+a### 🔬 Chip Forging & Architecture Design
+- **Custom Architectures**: Select instructions in the **Architecture Writer**, then use the resulting Architecture Writeup with silicon powder and redstone in the **Chip Forge**.
 - **Bespoke Instruction Sets**:
-  - Choose exactly which of the 71 instructions your CPU supports (Arithmetic, Logic, Stack Operations, Subroutines, Storage IO, Graphics, Audio, Interrupts).
-  - Create anything from a minimal 3-instruction microcontroller up to a full-featured 70-instruction computing monster.
-- **Integrated BIOS / ROM**: Burn bootloader assembly directly onto the silicon wafer during synthesis.
+  - Choose which instructions your CPU supports, including arithmetic, logic, stack operations, subroutines, storage, graphics, audio, interrupts, peripherals, and networking.
+- **Integrated BIOS / ROM**: Write a program to a ROM chip with the **Programmer**, then combine it with your forged chip in the **SoC Manufacturer**.
 
 ---
 
@@ -80,17 +79,25 @@ SiliconCraft works completely out-of-the-box as a standalone mod, but seamlessly
 |---|---|---|---|
 | **[Controlify](https://www.curseforge.com/minecraft/mc-mods/controlify)** | CurseForge / Modrinth | Client | **External Controller Support**: Enables physical gamepad input. Connect Xbox, PlayStation, Switch Pro, Steam Deck, or generic USB/Bluetooth controllers to play computer games directly on the screen. (Disabled if Controlify is not present). |
 | **[Jade](https://www.curseforge.com/minecraft/mc-mods/jade)** | CurseForge / Modrinth | Client & Server | **In-World HUD Tooltips**: Look at any Personal Computer, Computer Case, Speaker, or Machine to see CPU state (`[RUNNING]`, `[OFF]`, `[ERROR]`), SoC opcode count, installed RAM, storage capacity, cycle count, and active error messages. |
-| **[JEI (Just Enough Items)](https://www.curseforge.com/minecraft/mc-mods/jei)** | CurseForge / Modrinth | Client & Server | **Recipe & Machine Lookup**: Full recipe browsing and integration for the Silicon Inscriber, Memory Forge, and Programmer workstations. |
+| **[JEI (Just Enough Items)](https://www.curseforge.com/minecraft/mc-mods/jei)** | CurseForge / Modrinth | Client & Server | Recipe categories for Chip Forge, Memory Forge, SoC Manufacturer, and Computer Assembly. |
+| **Create** | Modrinth | Client & Server | Digital Redstone Link for named wireless redstone channels. |
+| **Create: Aeronautics + Sable** | Modrinth | Client & Server | Airship Sensor for position, orientation, pressure, and velocity readings. |
+| **Sable** | Modrinth | Client & Server | Coordinate handling for computers, peripherals, and positional speaker audio on moving structures. |
+| **Mekanism** | Modrinth / CurseForge | Client & Server | Gas Detector chemical handling and Environment Detector radiation readings. |
+| **Curios** | Modrinth / CurseForge | Client & Server | Inventory Manager access to accessory slots and item transfers. |
+| **Nature's Compass / Explorer's Compass** | Modrinth / CurseForge | Client & Server | Digital compass peripherals for biome and structure searches, respectively. |
+
+Sable Companion is included inside the mod JAR; it does not need a separate installation. Without Mekanism, the Gas Detector remains craftable but cannot handle chemicals, and radiation readings return empty text. Environment Detector world coordinates work with or without Sable. See the [peripheral reference](docs/peripherals.md) for details.
 
 ---
 
 ## 🛠️ Quick Start Guide
 
 ### 1. Synthesize a System-on-Chip (SoC)
-1. Place a **Silicon Inscriber**.
-2. Insert a **Silicon Wafer**, **Gold Ingot**, and **Redstone Dust**.
-3. Select your desired CPU architecture profile (or customize opcodes and BIOS code).
-4. Fabricate your synthesized **SoC**.
+1. Choose your instructions in the **Architecture Writer** and create an **Architecture Writeup**.
+2. Forge a chip using the writeup, **Silicon Powder**, and **Redstone Dust** in the **Chip Forge**.
+3. Compile a program and write it to a ROM chip using the **Programmer**.
+4. Combine the chip and programmed ROM with the required materials in the **SoC Manufacturer**. See the [getting started guide](docs/getting-started.md) for the full workflow.
 
 ### 2. Assemble Your Computer
 1. Place a **Computer Case** on the ground.
@@ -100,7 +107,7 @@ SiliconCraft works completely out-of-the-box as a standalone mod, but seamlessly
 
 ### 3. Power On & Run Programs
 1. Click the **⏻ ON** button to boot your computer.
-2. The onboard BIOS will initialize hardware, test RAM, mount drives, and launch the primary program.
+2. The computer runs the program stored in its SoC's ROM. Hardware checks and boot behavior depend on the program you wrote.
 3. Play games using your keyboard or plug in a controller with **Controlify** installed!
 
 ---
@@ -137,6 +144,8 @@ N2 supports HTTP request and routing helpers, HTTP/3, WebSocket and secure WebSo
 ## Peripherals
 
 Connect built-in peripherals to computers directly or through Serial Cables and Serial Expansions. Programs use the same peripheral instructions from Assembly and N2 DeviceKit. [Peripheral guide and examples](docs/peripherals.md)
+
+The Environment Detector can report its center as JSON world coordinates using `PERIPHERAL_ENV_POSITION` (`0x42D`). It works without Sable and follows the structure's world position when mounted on a Sable sublevel. [Method reference](docs/peripherals.md#environment-detector)
 
 ## Create peripherals
 

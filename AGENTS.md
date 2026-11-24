@@ -9,7 +9,7 @@ This document provides critical architectural principles, thread safety rules, a
 SiliconCraft is a NeoForge Minecraft mod (1.21.1) simulating modular personal computers, microcontrollers, and custom silicon architectures inside Minecraft.
 
 - **`vm/` (`VirtualCpu.java`)**: The 16/32-bit virtual CPU executing pre-decoded bytecode instructions, hardware timers, and memory-mapped peripherals.
-- **`compiler/` (`NCompiler.java`, `Assembler.java`)**: The toolchain compiling high-level `N` language files and raw assembly down into `.o` bytecode images.
+- **`compiler/` (`n1/NCompiler.java`, `n2/N2Compiler.java`, `Assembler.java`)**: The toolchain compiling N1, N2, and raw assembly down into `.o` bytecode images. `n2/N2Library.java` defines DeviceKit constants.
 - **`blockentity/` (`ComputerBlockEntity.java`, etc.)**: Tile entities bridging Minecraft game state, inventories, and virtual hardware.
 - **`client/` (`ComputerScreen.java`, `ComputerAudioPlayer.java`)**: CRT display rendering, audio playback (OpenAL/JavaSound), and user input.
 
@@ -133,3 +133,30 @@ A standalone, cycle-accurate Rust implementation of the SiliconCraft Virtual CPU
 - **Headless Mode**: Supports `--headless` for automated test suites and benchmarks.
 - **Toolchain Parity**: Features the same `.n` compiler, assembly project resolver, and `.o` bytecode executor as the Minecraft mod.
 - **Standard Preset**: 4 sticks of RAM (4096 KB), NVMe in extension slot 1 (1024 MB), all 71 instructions enabled, and code burned to non-volatile ROM.
+
+---
+
+## 10. Peripheral Methods & World Coordinates
+
+- Peripheral requests cross the synchronized `PeripheralBus` mailbox. World access and `ComputerPeripheral` calls run on the server thread through `ComputerBlockEntity`, never on CPU workers.
+- When adding a peripheral method, update its host implementation, the DeviceKit constants in `compiler/n2/N2Library.java`, [the peripheral reference](docs/peripherals.md), and relevant Assembly/N2 examples and tests. Peripheral method IDs are separate from CPU instruction opcodes.
+- **Environment Detector position**: `0x42D` / `PERIPHERAL_ENV_POSITION` returns JSON text containing numeric `x`, `y`, and `z` for the detector's center. Arguments are zero; consume text with `PRESULTS` or `peripheral_text()` after the mailbox reports success.
+- Use `SubLevelCoordinates.worldPosition` for world-space positions. Without Sable, the position is unchanged; the detector center is `(blockX + 0.5, blockY + 0.5, blockZ + 0.5)`. With Sable, transform sublevel positions into world space. Preserve fractional and negative coordinates and compute the position for each request so moving structures report current coordinates.
+- Keep optional Sable API access inside the guarded `SubLevelCoordinates.SableIntegration` class. Basic coordinate queries must work without the Sable mod.
+- [Assembly](docs/examples/environment-detector.asm) and [N2](docs/n-language/n2-examples/environment-detector.n2) examples print biome and position. `PeripheralInstructionsTest` executes both through the VM with host responses, including negative and fractional position values; this does not replace an in-game Sable integration test.
+
+## 11. Optional Dependencies & Packaging
+
+- `src/main/templates/META-INF/neoforge.mods.toml` is the source of mod dependency metadata. Gradle expands it into the built JAR. Declare integrations actually used by SiliconCraft; JEI's `mezz_config` and `mezz_config_gui` dependencies do not belong in this file.
+- Optional dependency ranges use an inclusive supported minimum and an exclusive next-major upper bound, for example Create `[6.0.10,7)`. Use the version and mod ID from the actual artifact metadata, not a hosting slug. Compass versions include a Minecraft prefix, for example `[1.21.1-3.4.0-neoforge,1.21.1-4.0.0)`.
+- Create: Aeronautics uses mod ID `aeronautics`. Its distribution wrapper is `aeronautics_bundled`; target the embedded mod for integration checks and dependency ordering.
+- **Sable Companion is bundled**, using `jarJar(api(...))` with a supported version range and preferred version from `sable_companion_version`. Keep its exclusive Maven repository configuration. Do not add a standalone `sablecompanion` dependency to `mods.toml`; verify the library and its jarJar metadata are present in the built mod JAR.
+- **Mekanism is optional**: guard `PeripheralGas` access with `ModList` checks. Without Mekanism, the Gas Detector remains registered, craftable, and visible, but has no chemical capability; gas capacity is zero and the ready chemical ID is empty. Environment Detector radiation is empty text. Energy and Fluid Detectors use NeoForge capabilities independently.
+- **Curios is used** by Inventory Manager slot listing, item queries, and transfers. Keep its optional dependency and guard calls to `PeripheralCurios` when absent.
+- Register the Airship Sensor only with Aeronautics and Sable, the Digital Redstone Link with Create, and each digital compass with its corresponding compass mod. Controlify is a client-side optional dependency.
+
+## 12. License, Branding & Feature Descriptions
+
+- SiliconCraft uses the [MIT License](LICENSE). Keep `mod_license=MIT` and include `LICENSE` in JAR artifacts.
+- The shared CurseForge and mod-menu logo is [src/main/resources/siliconcraft.png](src/main/resources/siliconcraft.png), a 256 × 256 PNG with a circuit-board background and centered Minecraft bitmap-font `SC`. The metadata uses `logoFile = "siliconcraft.png"` and `logoBlur = false`. Use FFmpeg for the requested logo workflow.
+- Base public feature descriptions on registered content and implementation. The hardware workflow uses Architecture Writer, Chip Forge, Memory Forge, Programmer, and SoC Manufacturer. Silicon Powder is implemented; do not describe a Silicon Inscriber or Silicon Wafer as existing content.

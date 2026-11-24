@@ -195,6 +195,10 @@ Recipe ingredient is a Daylight Detector.
 
 `ENV_POSITION` works without Sable installed. In a normal world it returns the block center (`x + 0.5`, `y + 0.5`, `z + 0.5`). Sable's coordinate conversion is only used when Sable is present.
 
+The position is read for each request, so it follows a moving Sable structure. Values are JSON numbers in blocks, including negative and fractional coordinates. They describe the detector, not the connected computer. After wrapping the detector, submit `PCALL A, port, 0x42D, 0, 0` in Assembly or `peripheral_call(port, PERIPHERAL_ENV_POSITION, 0, 0)` in N2. Wait for the mailbox to report success and consume the text with `PRESULTS` or `peripheral_text()`; see the complete examples linked above.
+
+Without Sable, `ENV_STRUCTURES` returns an empty JSON array. Without Mekanism, `ENV_RADIATION` returns empty text; the other Environment Detector queries remain available.
+
 ### Player Detector
 
 Recipe ingredient is a Compass. Event polling covers clicks on the detector and login, logout, death, and dimension changes. Server events are retained for at most 1,200 ticks in a shared bounded queue.
@@ -263,6 +267,8 @@ Recipe ingredient is a Repeater. All six faces can be read and controlled indepe
 ### Energy, Fluid, and Gas Detectors
 
 Recipe ingredients are a Redstone Block, Bucket, and Glass Bottle respectively. Place each detector inline so the marked face and rear face connect to the resource network. These blocks proxy transfers between the two sides and share one per-tick transfer limit across both directions. Energy uses Forge Energy and liquids use NeoForge fluid capabilities. Gas uses Mekanism's chemical capability when Mekanism is installed.
+
+Without Mekanism, the Gas Detector remains craftable and visible in the creative tab, but cannot transfer chemicals. `FLOW_MAX` returns 0 and `FLOW_READY_ID` returns empty text. Energy and Fluid Detectors do not require Mekanism.
 
 | ID | Constant suffix | Arguments and result |
 |---|---|---|
