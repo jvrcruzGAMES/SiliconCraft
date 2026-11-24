@@ -124,7 +124,7 @@ SiliconCraft works completely out-of-the-box as a standalone mod, but seamlessly
 
 ## 📜 License
 
-SiliconCraft is distributed under the project's open-source license. Contributions, issues, and feature requests are welcome!
+SiliconCraft is licensed under the [MIT License](LICENSE). Contributions, issues, and feature requests are welcome!
 
 ## Sable compatibility
 

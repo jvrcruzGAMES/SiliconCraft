@@ -15,10 +15,14 @@ repositories {
         url = 'https://modmaven.dev'
         content { includeGroup 'mekanism' }
     }
-    maven {
-        name = 'Sable Companion'
-        url = 'https://maven.ryanhcode.dev/releases'
-        content { includeGroup 'dev.ryanhcode.sable-companion' }
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = 'Sable Companion'
+                url = 'https://maven.ryanhcode.dev/releases'
+            }
+        }
+        filter { includeGroup 'dev.ryanhcode.sable-companion' }
     }
     maven {
         name = "CurseForge Maven"
@@ -205,7 +209,11 @@ dependencies {
     optionalModDevelopment "maven.modrinth:create:${create_release}"
     optionalModDevelopment "maven.modrinth:create-aeronautics:${aeronautics_release}"
     optionalModDevelopment "maven.modrinth:sable:${sable_release}"
-    compileOnly 'dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0'
+    jarJar(api("dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:[${project.sable_companion_version},)")) {
+        version {
+            prefer(project.sable_companion_version)
+        }
+    }
     serverRuntimeRuntimeOnly sourceSets.main.output
     compileOnly("dev.isxander:controlify:2.4.4+1.21.1-neoforge") {
         transitive = false
@@ -220,6 +228,10 @@ dependencies {
 
 test {
     useJUnitPlatform()
+}
+
+tasks.withType(Jar).configureEach {
+    from('LICENSE')
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.
