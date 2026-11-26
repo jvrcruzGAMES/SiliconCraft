@@ -15,7 +15,8 @@ from urllib.parse import urlsplit, urlunsplit
 ROOT = Path(__file__).resolve().parents[1]
 WEBSITE = ROOT / "website"
 MANIFEST = WEBSITE / "versions.json"
-DEFAULT_URL = "https://jvrcruzGAMES.github.io/SiliconCraft/"
+DEFAULT_URL = "http://sc.jvrcruz.games/"
+LEGACY_URL = "https://jvrcruzGAMES.github.io/SiliconCraft/"
 VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?")
 
 
@@ -182,6 +183,9 @@ def build(output, base_url):
             with tempfile.TemporaryDirectory() as work:
                 prepared = Path(work) / "docs"
                 shutil.copytree(docs, prepared)
+                # Hosting URLs apply to every release without rewriting preserved snapshots.
+                for document in prepared.rglob("*.md"):
+                    document.write_text(document.read_text().replace(LEGACY_URL, base_url))
                 for asset in (WEBSITE / "assets").iterdir():
                     shutil.copyfile(asset, prepared / "assets" / asset.name)
                 config = {
@@ -217,6 +221,7 @@ img{{width:96px;image-rendering:pixelated}}h1{{font-size:2.5rem;line-height:1.15
 <p><a class="start" href="{latest}/">Read version {latest}</a></p><h2>Mod versions</h2><ul>{links}</ul>
 <p><a href="https://github.com/jvrcruzGAMES/SiliconCraft">Source on GitHub</a></p></main></body></html>''')
         (stage / ".nojekyll").touch()
+        shutil.copyfile(WEBSITE / "CNAME", stage / "CNAME")
         if output.exists():
             shutil.rmtree(output)
         shutil.copytree(stage, output)

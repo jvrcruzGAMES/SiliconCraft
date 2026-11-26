@@ -1,6 +1,6 @@
 # SiliconCraft
 
-[Versioned documentation website](https://jvrcruzGAMES.github.io/SiliconCraft/) · [Website build and release instructions](website/README.md)
+[Versioned documentation website](http://sc.jvrcruz.games/) · [Website build and release instructions](website/README.md)
 
 [Documentation chapters](docs/README.md): [Getting Started](docs/getting-started/README.md) · [Assembly](docs/assembly/README.md) · [N1 (deprecated)](docs/n-language/n1/README.md) · [N2](docs/n-language/n2/README.md)
 

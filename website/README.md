@@ -2,7 +2,11 @@
 
 The documentation site publishes each mod release separately. The first release is **0.1.1**. Search is scoped to the selected mod version, and the version selector keeps the current page when it exists in another release.
 
+The website root is **http://sc.jvrcruz.games/**. A version's root is **http://sc.jvrcruz.games/X.X.X/**, for example [0.1.2](http://sc.jvrcruz.games/0.1.2/) or [0.1.1](http://sc.jvrcruz.games/0.1.1/). Chapter paths are relative to that version, without a `/SiliconCraft/` prefix.
+
 `docs/` is the working manual. `website/versions/<version>/docs/` contains a preserved release snapshot, including downloadable examples, the project README, MIT license, and logo. Each snapshot also stores its chapter navigation. `website/versions.json` lists available releases, their content checksums, and the latest version. Updating the website theme does not change archived documentation sources.
+
+The builder also updates legacy GitHub Pages documentation URLs in its temporary rendering copies to the configured website root. Archived source files and their checksums remain unchanged.
 
 ## Local build
 
@@ -33,6 +37,6 @@ The workflow in [`.github/workflows/docs.yml`](../.github/workflows/docs.yml) bu
 
 In the repository's **Settings → Pages → Build and deployment**, choose **GitHub Actions** as the source. Then push the workflow to `master` or run **Versioned documentation** manually. GitHub's `github-pages` environment and repository Actions settings must permit the deployment.
 
-Expected project URL: [SiliconCraft documentation](https://jvrcruzGAMES.github.io/SiliconCraft/). This URL becomes available after the first successful deployment.
+The workflow uses the default `http://sc.jvrcruz.games/` base URL. The build copies `website/CNAME` to the site root. In **Settings → Pages → Custom domain**, configure `sc.jvrcruz.games`, and point that subdomain's DNS CNAME to `jvrcruzGAMES.github.io` (without a repository path). GitHub Pages deployments through Actions still require the custom domain to be configured in repository settings; an artifact's CNAME file alone does not configure it.
 
 The site uses [MkDocs](https://www.mkdocs.org/) and [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/). The workflow follows [GitHub's custom Pages deployment instructions](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).

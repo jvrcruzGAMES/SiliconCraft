@@ -23,6 +23,7 @@ class ReleaseSnapshotsTest(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.website = self.root / "website"
         self.website.mkdir()
+        (self.website / "CNAME").write_text("sc.jvrcruz.games\n")
         self.manifest = self.website / "versions.json"
         self.manifest.write_text('{"latest": null, "versions": []}')
         (self.root / "docs").mkdir()
@@ -94,7 +95,7 @@ class ReleaseSnapshotsTest(unittest.TestCase):
             shutil.copytree(SOURCE_WEBSITE / name, self.website / name)
         shutil.copyfile(SOURCE_WEBSITE / "hooks.py", self.website / "hooks.py")
         navigation = [{"Overview": "README.md"}, {"Guide": "guide.md"}]
-        (self.root / "docs/guide.md").write_text("# Shared guide\n")
+        (self.root / "docs/guide.md").write_text("# Shared guide\n\n[Documentation](https://jvrcruzGAMES.github.io/SiliconCraft/)\n")
         with patch.object(docs_site, "navigation", return_value=navigation):
             docs_site.snapshot("0.1.1")
             self.set_version("0.1.2")
@@ -126,6 +127,21 @@ class ReleaseSnapshotsTest(unittest.TestCase):
             self.assertTrue((output / version / "example.n2").is_file())
             search = json.loads((output / version / "search/search_index.json").read_text())
             self.assertTrue(any("Shared guide" in entry["title"] for entry in search["docs"]))
+        # The production domain has no repository prefix. Archives retain their original URLs.
+        docs_site.build(output, docs_site.DEFAULT_URL)
+        self.assertEqual(
+            ["/0.1.2/guide/", "/0.1.1/guide/"],
+            Options(output / "0.1.2/guide/index.html").targets,
+        )
+        self.assertEqual("sc.jvrcruz.games\n", (output / "CNAME").read_text())
+        for version in ("0.1.1", "0.1.2"):
+            rendered = (output / version / "guide/index.html").read_text()
+            self.assertIn(f'href="http://sc.jvrcruz.games/{version}/guide/"', rendered)
+            self.assertIn('href="http://sc.jvrcruz.games/"', rendered)
+            self.assertNotIn(docs_site.LEGACY_URL, rendered)
+            archived = self.website / "versions" / version / "docs/guide.md"
+            self.assertIn(docs_site.LEGACY_URL, archived.read_text())
+        docs_site.check()
 
 
 if __name__ == "__main__":

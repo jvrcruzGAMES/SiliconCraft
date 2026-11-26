@@ -170,6 +170,8 @@ A standalone, cycle-accurate Rust implementation of the SiliconCraft Virtual CPU
 
 ## 14. Versioned Documentation & GitHub Pages
 
+- The documentation root is `http://sc.jvrcruz.games/`; each version's root is `http://sc.jvrcruz.games/X.X.X/`. Keep the build default, workflow, version selector, canonical URLs, and current documentation links consistent with this root, without a `/SiliconCraft/` prefix. `website/CNAME` contains `sc.jvrcruz.games`. Rewrite legacy hosting URLs only in temporary rendering copies; do not edit archived snapshots to change the hosting domain.
+
 - GitHub Pages publishes preserved documentation by mod version, starting with **0.1.1**. `docs/` remains the working manual. See [website/README.md](website/README.md) for local builds and deployment setup.
 - **Required task on every `mod_version` bump**: finish the release's documentation and examples, then run `python3 scripts/docs_site.py snapshot <new-mod-version>`. Commit the new `website/versions/<new-mod-version>/` directory and the updated `website/versions.json` in the same change as `gradle.properties`.
 - Keep previous snapshots intact. Each contains the release's chapter navigation, manual, downloadable source examples, license, and logo. The snapshot command refuses duplicate versions, and the validation command rejects missing version entries or changed archive checksums.
