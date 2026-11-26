@@ -1,5 +1,7 @@
 # SiliconCraft documentation
 
+This directory is the working manual. The [documentation website](https://jvrcruzGAMES.github.io/SiliconCraft/) keeps a separate manual for each published mod version, starting with **0.1.1**. Select the version installed in your world before following its guides.
+
 Follow the chapters in order to build a computer, then choose Assembly or N2 to program it. N1 is deprecated and documented for existing programs.
 
 | Chapter | Contents |

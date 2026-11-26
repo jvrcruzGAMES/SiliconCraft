@@ -1,0 +1,99 @@
+[
+  {
+    "Overview": "README.md"
+  },
+  {
+    "Getting Started": [
+      {
+        "Build your first computer": "getting-started/README.md"
+      },
+      {
+        "Peripheral wiring": "getting-started/peripherals.md"
+      },
+      {
+        "Optional integrations": "getting-started/integrations.md"
+      },
+      {
+        "Server network settings": "getting-started/network-settings.md"
+      }
+    ]
+  },
+  {
+    "Assembly": [
+      {
+        "Introduction": "assembly/README.md"
+      },
+      {
+        "Syntax and projects": "assembly/syntax.md"
+      },
+      {
+        "Instruction reference": "assembly/reference.md"
+      },
+      {
+        "Peripherals": "assembly/peripherals.md"
+      },
+      {
+        "Networking": "assembly/network.md"
+      },
+      {
+        "Create and airships": "assembly/create-peripherals.md"
+      },
+      {
+        "Examples": "assembly/examples/README.md"
+      }
+    ]
+  },
+  {
+    "N1 (deprecated)": [
+      {
+        "Introduction": "n-language/n1/README.md"
+      },
+      {
+        "Language reference": "n-language/n1/reference.md"
+      },
+      {
+        "Peripherals and networking": "n-language/n1/peripherals-network.md"
+      },
+      {
+        "Examples": "n-language/n1/examples/README.md"
+      }
+    ]
+  },
+  {
+    "N2": [
+      {
+        "Introduction": "n-language/n2/README.md"
+      },
+      {
+        "Language guide": "n-language/n2/language.md"
+      },
+      {
+        "Libraries": "n-language/n2/libraries.md"
+      },
+      {
+        "Projects and imports": "n-language/n2/projects.md"
+      },
+      {
+        "DeviceKit peripherals": "n-language/n2/peripherals.md"
+      },
+      {
+        "Networking": "n-language/n2/network.md"
+      },
+      {
+        "Create and airships": "n-language/n2/create-peripherals.md"
+      },
+      {
+        "Examples": "n-language/n2/examples/README.md"
+      }
+    ]
+  },
+  {
+    "N language standards": "n-language/README.md"
+  },
+  {
+    "Project": "project.md"
+  },
+  {
+    "License": "license.md"
+  }
+]

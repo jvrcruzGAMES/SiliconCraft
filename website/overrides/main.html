@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block announce %}
+  <div class="release-bar">
+    <span>Documentation for <strong>SiliconCraft {{ config.extra.mod_version }}</strong></span>
+    <label for="docs-version">Mod version</label>
+    <select id="docs-version" aria-label="Documentation mod version">
+      {% for release in config.extra.releases %}
+        {% set target = release.url %}
+        {% if page and page.file and page.file.src_uri in release.pages %}
+          {% set target = release.url ~ page.url %}
+        {% endif %}
+        <option value="{{ target }}"{% if release.version == config.extra.mod_version %} selected{% endif %}>
+          {{ release.version }}{% if release.latest %} (latest){% endif %}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+{% endblock %}

@@ -1,0 +1,29 @@
+// ============================================
+// Program: 06_storage.n (N1 Standard)
+// Description: Multi-drive binary NVMe / Flash storage operations
+// ============================================
+
+println "--- Storage Demo ---"
+
+var count = storage.count()
+print "Drives detected: "
+println count
+
+if count > 0 {
+    storage.select(0)
+    var size = storage.size()
+    print "Drive 0 capacity (bytes): "
+    println size
+
+    // Write a test value and read it back
+    storage.write(0x10, 0xFE)
+    var b = storage.read(0x10)
+    print "Read byte from 0x10: "
+    println_hex b
+
+    // Write a 32-bit integer
+    storage.write_int(0x20, 123456)
+    var num = storage.read_int(0x20)
+    print "Read int from 0x20: "
+    println num
+}

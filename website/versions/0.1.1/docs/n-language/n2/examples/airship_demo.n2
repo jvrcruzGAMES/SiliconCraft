@@ -1,0 +1,71 @@
+import <DeviceKit>
+import <std>
+
+-- Wait for the server. The caller consumes the result.
+func finish_request()
+    while peripheral_status() == PERIPHERAL_PENDING do
+        sleep(1)
+    end
+    return peripheral_status()
+end
+
+func wrap_device(port)
+    if peripheral_wrap(port) != 1 then
+        return 0
+    end
+    local status = finish_request()
+    local result = peripheral_result()
+    if status == PERIPHERAL_OK then
+        return result
+    end
+    return 0
+end
+
+func set_engine(value)
+    if peripheral_call_string(PERIPHERAL_EAST, 0x310, "Engine", value) != 1 then
+        return 0
+    end
+    local status = finish_request()
+    local result = peripheral_result()
+    if status == PERIPHERAL_OK then
+        if result == value then
+            return 1
+        end
+    end
+    return 0
+end
+
+func main()
+    if wrap_device(PERIPHERAL_NORTH) != 1 then
+        print("Could not wrap the north sensor.")
+        return 0
+    end
+    if peripheral_call(PERIPHERAL_NORTH, 0x300, 0, 0) != 1 then
+        print("Could not queue the altitude request.")
+        return 0
+    end
+    local status = finish_request()
+    local altitude = peripheral_result()
+    if status != PERIPHERAL_OK then
+        print("Altitude request failed.")
+        return 0
+    end
+    print("Altitude (thousandths of a block):")
+    print(altitude)
+
+    if wrap_device(PERIPHERAL_EAST) != 1 then
+        print("Could not wrap the east controller.")
+        return 0
+    end
+    if set_engine(1) != 1 then
+        print("Could not turn Engine on. Check the channel and frequency.")
+        return 0
+    end
+    sleep(20)
+    if set_engine(0) != 1 then
+        print("Could not turn Engine off.")
+        return 0
+    end
+    print("Engine is off.")
+    return 1
+end

@@ -1,0 +1,23 @@
+-- ============================================
+-- File: utils/vector.n2 (N2 Module)
+-- Description: 2D Vector representation
+-- ============================================
+
+import <std>
+
+class Vector2 {
+    func init(x, y)
+        this.x = x
+        this.y = y
+    end
+
+    func add(other)
+        this.x = this.x + other.x
+        this.y = this.y + other.y
+    end
+
+    func print_coords()
+        print(this.x)
+        print(this.y)
+    end
+}
