@@ -197,6 +197,7 @@ SiliconCraft supports real-time polling of held keys and controller buttons for 
 | Opcode | Syntax | Description |
 |---|---|---|
 | **`INPAD`** | `INPAD dest [, padId]` | Reads the 16-bit bitmask of currently held buttons on controller `padId` (default 0) into `dest`. |
+| **`INAXIS`** | `INAXIS dest, padId, axis` | Reads a stick or trigger as an integer. Added in 0.1.2; enable it on the SoC for analog input. |
 
 #### Gamepad Button Bitmask Layout (SNES / Retro Layout)
 | Button Constant | Bit / Value | Hex | Description |
@@ -206,13 +207,34 @@ SiliconCraft supports real-time polling of held keys and controller buttons for 
 | `PAD_DOWN` | Bit 2 (`4`) | `0x0004` | D-Pad Down / Key S / Down Arrow |
 | `PAD_UP` | Bit 3 (`8`) | `0x0008` | D-Pad Up / Key W / Up Arrow |
 | `PAD_START` | Bit 4 (`16`) | `0x0010` | Start / Key Enter |
-| `PAD_SELECT`| Bit 5 (`32`) | `0x0020` | Select / Key Space |
-| `PAD_B` | Bit 6 (`64`) | `0x0040` | B Button (Standard Jump) / Key J |
-| `PAD_A` | Bit 7 (`128`)| `0x0080` | A Button (Spin Jump) / Key K |
-| `PAD_Y` | Bit 8 (`256`)| `0x0100` | Y Button (Run / Dash) / Key U |
-| `PAD_X` | Bit 9 (`512`)| `0x0200` | X Button (Action) / Key I |
-| `PAD_L` | Bit 10 (`1024`)| `0x0400`| Left Shoulder / Key Q |
-| `PAD_R` | Bit 11 (`2048`)| `0x0800`| Right Shoulder / Key E |
+| `PAD_SELECT`| Bit 5 (`32`) | `0x0020` | Select / Shift |
+| `PAD_B` | Bit 6 (`64`) | `0x0040` | South button / Space or Z |
+| `PAD_A` | Bit 7 (`128`)| `0x0080` | East button / X |
+| `PAD_Y` | Bit 8 (`256`)| `0x0100` | West button / C or J |
+| `PAD_X` | Bit 9 (`512`)| `0x0200` | North button / V or K |
+| `PAD_L` | Bit 10 (`1024`)| `0x0400`| Left shoulder or trigger / Q or U |
+| `PAD_R` | Bit 11 (`2048`)| `0x0800`| Right shoulder or trigger / E or I |
+| `PAD_LEFT_TRIGGER` | Bit 12 (`4096`) | `0x1000` | Left trigger reading greater than 500 |
+| `PAD_RIGHT_TRIGGER` | Bit 13 (`8192`) | `0x2000` | Right trigger reading greater than 500 |
+| `PAD_LEFT_STICK` | Bit 14 (`16384`) | `0x4000` | Left stick button (L3) |
+| `PAD_RIGHT_STICK` | Bit 15 (`32768`) | `0x8000` | Right stick button (R3) |
+
+#### Analog axes (0.1.2)
+
+| Axis ID | Reading | Range |
+|---|---|---|
+| 0 | Left stick X | −1000 left to +1000 right |
+| 1 | Left stick Y | −1000 up to +1000 down |
+| 2 | Right stick X | −1000 left to +1000 right |
+| 3 | Right stick Y | −1000 up to +1000 down |
+| 4 | Left trigger | 0 released to 1000 fully pressed |
+| 5 | Right trigger | 0 released to 1000 fully pressed |
+
+Values are rounded to integer thousandths. Each stick axis has a 0.15 deadzone: magnitudes at or below 0.15 read zero; values outside it retain their original scale. Physical input requires the optional Controlify mod. Its selected controller, or the first GLFW fallback gamepad, feeds virtual controller 0 while the computer screen is open. Slots 1–3 remain available to the VM but are not additional physical controller mappings. Keyboard buttons still work without Controlify and leave analog axes at zero. Invalid axis or pad IDs return zero; `INAXIS` does not use the special keyboard IDs of `INPAD`.
+
+For compatibility, the left stick still sets D-pad bits beyond ±500, and a trigger above 500 also sets the corresponding `PAD_L` or `PAD_R` bit. The new trigger bits distinguish triggers from bumpers. Both triggers and stick buttons can be held independently. Screen close, controller disconnect, reset, and power-off clear input. Controlify GUI cursor mode suppresses physical buttons and axes from the guest.
+
+See the [runnable analog example](examples/controller-inputs.asm) and [N2 helpers](../n-language/n2/libraries.md#analog-sticks-triggers-and-stick-buttons-012).
 
 ---
 

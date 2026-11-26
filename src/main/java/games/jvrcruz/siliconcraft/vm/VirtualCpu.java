@@ -18,6 +18,7 @@ import java.nio.charset.CharsetDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.function.BiConsumer;
 import java.util.function.LongSupplier;
 import java.util.zip.Deflater;
@@ -110,7 +111,11 @@ public class VirtualCpu {
     public static final int PAD_L      = 1 << 10; // 0x0400 (Shoulder L)
     public static final int PAD_R      = 1 << 11; // 0x0800 (Shoulder R)
 
-    private final int[] padStates = new int[4];
+    public static final int PAD_LEFT_TRIGGER = GamepadState.LEFT_TRIGGER_BUTTON;
+    public static final int PAD_RIGHT_TRIGGER = GamepadState.RIGHT_TRIGGER_BUTTON;
+    public static final int PAD_LEFT_STICK = GamepadState.LEFT_STICK_BUTTON;
+    public static final int PAD_RIGHT_STICK = GamepadState.RIGHT_STICK_BUTTON;
+    private final AtomicReferenceArray<GamepadState> padStates = new AtomicReferenceArray<>(4);
     private final ConcurrentLinkedQueue<Integer> keyBuffer = new ConcurrentLinkedQueue<>();
 
     // Hardware frame / periodic timer
@@ -231,6 +236,7 @@ public class VirtualCpu {
     private static final int OP_NREADY = 96;
     private static final int OP_NUTF8 = 97;
     private static final int OP_NRESPONDT = 98;
+    private static final int OP_INAXIS = 101;
     private static final int OP_PLEN = 99;
     private static final int OP_PRESULTS = 100;
 
@@ -290,6 +296,7 @@ public class VirtualCpu {
         OPCODE_MAP.put("TIME", OP_TIME);
         OPCODE_MAP.put("RAND", OP_RAND);
         OPCODE_MAP.put("INPAD", OP_INPAD);
+        OPCODE_MAP.put("INAXIS", OP_INAXIS);
         OPCODE_MAP.put("TIMER", OP_TIMER);
         OPCODE_MAP.put("SETTIMER", OP_TIMER);
         OPCODE_MAP.put("VBLANK", OP_VBLANK);
@@ -792,7 +799,7 @@ public class VirtualCpu {
         this.sleepTicksRemaining = 0;
         this.timerHz = 0;
         this.timerIntervalCycles = 0;
-        Arrays.fill(this.padStates, 0);
+        clearPadStates();
         this.keyBuffer.clear();
         loadStaticData();
         this.displayMode = 0;
@@ -837,6 +844,7 @@ public class VirtualCpu {
         synchronized (executionLock) {
             flushLineBuffer();
             this.state = State.OFF;
+            clearPadStates();
             networkPort.reset();
             peripheralBus.reset();
             this.terminalOutput.add("[POWER OFF]");
@@ -1196,6 +1204,7 @@ public class VirtualCpu {
                 case OP_TIME -> execTime(ci.rawArgs);
                 case OP_RAND -> execRand(ci.rawArgs);
                 case OP_INPAD -> execInpad(ci.rawArgs);
+                case OP_INAXIS -> execInaxis(ci.rawArgs);
                 case OP_TIMER -> execTimer(ci.rawArgs);
                 case OP_VBLANK -> execVblank(ci.rawArgs);
                 case OP_SSIZE -> execSSize(ci.rawArgs);
@@ -1858,9 +1867,31 @@ public class VirtualCpu {
     }
 
     public void setPadState(int padId, int bitmask) {
-        if (padId >= 0 && padId < padStates.length) {
-            padStates[padId] = bitmask;
+        setGamepadState(padId, GamepadState.NEUTRAL.withButtons(bitmask));
+    }
+
+    public void setGamepadState(int padId, GamepadState input) {
+        if (padId >= 0 && padId < padStates.length()) {
+            padStates.set(padId, Objects.requireNonNull(input));
         }
+    }
+
+    private void clearPadStates() {
+        for (int pad = 0; pad < padStates.length(); pad++) padStates.set(pad, GamepadState.NEUTRAL);
+    }
+
+    public int getPadAxis(int padId, int axis) {
+        if (padId < 0 || padId >= padStates.length()) return 0;
+        GamepadState input = padStates.get(padId);
+        return input == null ? 0 : input.axis(axis);
+    }
+
+    private void execInaxis(String args) {
+        String[] parts = splitArgs(args, 3);
+        if (parts.length != 3) throw new IllegalArgumentException("INAXIS requires destination, pad, axis");
+        int pad = resolveValue(parts[1].trim());
+        int axis = resolveValue(parts[2].trim());
+        setDestination(parts[0].trim(), getPadAxis(pad, axis));
     }
 
     public int getPadState(int padId) {
@@ -1872,8 +1903,9 @@ public class VirtualCpu {
             Integer k = keyBuffer.peek();
             return k != null ? k : -1;
         }
-        if (padId >= 0 && padId < padStates.length) {
-            return padStates[padId];
+        if (padId >= 0 && padId < padStates.length()) {
+            GamepadState input = padStates.get(padId);
+            return input == null ? 0 : input.buttons();
         }
         return 0;
     }

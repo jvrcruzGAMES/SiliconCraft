@@ -10,7 +10,7 @@
 
 **SiliconCraft** is a modular personal computing, microcontroller, and custom silicon architecture mod for Minecraft (NeoForge 1.21.1).
 
-Design your own silicon chips from raw wafers, assemble modular personal computers, write programs in the high-level **N language** or native assembly, render hardware-accelerated 960×540 retro graphics, synthesize 8-bit PCM audio, connect physical gamepads, and automate your world with custom virtual hardware—with the virtual CPU running on background workers and world interactions handled by the server tick.
+Design your own silicon chips from silicon powder, assemble modular personal computers, write programs in the high-level **N language** or native assembly, render hardware-accelerated 960×540 retro graphics, synthesize 8-bit PCM audio, connect physical gamepads, and automate your world with custom virtual hardware—with the virtual CPU running on background workers and world interactions handled by the server tick.
 
 ---
 
@@ -64,6 +64,7 @@ a### 🔬 Chip Forging & Architecture Design
 - **Keyboard Emulation (Built-in)**:
   - Arrow Keys / WASD, Space / Z (Jump / B), X (Spin / A), C / J (Run / Y), V / K (Action / X), Q / E (Shoulders), Enter (Start), Shift (Select).
 - **External Controller Integration**:
+  - In 0.1.2, read both sticks and triggers as analog values, plus L3/R3 stick buttons, using `INAXIS` or N2 `<GameController>` helpers.
   - Seamlessly connect your physical gamepad (Xbox, PlayStation, Nintendo Switch, Steam Deck) when **Controlify** is installed.
 
 ---
@@ -128,7 +129,7 @@ Sable Companion is included inside the mod JAR; it does not need a separate inst
 | **Display (Graphics)** | 960 × 540 Pixels, 32-Bit ARGB Color |
 | **Audio Format** | 8,000 Hz, 8-Bit Unsigned PCM Mono |
 | **Audio Range** | Screen GUI (local) or 32-block radius (Speaker Block) |
-| **Controller Support** | 12-button standard gamepad (Keyboard or Controlify) |
+| **Controller Support** | Keyboard buttons; Controlify buttons, triggers, stick axes, and L3/R3 |
 | **Interrupts** | 15 Vector Table (Div0, Illegal Op, Bounds, Stack, Timer, Keyboard, Mouse, Reset) |
 
 ---

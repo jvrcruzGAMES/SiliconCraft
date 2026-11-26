@@ -1,0 +1,35 @@
+-- ============================================
+-- Program: 06_audio_and_input.n2 (N2 Standard)
+-- Description: Keyboard, Apple Game Controller framework, and AudioKit sound synthesis
+-- ============================================
+
+import <std>
+import <AudioKit>
+import <DeviceKit>
+import <GameController>
+
+func main()
+    print("Checking input and audio devices...")
+
+    -- Keyboard checking via DeviceKit
+    if key_available() then
+        local key = read_key()
+        print("Key pressed:")
+        print(key)
+    end
+
+    -- Gamepad polling via Apple Game Controller framework
+    if is_gamepad_connected(0) then
+        local pad = gc_poll(0)
+        print("Gamepad bitmask:")
+        print(pad)
+
+        if gc_button_south(0) then
+            print("South button (Action/A) is pressed!")
+        end
+    end
+
+    -- Play an A4 tone (440 Hz) for 250 milliseconds via AudioKit
+    play_tone(440, 250)
+    print("Audio tone triggered.")
+end

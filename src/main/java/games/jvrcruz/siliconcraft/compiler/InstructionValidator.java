@@ -11,7 +11,7 @@ public class InstructionValidator {
             // Arithmetic & Logic
             "ADD", "SUB", "MUL", "DIV", "MOD", "INC", "DEC", "CMP", "AND", "OR", "XOR", "NOT", "SHL", "SHR",
             // I/O & System / BIOS
-            "OUT", "OUTC", "OUTH", "CLS", "SLEEP", "TIME", "RAND", "INPAD",
+            "OUT", "OUTC", "OUTH", "CLS", "SLEEP", "TIME", "RAND", "INPAD", "INAXIS",
             // Storage (multi-drive)
             "SSIZE", "SREAD", "SWRITE", "SBLKR", "SBLKW", "SCOUNT", "SSEL", "SDRV", "SEXEC",
             // Framebuffer / Graphics

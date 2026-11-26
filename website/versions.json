@@ -1,6 +1,10 @@
 {
-  "latest": "0.1.1",
+  "latest": "0.1.2",
   "versions": [
+    {
+      "version": "0.1.2",
+      "sha256": "19388ca6e458a1bf09ee6c71609f2378969badac4fe6f913e683e856ddf90e19"
+    },
     {
       "version": "0.1.1",
       "sha256": "6018ba7be4ae59df117fb8d535b07b0eff43bff2d8454bccf105f7eeffe57216"

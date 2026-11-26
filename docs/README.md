@@ -11,6 +11,12 @@ Follow the chapters in order to build a computer, then choose Assembly or N2 to 
 | **3. [N1 — deprecated](n-language/n1/README.md)** | N standard 1 syntax, hardware APIs, inline Assembly, and legacy examples. |
 | **4. [N2](n-language/n2/README.md)** | N standard 2 syntax, libraries, projects, DeviceKit peripherals, networking, and examples. |
 
+## Version 0.1.2
+
+Controller input now includes analog triggers, both stick axes, and L3/R3 stick buttons. Use [`INAXIS`](assembly/reference.md#analog-axes-012) in Assembly or the [new N2 GameController helpers](n-language/n2/libraries.md#analog-sticks-triggers-and-stick-buttons-012). Enable `INAXIS` on the SoC and recompile programs that use analog input. Existing digital button and keyboard mappings remain supported; Controlify is optional.
+
+The client publishes one bounded input sample on GUI ticks, clears it when the screen closes or the controller disconnects, and keeps GUI cursor input out of the guest. Client and server must both use the updated payload protocol. The versioned website retains the original 0.1.1 manual separately.
+
 ## Choose a language
 
 Use **N2** for new high-level programs, **Assembly** for direct control of instructions and memory, and **N1** to maintain existing `.n` programs. The [N language overview](n-language/README.md) explains compiler selection and file extensions.

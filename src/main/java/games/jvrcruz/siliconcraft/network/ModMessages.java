@@ -5,6 +5,9 @@ import games.jvrcruz.siliconcraft.Siliconcraft;
 import games.jvrcruz.siliconcraft.blockentity.*;
 import games.jvrcruz.siliconcraft.client.ClientProgramManager;
 import games.jvrcruz.siliconcraft.data.ProgramSavedData;
+import games.jvrcruz.siliconcraft.menu.ComputerMenu;
+import games.jvrcruz.siliconcraft.vm.GamepadState;
+import games.jvrcruz.siliconcraft.vm.VirtualCpu;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -15,7 +18,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 public class ModMessages {
     public static void register(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar(Siliconcraft.MODID).versioned("1.1.0");
+        PayloadRegistrar registrar = event.registrar(Siliconcraft.MODID).versioned("1.2.0");
         CreatePeripherals.registerPayloads(registrar);
 
         registrar.playToServer(ChipForgePacket.TYPE, ChipForgePacket.STREAM_CODEC, ModMessages::handleChipForge);
@@ -25,6 +28,7 @@ public class ModMessages {
         registrar.playToServer(SocManufacturerPacket.TYPE, SocManufacturerPacket.STREAM_CODEC, ModMessages::handleSocManufacturer);
         registrar.playToServer(ComputerActionPacket.TYPE, ComputerActionPacket.STREAM_CODEC, ModMessages::handleComputerAction);
         registrar.playToServer(ComputerInputPacket.TYPE, ComputerInputPacket.STREAM_CODEC, ModMessages::handleComputerInput);
+        registrar.playToServer(GamepadInputPacket.TYPE, GamepadInputPacket.STREAM_CODEC, ModMessages::handleGamepadInput);
 
         // Program library packets
         registrar.playToServer(AddAssemblyProgramPacket.TYPE, AddAssemblyProgramPacket.STREAM_CODEC, ModMessages::handleAddAssemblyProgram);
@@ -187,6 +191,19 @@ public class ModMessages {
                         compBe.stepCpu();
                     }
                 }
+            }
+        });
+    }
+
+    private static void handleGamepadInput(GamepadInputPacket packet, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            Player player = context.player();
+            if (player != null && player.containerMenu instanceof ComputerMenu menu
+                    && menu.getBlockEntity().getBlockPos().equals(packet.pos())
+                    && menu.stillValid(player) && !menu.getBlockEntity().isRemoved()) {
+                var cpu = menu.getBlockEntity().getCpu();
+                cpu.setGamepadState(0, cpu.getState() == VirtualCpu.State.RUNNING
+                        ? packet.input() : GamepadState.NEUTRAL);
             }
         });
     }

@@ -356,6 +356,17 @@ public class N2Library {
         addFunc(gameCtrl, "gc_right_shoulder", 1, "GameController");
         addFunc(gameCtrl, "gc_button_menu", 1, "GameController");
         addFunc(gameCtrl, "gc_button_options", 1, "GameController");
+        addFunc(gameCtrl, "gc_axis", 2, "GameController");
+        addFunc(gameCtrl, "gc_left_stick_x", 1, "GameController");
+        addFunc(gameCtrl, "gc_left_stick_y", 1, "GameController");
+        addFunc(gameCtrl, "gc_right_stick_x", 1, "GameController");
+        addFunc(gameCtrl, "gc_right_stick_y", 1, "GameController");
+        addFunc(gameCtrl, "gc_left_trigger", 1, "GameController");
+        addFunc(gameCtrl, "gc_right_trigger", 1, "GameController");
+        addFunc(gameCtrl, "gc_left_trigger_pressed", 1, "GameController");
+        addFunc(gameCtrl, "gc_right_trigger_pressed", 1, "GameController");
+        addFunc(gameCtrl, "gc_left_stick_button", 1, "GameController");
+        addFunc(gameCtrl, "gc_right_stick_button", 1, "GameController");
 
         // Apple GameController Button & Element Constants
         addConst(gameCtrl, "GC_BUTTON_A", 0x0080, "GameController");
@@ -374,6 +385,16 @@ public class N2Library {
         addConst(gameCtrl, "GC_RIGHT_SHOULDER", 0x0800, "GameController");
         addConst(gameCtrl, "GC_BUTTON_MENU", 0x0010, "GameController");
         addConst(gameCtrl, "GC_BUTTON_OPTIONS", 0x0020, "GameController");
+        addConst(gameCtrl, "GC_LEFT_TRIGGER", 0x1000, "GameController");
+        addConst(gameCtrl, "GC_RIGHT_TRIGGER", 0x2000, "GameController");
+        addConst(gameCtrl, "GC_LEFT_STICK_BUTTON", 0x4000, "GameController");
+        addConst(gameCtrl, "GC_RIGHT_STICK_BUTTON", 0x8000, "GameController");
+        addConst(gameCtrl, "GC_AXIS_LEFT_X", 0, "GameController");
+        addConst(gameCtrl, "GC_AXIS_LEFT_Y", 1, "GameController");
+        addConst(gameCtrl, "GC_AXIS_RIGHT_X", 2, "GameController");
+        addConst(gameCtrl, "GC_AXIS_RIGHT_Y", 3, "GameController");
+        addConst(gameCtrl, "GC_AXIS_LEFT_TRIGGER", 4, "GameController");
+        addConst(gameCtrl, "GC_AXIS_RIGHT_TRIGGER", 5, "GameController");
 
         // Retro / SNES aliases
         addConst(gameCtrl, "PAD_RIGHT", 1 << 0, "GameController");
@@ -388,6 +409,10 @@ public class N2Library {
         addConst(gameCtrl, "PAD_X", 1 << 9, "GameController");
         addConst(gameCtrl, "PAD_L", 1 << 10, "GameController");
         addConst(gameCtrl, "PAD_R", 1 << 11, "GameController");
+        addConst(gameCtrl, "PAD_LEFT_TRIGGER", 1 << 12, "GameController");
+        addConst(gameCtrl, "PAD_RIGHT_TRIGGER", 1 << 13, "GameController");
+        addConst(gameCtrl, "PAD_LEFT_STICK", 1 << 14, "GameController");
+        addConst(gameCtrl, "PAD_RIGHT_STICK", 1 << 15, "GameController");
 
         registerLib("GameController", gameCtrl);
         registerLib("gamecontroller", gameCtrl);

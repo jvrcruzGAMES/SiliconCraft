@@ -1,6 +1,7 @@
 package games.jvrcruz.siliconcraft.compat.controlify;
 
 import net.neoforged.fml.ModList;
+import games.jvrcruz.siliconcraft.vm.GamepadState;
 
 public class ExternalControllerManager {
     private static Boolean controlifyInstalled = null;
@@ -26,13 +27,17 @@ public class ExternalControllerManager {
      * or if no controller buttons are currently pressed.
      */
     public static int pollControllerMask() {
+        return pollControllerState().buttons();
+    }
+
+    public static GamepadState pollControllerState() {
         if (!isControllerSupportEnabled()) {
-            return 0;
+            return GamepadState.NEUTRAL;
         }
         try {
-            return ControlifyCompatHandler.pollMask();
+            return ControlifyCompatHandler.pollState();
         } catch (Throwable ignored) {
-            return 0;
+            return GamepadState.NEUTRAL;
         }
     }
 

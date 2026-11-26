@@ -12,6 +12,7 @@ import dev.isxander.controlify.virtualmouse.VirtualMouseBehaviour;
 import games.jvrcruz.siliconcraft.client.screen.ComputerScreen;
 import games.jvrcruz.siliconcraft.menu.ComputerMenu;
 import games.jvrcruz.siliconcraft.vm.VirtualCpu;
+import games.jvrcruz.siliconcraft.vm.GamepadState;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
@@ -87,12 +88,13 @@ public final class ControlifyComputerScreen extends ComputerScreen implements Sc
     }
 
     @Override
-    protected int computerControllerMask() {
+    protected GamepadState computerControllerState() {
         if (hasControllerCursor()) {
-            return 0;
+            return GamepadState.NEUTRAL;
         }
-        int mask = super.computerControllerMask();
-        return toggleHeld || (mask & TOGGLE_BUTTONS) == TOGGLE_BUTTONS ? mask & ~TOGGLE_BUTTONS : mask;
+        GamepadState input = super.computerControllerState();
+        return toggleHeld || (input.buttons() & TOGGLE_BUTTONS) == TOGGLE_BUTTONS
+                ? input.withButtons(input.buttons() & ~TOGGLE_BUTTONS) : input;
     }
 
     @Override

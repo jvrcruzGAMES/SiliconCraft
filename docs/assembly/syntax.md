@@ -316,6 +316,20 @@ import "logic.n"               ; Run high-level .n modules directly from assembl
 - **Entrypoint Discovery**: The Project Compiler automatically detects entrypoints (`main.asm`, `main.s`, `main.n`, `entry.*`, `start.*`).
 - **Standard Object Format (`.o`)**: The assembled output is a unified, fully linked bytecode file with the standard `.o` extension.
 
+## Analog controller input (0.1.2)
+
+Use `INAXIS destination, pad, axis` to read a stick or trigger. The destination may be a register or RAM address; pad and axis may be registers or numeric literals.
+
+```assembly
+INAXIS A, 0, 0       ; Left stick X, -1000..1000
+INAXIS B, 0, 3       ; Right stick Y, -1000..1000
+INAXIS [0x200], 0, 4 ; Left trigger, 0..1000
+INPAD C, 0
+AND C, 0x4000        ; Left stick button
+```
+
+Enable `INAXIS` on the SoC. See the [axis and button reference](reference.md#analog-axes-012) and [complete example](examples/controller-inputs.asm).
+
 ## Peripheral strings
 
 `PCALLS dst, port, method, ptr, arg` reads a zero-terminated UTF-16 string from RAM, one code unit per cell. For a constant argument, give the data an explicit address with `ORG`.

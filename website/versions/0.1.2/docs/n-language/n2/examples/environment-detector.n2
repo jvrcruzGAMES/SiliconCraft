@@ -1,0 +1,39 @@
+import <DeviceKit>
+import <std>
+
+func wait_request()
+    while peripheral_status() == PERIPHERAL_PENDING do
+        sleep(1)
+    end
+    return peripheral_status() == PERIPHERAL_OK
+end
+
+func main()
+    local port = PERIPHERAL_NORTH
+    if peripheral_wrap(port) == 0 then
+        return 0
+    end
+    local wrapped = wait_request()
+    peripheral_result()
+    if not wrapped then
+        print("Could not wrap the detector.")
+        return 0
+    end
+    if peripheral_call(port, PERIPHERAL_ENV_BIOME, 0, 0) == 1 then
+        if wait_request() then
+            print(peripheral_text())
+        else
+            peripheral_result()
+            print("Could not read the biome.")
+        end
+    end
+    if peripheral_call(port, PERIPHERAL_ENV_POSITION, 0, 0) == 1 then
+        if wait_request() then
+            print(peripheral_text())
+        else
+            peripheral_result()
+            print("Could not read the world position.")
+        end
+    end
+    return 0
+end

@@ -4,6 +4,7 @@ Compile these files with the N2 Code Compiler. For the multi-file example, impor
 
 | Source | Topic |
 |---|---|
+| [controller-inputs.n2](controller-inputs.n2) | Analog sticks, independent triggers, and L3/R3 buttons (0.1.2). |
 | [01_hello_world.n2](01_hello_world.n2) | hello world |
 | [02_globals_and_locals.n2](02_globals_and_locals.n2) | globals and locals |
 | [03_classes_oop.n2](03_classes_oop.n2) | classes oop |

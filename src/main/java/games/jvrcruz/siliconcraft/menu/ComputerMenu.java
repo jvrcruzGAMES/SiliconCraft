@@ -7,6 +7,7 @@ import games.jvrcruz.siliconcraft.init.ModDataComponents;
 import games.jvrcruz.siliconcraft.init.ModItems;
 import games.jvrcruz.siliconcraft.init.ModMenuTypes;
 import games.jvrcruz.siliconcraft.menu.slot.FilteredSlot;
+import games.jvrcruz.siliconcraft.vm.GamepadState;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
@@ -133,5 +134,13 @@ public class ComputerMenu extends AbstractContainerMenu {
     @Override
     public boolean stillValid(Player player) {
         return stillValid(levelAccess, player, ModBlocks.COMPUTER.get());
+    }
+
+    @Override
+    public void removed(Player player) {
+        super.removed(player);
+        if (!player.level().isClientSide) {
+            blockEntity.getCpu().setGamepadState(0, GamepadState.NEUTRAL);
+        }
     }
 }

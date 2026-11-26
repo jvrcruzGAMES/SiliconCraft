@@ -1,0 +1,22 @@
+-- 0.1.2: enable INAXIS on the chip and connect a controller through Controlify.
+import <GameController>
+import <std>
+
+func main()
+    -- Print one sample per second until Start / Enter is held.
+    while gc_button_menu(0) == 0 do
+        println(gc_left_stick_x(0))
+        println(gc_left_stick_y(0))
+        println(gc_right_stick_x(0))
+        println(gc_right_stick_y(0))
+        println(gc_left_trigger(0))
+        println(gc_right_trigger(0))
+        println(gc_left_trigger_pressed(0))
+        println(gc_right_trigger_pressed(0))
+        println(gc_left_stick_button(0))
+        println(gc_right_stick_button(0))
+        println(gc_axis(0, GC_AXIS_LEFT_TRIGGER))
+        sleep(20)
+    end
+    return 0
+end

@@ -1,0 +1,25 @@
+-- ============================================
+-- Program: 05_system_libraries.n2 (N2 Standard)
+-- Description: Using <std>, <math>, and <DeviceKit> system libraries
+-- ============================================
+
+import <std>
+import <math>
+from <DeviceKit> import KEY_SPACE
+
+func main()
+    local a = -50
+    local positive = abs(a)
+    print(positive)
+
+    local val = clamp(120, 0, 100)
+    print(val)
+
+    local randomVal = rand(100)
+    print(randomVal)
+
+    local now = time()
+    print(now)
+
+    print(KEY_SPACE)
+end

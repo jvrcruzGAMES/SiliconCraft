@@ -987,6 +987,12 @@ public class N2CodeGenerator {
 
     private void generateSystemLibCall(N2Library.SymbolInfo symbol, List<N2AST.ExprNode> args, int line, int col) {
         String name = symbol.name();
+        if (symbol.library().equals("GameController")
+                && (name.equals("gc_axis") || name.contains("stick") || name.contains("trigger"))
+                && args.size() != symbol.arity()) {
+            errors.add("Line " + line + ":" + col + ": " + name + " expects " + symbol.arity() + " arguments");
+            return;
+        }
         var httpHelper = N2NetworkRuntime.APIS.get(name);
         if (httpHelper != null) {
             generateHttpHelper(name, httpHelper, args, line, col);
@@ -1412,6 +1418,23 @@ public class N2CodeGenerator {
             case "gc_right_shoulder" -> generateGamepadButtonCheck(args, 0x0800);
             case "gc_button_menu" -> generateGamepadButtonCheck(args, 0x0010);
             case "gc_button_options" -> generateGamepadButtonCheck(args, 0x0020);
+            case "gc_left_trigger_pressed" -> generateGamepadButtonCheck(args, 0x1000);
+            case "gc_right_trigger_pressed" -> generateGamepadButtonCheck(args, 0x2000);
+            case "gc_left_stick_button" -> generateGamepadButtonCheck(args, 0x4000);
+            case "gc_right_stick_button" -> generateGamepadButtonCheck(args, 0x8000);
+            case "gc_left_stick_x" -> generateGamepadAxis(args, 0);
+            case "gc_left_stick_y" -> generateGamepadAxis(args, 1);
+            case "gc_right_stick_x" -> generateGamepadAxis(args, 2);
+            case "gc_right_stick_y" -> generateGamepadAxis(args, 3);
+            case "gc_left_trigger" -> generateGamepadAxis(args, 4);
+            case "gc_right_trigger" -> generateGamepadAxis(args, 5);
+            case "gc_axis" -> {
+                generateExpression(args.get(0));
+                emit("PUSH A", "PUSH");
+                generateExpression(args.get(1));
+                emit("POP B", "POP");
+                emit("INAXIS A, B, A", "INAXIS");
+            }
             default -> errors.add("Unimplemented library function: " + name);
         }
     }
@@ -1519,6 +1542,11 @@ public class N2CodeGenerator {
             String arg1 = args.size() >= 3 ? "C" : "0";
             emit(opcode + " A, A, " + method + ", " + arg0 + ", " + arg1, opcode);
         }
+    }
+
+    private void generateGamepadAxis(List<N2AST.ExprNode> args, int axis) {
+        generateExpression(args.get(0));
+        emit("INAXIS A, A, " + axis, "INAXIS");
     }
 
     private void generateGamepadButtonCheck(List<N2AST.ExprNode> args, int mask) {

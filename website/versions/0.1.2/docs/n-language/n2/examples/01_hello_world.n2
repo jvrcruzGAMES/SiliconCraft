@@ -1,0 +1,14 @@
+-- ============================================
+-- Program: 01_hello_world.n2 (N2 Standard)
+-- Description: Simple greeting function and library output
+-- ============================================
+
+import <std>
+
+func hello()
+    print("hello from N2!")
+end
+
+func main()
+    hello()
+end

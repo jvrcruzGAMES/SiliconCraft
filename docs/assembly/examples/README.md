@@ -629,6 +629,8 @@ The Environment Detector example wraps a device to the north and prints its biom
 
 ## Networking and integrations
 
+- [Controller sticks, triggers, and stick buttons](controller-inputs.asm): analog reads and L3/R3 masks (0.1.2).
+
 - [Digital Explorer's Compass](digital-compass.asm): structure search with text and numeric results.
 - [HTTP GET](network-http.asm): asynchronous Network mailbox and a bounded response buffer.
 - [Airship telemetry and wireless redstone](airship_demo.asm): wrap, poll, read altitude, and switch a named channel.

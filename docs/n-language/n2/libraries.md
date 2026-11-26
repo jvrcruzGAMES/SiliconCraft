@@ -94,14 +94,14 @@ Use `import <Network>` for server-originated HTTP, HTTPS, TCP, and UDP. See the 
 The `<GameController>` library provides a unified gamepad API inspired by **Apple's Game Controller framework**, with wide controller compatibility across Xbox, PlayStation, Switch, and generic gamepads via Controlify and SDL3:
 
 - **Controller Discovery & Status**:
-  - `gc_controllers()` / `gamepad_count()`: Returns the number of connected gamepads.
+  - `gc_controllers()` / `gamepad_count()`: Legacy helpers return 1 for the advertised virtual controller-0 input stream; they do not enumerate physical devices.
   - `gc_current()`: Returns the index of the primary active controller (`0`).
-  - `is_gamepad_connected(padId)`: Returns `1` if the specified controller is connected, or `0` otherwise.
+  - `is_gamepad_connected(padId)`: Legacy helper currently returns 1; it does not detect physical connection state. Analog readings return zero when no physical input is available.
 - **Input Polling**:
   - `gc_poll(padId)` / `poll_gamepad(padId)` / `read_gamepad(padId)`: Polls and returns the raw button bitmask for `padId`.
 - **Button Elements (Boolean Checks)**:
-  - `gc_button_south(padId)` / `gc_button_a(padId)`: Primary action button (Bottom: Xbox A / PS Cross / Nintendo B).
-  - `gc_button_east(padId)` / `gc_button_b(padId)`: Secondary action button (Right: Xbox B / PS Circle / Nintendo A).
+  - `gc_button_south(padId)` / `gc_button_b(padId)`: Bottom face button (Xbox A / PS Cross / Nintendo B). Letter aliases follow the legacy SNES layout.
+  - `gc_button_east(padId)` / `gc_button_a(padId)`: Right face button (Xbox B / PS Circle / Nintendo A).
   - `gc_button_west(padId)` / `gc_button_y(padId)`: Action button (Left: Xbox X / PS Square / Nintendo Y).
   - `gc_button_north(padId)` / `gc_button_x(padId)`: Action button (Top: Xbox Y / PS Triangle / Nintendo X).
 - **Directional Pad (D-Pad)**:
@@ -121,6 +121,27 @@ The `<GameController>` library provides a unified gamepad API inspired by **Appl
   - `GC_LEFT_SHOULDER` (0x0400), `GC_RIGHT_SHOULDER` (0x0800).
   - `GC_BUTTON_MENU` (0x0010), `GC_BUTTON_OPTIONS` (0x0020).
   - Retro SNES aliases: `PAD_UP`, `PAD_DOWN`, `PAD_LEFT`, `PAD_RIGHT`, `PAD_A`, `PAD_B`, `PAD_X`, `PAD_Y`, `PAD_L`, `PAD_R`, `PAD_START`, `PAD_SELECT`.
+
+### Analog sticks, triggers, and stick buttons (0.1.2)
+
+These helpers use `INAXIS` for analog readings and `INPAD` for buttons. Add the required instructions to your SoC architecture, then recompile your N2 program. All helpers take a virtual pad ID; the client feeds its current physical controller into pad 0 while the computer screen is open.
+
+| Function | Result |
+|---|---|
+| `gc_left_stick_x(pad)`, `gc_right_stick_x(pad)` | −1000 left, 0 centered, +1000 right. |
+| `gc_left_stick_y(pad)`, `gc_right_stick_y(pad)` | −1000 up, 0 centered, +1000 down. |
+| `gc_left_trigger(pad)`, `gc_right_trigger(pad)` | 0 released through 1000 fully pressed. |
+| `gc_left_trigger_pressed(pad)`, `gc_right_trigger_pressed(pad)` | 1 when the trigger reading exceeds 500, otherwise 0. |
+| `gc_left_stick_button(pad)`, `gc_right_stick_button(pad)` | 1 while L3/R3 is held, otherwise 0. |
+| `gc_axis(pad, axis)` | Generic axis query using the constants below; invalid IDs return 0. |
+
+Axis constants: `GC_AXIS_LEFT_X` = 0, `GC_AXIS_LEFT_Y` = 1, `GC_AXIS_RIGHT_X` = 2, `GC_AXIS_RIGHT_Y` = 3, `GC_AXIS_LEFT_TRIGGER` = 4, `GC_AXIS_RIGHT_TRIGGER` = 5. All values use integer thousandths. Sticks have a 0.15 deadzone per axis, preserving the scale outside that deadzone.
+
+New `gc_poll` mask constants: `GC_LEFT_TRIGGER` / `PAD_LEFT_TRIGGER` = `0x1000`, `GC_RIGHT_TRIGGER` / `PAD_RIGHT_TRIGGER` = `0x2000`, `GC_LEFT_STICK_BUTTON` / `PAD_LEFT_STICK` = `0x4000`, `GC_RIGHT_STICK_BUTTON` / `PAD_RIGHT_STICK` = `0x8000`.
+
+For compatibility, left-stick movement still also sets D-pad bits, and triggers still also activate the legacy shoulder bits above 500. The new trigger bits and analog helpers distinguish trigger input from a bumper. Keyboard mappings keep analog values at zero. Without Controlify or a physical controller, these physical inputs read zero. Input clears on controller disconnect, screen close, reset, and power-off. Controlify cursor mode suppresses physical game input.
+
+See the [runnable controller example](examples/controller-inputs.n2) and [Assembly reference](../../assembly/reference.md#analog-axes-012).
 
 ---
 

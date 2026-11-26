@@ -1,0 +1,19 @@
+// N1 module: shared input variables and numeric function returns.
+var square_input = 0
+var clamp_input = 0
+var clamp_min = 0
+var clamp_max = 100
+
+func square() {
+    return square_input * square_input
+}
+
+func clamp_val() {
+    if clamp_input < clamp_min {
+        return clamp_min
+    }
+    if clamp_input > clamp_max {
+        return clamp_max
+    }
+    return clamp_input
+}

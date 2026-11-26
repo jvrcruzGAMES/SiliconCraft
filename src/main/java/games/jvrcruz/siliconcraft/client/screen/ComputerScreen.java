@@ -7,6 +7,8 @@ import games.jvrcruz.siliconcraft.menu.ComputerMenu;
 import games.jvrcruz.siliconcraft.menu.slot.FilteredSlot;
 import games.jvrcruz.siliconcraft.network.ComputerActionPacket;
 import games.jvrcruz.siliconcraft.network.ComputerInputPacket;
+import games.jvrcruz.siliconcraft.network.GamepadInputPacket;
+import games.jvrcruz.siliconcraft.vm.GamepadState;
 import games.jvrcruz.siliconcraft.vm.VirtualCpu;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -44,6 +46,13 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         if (menu.getCpuState() != lastCpuState) {
             lastCpuState = menu.getCpuState();
             rebuildButtons();
+        }
+        if (menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal()) {
+            padSyncTicks++;
+            updateAndSendPadState();
+        } else {
+            heldKeyCodes.clear();
+            releasePadState();
         }
     }
 
@@ -179,9 +188,6 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        if (menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal() && ExternalControllerManager.isControllerSupportEnabled()) {
-            updateAndSendPadState();
-        }
         this.lastMouseX = mouseX;
         this.lastMouseY = mouseY;
         clearUnhoveredButtonFocus(mouseX, mouseY);
@@ -261,7 +267,8 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
     }
 
     private final java.util.Set<Integer> heldKeyCodes = new java.util.HashSet<>();
-    private int lastSentPadMask = 0;
+    private GamepadState lastSentPadState = GamepadState.NEUTRAL;
+    private int padSyncTicks = 20;
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
@@ -330,11 +337,12 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
             if (k == 69 || k == 73) mask |= VirtualCpu.PAD_R;
         }
 
-        mask |= computerControllerMask();
-
-        if (mask != lastSentPadMask) {
-            lastSentPadMask = mask;
-            PacketDistributor.sendToServer(new ComputerInputPacket(menu.getBlockEntity().getBlockPos(), 3, 0, mask, 0));
+        GamepadState controller = computerControllerState();
+        GamepadState input = controller.withButtons(controller.buttons() | mask);
+        if (!input.equals(lastSentPadState) || padSyncTicks >= 20) {
+            lastSentPadState = input;
+            padSyncTicks = 0;
+            PacketDistributor.sendToServer(new GamepadInputPacket(menu.getBlockEntity().getBlockPos(), input));
         }
     }
 
@@ -342,15 +350,21 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         return false;
     }
 
-    protected int computerControllerMask() {
-        return ExternalControllerManager.pollControllerMask();
+    protected GamepadState computerControllerState() {
+        return ExternalControllerManager.pollControllerState();
+    }
+
+    private void releasePadState() {
+        if (!lastSentPadState.equals(GamepadState.NEUTRAL)) {
+            PacketDistributor.sendToServer(new GamepadInputPacket(menu.getBlockEntity().getBlockPos(), GamepadState.NEUTRAL));
+            lastSentPadState = GamepadState.NEUTRAL;
+        }
+        padSyncTicks = 20;
     }
 
     @Override
     public void onClose() {
-        if (lastSentPadMask != 0) {
-            PacketDistributor.sendToServer(new ComputerInputPacket(menu.getBlockEntity().getBlockPos(), 3, 0, 0, 0));
-        }
+        releasePadState();
         super.onClose();
         displayRenderer.close();
         if (menu != null && menu.getBlockEntity() != null) {
