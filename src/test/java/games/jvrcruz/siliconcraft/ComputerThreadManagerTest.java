@@ -110,9 +110,10 @@ public class ComputerThreadManagerTest {
         assertEquals(1, ComputerThreadManager.getActiveWorkerCount());
         assertEquals(2, ComputerThreadManager.getTotalRegisteredComputers());
 
-        // Wait a few milliseconds for background thread to execute slices
+        // Wait for background thread to execute slices for both hosts
         long start = System.currentTimeMillis();
-        while (host1.getCpu().getRegA() < 1000 && (System.currentTimeMillis() - start < 2000)) {
+        while ((host1.getCpu().getRegA() < 1000 || host2.getCpu().getRegA() < 1000)
+                && (System.currentTimeMillis() - start < 2000)) {
             Thread.sleep(10);
         }
 
@@ -167,6 +168,8 @@ public class ComputerThreadManagerTest {
 
         assertTrue(ComputerThreadManager.getActiveWorkerCount() >= 2,
                 "Should have at least 2 active worker threads for 18 computers");
+        assertTrue(ComputerThreadManager.getActiveGpuWorkerCount() >= 2,
+                "Should have at least 2 active GPU worker threads for 18 computers");
 
         // Measure shutdown time
         long start = System.currentTimeMillis();
@@ -175,6 +178,8 @@ public class ComputerThreadManagerTest {
 
         assertEquals(0, ComputerThreadManager.getActiveWorkerCount(),
                 "All workers should be terminated and unregistered");
+        assertEquals(0, ComputerThreadManager.getActiveGpuWorkerCount(),
+                "All GPU workers should be terminated and unregistered");
         assertEquals(0, ComputerThreadManager.getTotalRegisteredComputers(),
                 "Registered computers should be 0 after shutdown");
         assertTrue(elapsed < 250, "Forced shutdown should complete fast (<250ms), took: " + elapsed + "ms");
@@ -183,6 +188,40 @@ public class ComputerThreadManagerTest {
         TestHost postShutdownHost = new TestHost(infiniteLoop);
         ComputerThreadManager.register(postShutdownHost);
         assertEquals(1, ComputerThreadManager.getActiveWorkerCount());
+        assertEquals(1, ComputerThreadManager.getActiveGpuWorkerCount());
         assertEquals(1, ComputerThreadManager.getTotalRegisteredComputers());
+    }
+
+    @Test
+    public void testDedicatedGpuWorkerRendersConcurrentlyAndFasterThanCpu() throws InterruptedException {
+        List<String> heavyCpuLoop = List.of(
+                "loop:",
+                "  INC A",
+                "  JMP loop"
+        );
+
+        TestHost host = new TestHost(heavyCpuLoop);
+        host.getCpu().configureGpu(true, "Accel-GPU", 2048 * 1024, 4);
+        host.getCpu().powerOn();
+        ComputerThreadManager.register(host);
+
+        int commandCount = 6000;
+        for (int i = 0; i < commandCount; i++) {
+            host.getCpu().getGpu().submitSetPixel(i % 960, (i / 960) % 540, 0xFF00FFAA);
+        }
+
+        long deadline = System.currentTimeMillis() + 1500;
+        while (host.getCpu().getGpu().getCommandsExecuted() < commandCount && System.currentTimeMillis() < deadline) {
+            Thread.sleep(5);
+        }
+
+        assertEquals(commandCount, host.getCpu().getGpu().getCommandsExecuted(),
+                "Dedicated GPU worker should drain all 6000 render commands concurrently while CPU runs its loop");
+        assertFalse(host.getCpu().getGpu().isBusy());
+        long cpuDeadline = System.currentTimeMillis() + 1000;
+        while (host.getCpu().getRegA() <= 0 && System.currentTimeMillis() < cpuDeadline) {
+            Thread.sleep(5);
+        }
+        assertTrue(host.getCpu().getRegA() > 0, "CPU should keep advancing concurrently");
     }
 }

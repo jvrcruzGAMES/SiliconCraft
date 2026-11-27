@@ -416,6 +416,67 @@ public final class BinaryBytecode {
         return (int) ((word >>> 32) & 0xFFFFL);
     }
 
+    public static int extractOpCount(long word) {
+        int fmt = extractFormat(word);
+        return switch (fmt) {
+            case FMT_0, FMT_3 -> extractFlags(word);
+            case FMT_1 -> 2;
+            case FMT_2 -> 1;
+            default -> 0;
+        };
+    }
+
+    public static int extractOpMode(long word, int idx, ExtOperand[] ext) {
+        int fmt = extractFormat(word);
+        return switch (fmt) {
+            case FMT_0 -> idx == 0 ? extractFmt0Op0Mode(word)
+                    : (idx == 1 ? extractFmt0Op1Mode(word) : MODE_NONE);
+            case FMT_1 -> idx == 0 ? extractFmt1Mode0(word)
+                    : (idx == 1 ? extractFmt1Mode1(word) : MODE_NONE);
+            case FMT_3 -> {
+                int extOffset = extractImm32(word);
+                int pos = extOffset + idx;
+                yield (ext != null && pos >= 0 && pos < ext.length) ? ext[pos].mode() : MODE_NONE;
+            }
+            default -> MODE_NONE;
+        };
+    }
+
+    public static int extractOpReg(long word, int idx, ExtOperand[] ext) {
+        int fmt = extractFormat(word);
+        return switch (fmt) {
+            case FMT_0 -> idx == 0 ? extractFmt0Op0Reg(word)
+                    : (idx == 1 ? extractFmt0Op1Reg(word) : 0);
+            case FMT_1 -> {
+                int mode = idx == 0 ? extractFmt1Mode0(word) : extractFmt1Mode1(word);
+                if (mode == MODE_REG || mode == MODE_RAM_REG) {
+                    yield idx == 0 ? extractFmt1Val0(word) : extractFmt1Val1(word);
+                }
+                yield 0;
+            }
+            case FMT_3 -> {
+                int extOffset = extractImm32(word);
+                int pos = extOffset + idx;
+                yield (ext != null && pos >= 0 && pos < ext.length) ? ext[pos].reg() : 0;
+            }
+            default -> 0;
+        };
+    }
+
+    public static int extractOpImm(long word, int idx, ExtOperand[] ext) {
+        int fmt = extractFormat(word);
+        return switch (fmt) {
+            case FMT_0 -> extractImm32(word);
+            case FMT_1 -> idx == 0 ? extractFmt1Val0(word) : extractFmt1Val1(word);
+            case FMT_3 -> {
+                int extOffset = extractImm32(word);
+                int pos = extOffset + idx;
+                yield (ext != null && pos >= 0 && pos < ext.length) ? ext[pos].imm() : 0;
+            }
+            default -> 0;
+        };
+    }
+
     private static int mapFmt1Mode(int mode2b) {
         return switch (mode2b) {
             case 0 -> MODE_IMM;

@@ -150,12 +150,12 @@ Opening the Personal Computer interface provides dedicated hardware expansion sl
   - **1 GPU Limit**: Only **1 GPU** is allowed per SoC or computer. If the installed SoC already has an onboard GPU, the PC's GPU expansion slot is locked so a second GPU cannot be inserted.
 
 ### Framebuffer Graphics & GPU Acceleration
-The Personal Computer includes a dedicated **$960 \times 540$ CRT Framebuffer** (`VirtualGpu` when a GPU is installed, or the CPU software framebuffer otherwise):
+The Personal Computer includes a dedicated **$960 \times 540$ CRT Framebuffer** (`VirtualGpu` when a GPU is installed, or the CPU software framebuffer otherwise), streamed asynchronously off the 20 TPS server tick for >20 FPS updates:
 - **Graphics Handler Selector (`GFX:AUTO` / `GFX:CPU` / `GFX:GPU`)**: Click the `GFX:...` button in the PC GUI (or use `GFXSEL` / `<Glass>` helpers in software) to choose whether framebuffer drawing runs on the CPU or the dedicated `VirtualGpu`.
   - **`AUTO` (Default)**: Automatically routes framebuffer graphics and `<Glass>` calls through `VirtualGpu` when a GPU is installed, falling back to the CPU software framebuffer when no GPU is present.
   - **`CPU`**: Forces standard `FB*` rendering onto the CPU's software framebuffer even when a GPU is installed.
   - **`GPU`**: Targets `VirtualGpu` explicitly (available when a GPU is installed).
-- **GPU Hardware Acceleration**: When using a GPU, `VirtualGpu` executes queued drawing commands (`GPUCLR`, `GPURECT`, `GPULINE`, `GPUCIRC`, `GPUTRI`, `GPUVRAM`, `GPUBLIT`, `GPUSWAP`, `GPUSYNC`) on a separate double-buffered graphics processor with dedicated VRAM.
+- **GPU Hardware Acceleration**: When using a GPU, `VirtualGpu` executes queued drawing commands (`GPUCLR`, `GPURECT`, `GPULINE`, `GPUCIRC`, `GPUTRI`, `GPUVRAM`, `GPUBLIT`, `GPUSWAP`, `GPUSYNC`) on a dedicated JIT-accelerated background worker (`162+ MHz` target) with double-buffered presentation and dedicated VRAM.
 
 ### Audio Buffer & Speaker Routing Rules
 - The computer features an 8000 Hz, 8-bit unsigned PCM audio synthesis buffer (`APUSH`, `ATONE`, `APLAY`, `ACLR`, `ASTAT`).
@@ -222,7 +222,7 @@ ABA
 ### Interactive CRT Display
 When you open the **Personal Computer** interface:
 - **Keyboard Input**: Typing characters while focused on the screen fires the `KEYBOARD` interrupt (Vector 10), passing the character code into register `A`.
-- **Mouse Movement**: Moving your cursor over the CRT display area (`(0, 0)` to `(227, 81)`) fires `MOUSE_MOVE` (Vector 11) with coordinates in `A` (X) and `B` (Y).
+- **Mouse Movement**: Moving your cursor over the CRT display area (`(0, 0)` to `(959, 539)`) fires `MOUSE_MOVE` (Vector 11) with coordinates in `A` (X) and `B` (Y).
 - **Mouse Clicks**: Clicking within the CRT display canvas fires `MOUSE_CLICK` (Vector 12) with coordinates in `A` (X), `B` (Y), and the button in `C` (`0` for left-click, `1` for right-click).
 
 ### Exception Handling

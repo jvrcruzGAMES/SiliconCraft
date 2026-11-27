@@ -299,4 +299,35 @@ class VirtualGpuTest {
         assertEquals(VirtualCpu.State.ERROR, faultCpu.getState());
         assertTrue(faultCpu.getErrorMessage().contains("GPUCIRC"), faultCpu.getErrorMessage());
     }
+
+    @Test
+    void gpuThroughputExceedsCpuAndPreClippedBlitAndLinesMatchExactBounds() {
+        VirtualGpu gpu = new VirtualGpu();
+        gpu.configureHardware(true, "Turbo-GPU", VirtualGpu.RAM_MODULE_BYTES, 1);
+        gpu.powerOn();
+
+        assertEquals(485_000, games.jvrcruz.siliconcraft.vm.ComputerThreadManager.CYCLES_PER_SLICE);
+        assertEquals(200_000L, games.jvrcruz.siliconcraft.vm.ComputerThreadManager.GPU_SLICE_PARK_NANOS);
+        assertTrue(gpu.getBatchBudget() >= VirtualGpu.BASE_OPS_PER_SLICE,
+                "GPU batch budget should meet 162+ MHz Flipper rate (32,400+ ops at 5,000 slices/sec)");
+        assertTrue(gpu.isJitActive(), "GPU JIT pipeline should be active by default");
+
+        gpu.submitClear(0xFF000000);
+        // Opaque RAM blit partially off top-left and bottom-right edges
+        int[] sprite = new int[]{
+                0xFF112233, 0xFF445566,
+                0xFF778899, 0xFFAABBCC
+        };
+        gpu.submitBlitFromRam(-1, -1, sprite, 0, 2, 2, false);
+        gpu.submitBlitFromRam(VirtualGpu.FB_WIDTH - 1, VirtualGpu.FB_HEIGHT - 1, sprite, 0, 2, 2, false);
+        // Diagonal clipped line crossing negative X bounds (y = x + 10 -> hits (0, 10) and (10, 20))
+        gpu.submitDrawLine(-10, 0, 20, 30, 0xFF00FF00);
+        gpu.submitSwap();
+
+        int[] front = gpu.snapshotFrontBuffer();
+        assertEquals(0xFFAABBCC, front[0]);
+        assertEquals(0xFF00FF00, front[10 * VirtualGpu.FB_WIDTH]);
+        assertEquals(0xFF00FF00, front[20 * VirtualGpu.FB_WIDTH + 10]);
+        assertEquals(0xFF112233, front[(VirtualGpu.FB_HEIGHT - 1) * VirtualGpu.FB_WIDTH + (VirtualGpu.FB_WIDTH - 1)]);
+    }
 }

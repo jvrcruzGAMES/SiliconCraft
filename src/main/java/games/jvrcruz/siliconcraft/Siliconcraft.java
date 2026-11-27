@@ -59,6 +59,7 @@ public class Siliconcraft {
         if (FMLEnvironment.dist == Dist.CLIENT) {
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingOut event) -> {
                 games.jvrcruz.siliconcraft.client.audio.ClientAudioShutdownHelper.stopAllAudio();
+                games.jvrcruz.siliconcraft.client.ClientDisplayCache.clearAll();
             });
         }
 

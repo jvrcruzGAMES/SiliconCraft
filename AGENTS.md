@@ -8,26 +8,23 @@ This document provides critical architectural principles, thread safety rules, a
 
 SiliconCraft is a NeoForge Minecraft mod (1.21.1) simulating modular personal computers, microcontrollers, and custom silicon architectures inside Minecraft.
 
-- **`vm/` (`VirtualCpu.java`)**: The 16/32-bit virtual CPU executing pre-decoded bytecode instructions, hardware timers, and memory-mapped peripherals.
-- **`compiler/` (`n1/NCompiler.java`, `n2/N2Compiler.java`, `Assembler.java`)**: The toolchain compiling N1, N2, and raw assembly down into `.o` bytecode images. `n2/N2Library.java` defines DeviceKit constants.
-- **`blockentity/` (`ComputerBlockEntity.java`, etc.)**: Tile entities bridging Minecraft game state, inventories, and virtual hardware.
-- **`client/` (`ComputerScreen.java`, `ComputerAudioPlayer.java`)**: CRT display rendering, audio playback (OpenAL/JavaSound), and user input.
+- **`vm/` (`VirtualCpu.java`, `CpuJitCompiler.java`, `VirtualGpu.java`, `GpuJitCompiler.java`, `BinaryBytecode.java`, `DisplayStreamSession.java`)**: The 16/32-bit virtual CPU and dedicated GPU executing 64-bit `SCBC` binary bytecode via JVM bytecode JIT compilation (`CpuJitCompiler`/`GpuJitCompiler`) with interpreter fallback, hardware timers, memory-mapped peripherals, and off-tick display streaming.
+- **`compiler/` (`n2/N2Compiler.java`, `Assembler.java`, `compiler/` Rust `scc` CLI)**: The toolchain compiling N2 (`.n2`) and raw assembly (`.asm`/`.s`) into 64-bit `SCBC` v1 binary bytecode and 3-section `SCPK` v3 `.sc` packages (`manifest`, optional `metadata`, `program`). `n2/N2Library.java` defines DeviceKit constants. (Legacy N1 `.n` is discontinued as of 0.2.0.)
+- **`blockentity/` (`ComputerBlockEntity.java`, etc.)**: Tile entities bridging Minecraft game state, inventories, peripheral servicing, and virtual hardware.
+- **`client/` (`ComputerScreen.java`, `ClientDisplayCache.java`, `ComputerDisplayRenderer.java`, `ClientPayloadHandler.java`, `ComputerAudioPlayer.java`)**: Uncapped render-rate double-buffered CRT display rendering (`ClientDisplayCache` updated on `HandlerThread.NETWORK`), OpenAL/JavaSound audio playback, and input polling.
 
 ---
 
 ## 2. Multi-Threading & Shared Thread Model
 
-CPU execution is **completely offloaded** from Minecraft's main server tick loop (`ServerLevel.tick()`) to background worker threads managed by [`ComputerThreadManager.java`](file:///home/jvrcruz/IdeaProjects/SiliconCraft/src/main/java/games/jvrcruz/siliconcraft/vm/ComputerThreadManager.java).
+CPU execution, GPU rasterization, and display/terminal/audio streaming are **offloaded** from Minecraft's main server tick loop (`ServerLevel.tick()`) to background worker clusters managed by [`ComputerThreadManager.java`](file:///home/jvrcruz/IdeaProjects/SiliconCraft/src/main/java/games/jvrcruz/siliconcraft/vm/ComputerThreadManager.java). Server ticks handle only world-coupled state (`lastGameTime`, `NetworkConfig.policy()`, `POWERED` blockstate, `servicePeripheral`, chunk/speaker/viewer snapshot refreshes, and world NBT dirty flags).
 
 ### Threading Model Rules:
 1. **Shared Thread Clustering**:
-   - A single worker thread executes multiple computers cooperatively in round-robin time slices.
-   - **Strict Capacity Limit**: `ComputerThreadManager.MAX_COMPUTERS_PER_THREAD = 8`.
-   - If more than 8 computers are active, a new worker thread is dynamically spawned to prevent machine slowdown.
-   - Idle worker threads retire automatically after an inactivity timeout.
-2. **Cooperative Slice Execution**:
-   - Each computer executes a batch of cycles per slice (`CYCLES_PER_SLICE = 2500`).
-   - Slices pause with a micro-park (`LockSupport.parkNanos(1_000_000L)`) yielding ~2.5 MHz clock speeds per machine with minimal host CPU usage (<5% of a core).
+   - **CPU Workers (`WorkerThread`, max `MAX_COMPUTERS_PER_THREAD = 8`)**: Executes `CYCLES_PER_SLICE = 485_000` with `SLICE_PARK_NANOS = 1_000_000L` (~485 MHz GameCube Gekko target via `CpuJitCompiler`), capped by a `1.5 ms` slice wall-time budget in `ComputerBlockEntity.tickAsyncCpu`.
+   - **GPU Workers (`GpuWorkerThread`, max `MAX_GPUS_PER_THREAD = 8`)**: Drains `VirtualGpu` command queues (`BASE_OPS_PER_SLICE = 32_400` + `OPS_PER_COMPUTE_UNIT * computeUnits`) with `GPU_SLICE_PARK_NANOS = 200_000L` (162+ MHz GameCube Flipper target via `GpuJitCompiler`), woken via `LockSupport.unpark` on command enqueue.
+   - **Async Sync Workers (`SyncWorkerThread`, max `MAX_SYNCS_PER_THREAD = 8`)**: Streams `DisplayFramePacket` (keyframes and row-deltas via `DisplayStreamSession`, `8 ms` / ~125 Hz min interval), `SyncTerminalPacket`, and `PlayAudioPacket` directly over Netty (`connection.send(...)`) with `SYNC_ACTIVE_PARK_NANOS = 4_000_000L`, woken immediately when display, terminal, or audio state changes.
+   - Idle worker threads across all pools retire automatically after inactivity timeouts.
 
 ---
 
@@ -35,45 +32,47 @@ CPU execution is **completely offloaded** from Minecraft's main server tick loop
 
 > [!CAUTION]
 > **Minecraft's engine (`Level`, `BlockState`, `BlockEntity`, `ChunkAccess`) is NOT thread-safe.**
-> Calling world methods from worker threads causes crashes and world corruption.
+> Calling world methods from worker threads or Netty threads causes crashes and world corruption.
 
 Agents must adhere to these thread-safety requirements:
 
-1. **Never Touch `Level` from Background Threads**:
-   - The virtual CPU must never hold references to or call methods on `Level`.
-   - Game time is fed to the CPU using a `volatile long lastGameTime` updated during `ComputerBlockEntity.tick()`.
-2. **Volatile State Flags**:
-   - `VirtualCpu.state`, `VirtualCpu.displayMode`, and `VirtualCpu.fbDirty` are `volatile`.
-   - Any new cross-thread flags must be marked `volatile` or wrapped in atomic primitives.
+1. **Never Touch `Level` from Background or Network Threads**:
+   - `VirtualCpu`, `VirtualGpu`, `SyncWorkerThread`, and `HandlerThread.NETWORK` handlers must never hold references to or call methods on server `Level` / `ChunkAccess`.
+   - Game time is fed via `volatile long lastGameTime` on `ComputerBlockEntity.tick()`.
+   - `ComputerBlockEntity.refreshSyncSnapshots()` refreshes immutable/safe viewer, chunk-tracker, speaker position, and speaker-listener snapshots on the server tick for `SyncWorkerThread` to read safely off-tick.
+2. **Volatile State Flags & Separate Display Locks**:
+   - `VirtualCpu.state`, `VirtualCpu.displayMode`, `VirtualCpu.fbDirty`, `VirtualGpu.fbDirty`, and `VirtualCpu.terminalVersion` (`AtomicLong`) coordinate cross-thread visibility.
+   - Software framebuffer fills and `snapshotActiveDisplay()` synchronize on dedicated `VirtualCpu.fbLock` — **never** on `executionLock` — so `SyncWorkerThread` is never blocked by CPU execution slices.
+   - `VirtualGpu` preserves strict acyclic lock ordering: `renderLock` -> `queueLock` / `frontBufferLock`.
 3. **Execution Lock Barrier (`cpu.getExecutionLock()`)**:
-   - All CPU state modifications (`tick`, `step`, `reset`, `powerOn`, `powerOff`) synchronize on `cpu.getExecutionLock()`.
-   - **World Save Synchronization (`saveAdditional`)**: When Minecraft saves the world, `ComputerBlockEntity.saveAdditional` acquires `synchronized (cpu.getExecutionLock())` to prevent capturing inconsistent register or RAM states mid-instruction.
+   - CPU lifecycle & execution (`tick`, `step`, `reset`, `powerOn`, `powerOff`) synchronize on `cpu.getExecutionLock()`.
+   - **World Save Synchronization (`saveAdditional`)**: `ComputerBlockEntity.saveAdditional` acquires `synchronized (cpu.getExecutionLock())` to prevent capturing inconsistent register or RAM states mid-instruction.
 4. **Terminal Output**:
-   - `VirtualCpu.terminalOutput` uses `CopyOnWriteArrayList` so server threads, Jade block tooltips, and network packet handlers can safely iterate over lines without locks or `ConcurrentModificationException`.
-5. **Interrupt & Audio Queues**:
+   - `VirtualCpu.terminalOutput` uses `CopyOnWriteArrayList` and `lineBuffer` updates are synchronized on `lineBuffer`, so server ticks, `SyncWorkerThread`, Jade tooltips, and network handlers never race.
+5. **Client Display Cache (`ClientDisplayCache`)**:
+   - `DisplayFramePacket`, `SyncTerminalPacket`, screen `PlayAudioPacket`, and `StopAudioPacket` run on `HandlerThread.NETWORK`. Multi-chunk frames reassemble in `stagingPixels` and publish atomically into double-buffered `frontPixels` under `frontLock`; stale/out-of-order `frameId`s are rejected. Clear on screen close and client disconnect.
+6. **Interrupt & Audio Queues**:
    - `interruptQueue` and `audioQueue` are synchronized internally. Writers and readers must use the designated queue methods (`queueTimerInterrupt`, `queueKeyboardInterrupt`, `pollAudioSamples`).
-6. **Host Unregistration**:
-   - Any `BlockEntity` hosting a CPU must implement `ComputerHost` and call `ComputerThreadManager.unregister(this)` inside `setRemoved()` and `onChunkUnloaded()`.
-7. **Fast Unloading & Forced Shutdown**:
-   - `ComputerThreadManager.shutdown()` interrupts all workers, clears host collections to prevent memory leaks, and fast-joins threads (<50ms).
-   - `VirtualCpu.tick()` checks `Thread.currentThread().isInterrupted()` to abort slices instantly upon thread interruption.
-   - Both client and server register shutdown listeners on `GameShuttingDownEvent`, `ServerStoppingEvent`, `ServerStoppedEvent`, client `LoggingOut`, and a dedicated JVM shutdown hook (`Runtime.getRuntime().addShutdownHook`) to guarantee zero hang times and instant unloading on forced process termination (`SIGTERM`, `kill`, crashes).
+7. **Host Unregistration**:
+   - Any `BlockEntity` hosting a CPU must implement `ComputerHost` and call `ComputerThreadManager.unregister(this)` inside `setRemoved()` and `onChunkUnloaded()`. When stopped with open GUI viewers (`ComputerMenu`), `unregisterExecution(this)` stops CPU/GPU workers while `SyncWorkerThread` stays active until the screen closes (`ComputerMenu.removed` -> `onViewerClosed`).
+8. **Fast Unloading & Forced Shutdown**:
+   - `ComputerThreadManager.shutdown()` interrupts all CPU, GPU, and Sync workers, clears host collections, and fast-joins threads (<250 ms total).
+   - `VirtualCpu.tick()` checks `Thread.currentThread().isInterrupted()` and `jitSliceYielded` to abort slices cleanly without livelocking.
+   - Client and server register shutdown listeners on `GameShuttingDownEvent`, `ServerStoppingEvent`, `ServerStoppedEvent`, client `LoggingOut`, and a JVM shutdown hook.
 
 ---
 
-## 4. Bytecode & Assembler Standard (`.o`)
+## 4. Bytecode, `.sc` Packages & Instruction Registration
 
-- **Object Code Format**: All user programs (from `.n` projects or assembly writer) are compiled and assembled into direct numeric bytecode before storage or drive burning. The standard extension is `.o`.
-- **Instruction Registration**: When introducing a new instruction, it must be registered in:
+- **Binary Object & Package Format**: Programs assemble to 64-bit **`SCBC` v1** binary images (`BinaryBytecode.java`: 8-byte words + `.rodata`, `.ext`, and `.data` static segments). `scc` packages programs into little-endian **`SCPK` v3** `.sc` files with 3 sections (`manifest` mandatory first at offset 0, `metadata` optional, `program` mandatory).
+- **Instruction Registration**: When introducing a new instruction, register it in:
   1. `InstructionValidator.ALL_INSTRUCTIONS`
-  2. `VirtualCpu.OPCODE_MAP` (assigning a distinct `OP_` constant)
-  3. `Assembler.java` (if it involves label targets or static data)
-  4. `VirtualCpu.java` (in `compileLine` and `executeNextInstruction` switch)
-- **Expression Lowering in N Language**:
-  - The N compiler must lower all arithmetic and composite expressions to registers/temporaries.
-  - Never emit compound expression strings (e.g. `ADD [86], (tile_ty * LEVEL_COLS)`) directly into assembly operand fields.
-- **Label Parsing Safety**:
-  - Colons inside string literals (e.g. `OUT "Value: ", 0`) must never be treated as label declarations. Always use `findLabelColon(line)`.
+  2. `BinaryBytecode` (`OP_*` constant & metadata tables)
+  3. `Assembler.java` and Rust `compiler/` (`scc`)
+  4. `VirtualCpu.java` (`executeNextInstruction`) and `CpuJitCompiler.java` (or delegate cleanly)
+- **Expression Lowering & Label Safety**:
+  - Compilers must lower all arithmetic and composite expressions to registers/temporaries before emitting assembly operands.
+  - Colons inside string literals (e.g. `OUT "Value: ", 0`) must never be treated as label declarations (`findLabelColon(line)`).
 
 ---
 
@@ -185,5 +184,5 @@ A standalone, cycle-accurate Rust implementation of the SiliconCraft Virtual CPU
 - Keep opcode 101 assigned to `INAXIS`. N2 `<GameController>` exports `gc_axis`, named stick/trigger helpers, trigger-pressed helpers, and L3/R3 button helpers. Keep their arity, constants, compiler lowering, Assembly/N2 references, and examples synchronized.
 - New mask bits 12/13 are independent trigger presses (>500); bits 14/15 are L3/R3. Preserve existing D-pad/left-stick aliases and the legacy trigger-to-shoulder aliases in bits 10/11. Normalize GLFW triggers from −1..1 to 0..1 before quantizing.
 - Controlify remains optional. The current physical controller (or the first GLFW fallback) feeds virtual pad 0; keyboard mappings still work independently. Suppress both physical buttons and axes in GUI cursor mode. Clear samples on disconnect, screen close, reset, and power-off.
-- `GamepadInputPacket` carries one complete sample, with clamping in `GamepadState`. Accept it only for the sender's open, valid `ComputerMenu`. Client polling runs on GUI ticks, sends changes, and refreshes once per second. The payload protocol is `1.2.0`; older peers cannot exchange the new input sample.
+- `GamepadInputPacket` carries one complete sample, with clamping in `GamepadState`. Accept it only for the sender's open, valid `ComputerMenu`. Client polling runs on render frames (8 ms throttle) and GUI ticks, sends changes immediately, and refreshes once per second via `padSyncTicks`. The payload protocol is `1.5.0` (includes `DisplayFramePacket` off-tick streaming).
 - `GameControllerInputsTest` covers axis normalization, independent masks, VM execution/fault/reset behavior, and N2 lowering including runtime pad/axis expressions. JVM unit tests do not replace physical Controlify/GLFW controller testing.

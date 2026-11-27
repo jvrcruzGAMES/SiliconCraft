@@ -1,7 +1,7 @@
 package games.jvrcruz.siliconcraft.client.screen;
 
+import games.jvrcruz.siliconcraft.client.ClientDisplayCache;
 import games.jvrcruz.siliconcraft.client.audio.ComputerAudioPlayer;
-
 import games.jvrcruz.siliconcraft.client.renderer.ComputerDisplayRenderer;
 import games.jvrcruz.siliconcraft.menu.ComputerMenu;
 import games.jvrcruz.siliconcraft.menu.slot.FilteredSlot;
@@ -30,6 +30,9 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
     private boolean lastHasGpu = false;
     private Button gfxButton;
     private final ComputerDisplayRenderer displayRenderer = new ComputerDisplayRenderer();
+    private final int[] cachedPixelScratch = new int[VirtualCpu.FB_WIDTH * VirtualCpu.FB_HEIGHT];
+    private long lastCachedFrameVersion = 0L;
+    private long lastPadPollNanos = 0L;
 
     public ComputerScreen(ComputerMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
@@ -115,12 +118,29 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         int screenBottom = topPos + 142;
 
         // Direct OpenGL Framebuffer rendering (bypassing Minecraft UI engine)
-        if (state != VirtualCpu.State.OFF.ordinal() && menu.getBlockEntity().getCpu().getDisplayMode() == 1) {
-            VirtualCpu cpu = menu.getBlockEntity().getCpu();
-            if (!displayInitialized || cpu.isFbDirty()) {
-                displayRenderer.updatePixels(cpu.getFramebuffer());
-                cpu.setFbDirty(false);
-                displayInitialized = true;
+        int mode = ClientDisplayCache.getDisplayMode(
+                menu.getBlockEntity().getBlockPos(),
+                menu.getBlockEntity().getCpu().getDisplayMode()
+        );
+        if (state != VirtualCpu.State.OFF.ordinal() && mode == 1) {
+            long cacheVer = ClientDisplayCache.copyFrameIfUpdated(
+                    menu.getBlockEntity().getBlockPos(),
+                    lastCachedFrameVersion,
+                    cachedPixelScratch
+            );
+            if (cacheVer > 0) {
+                if (cacheVer != lastCachedFrameVersion || !displayInitialized) {
+                    displayRenderer.updatePixels(cachedPixelScratch);
+                    lastCachedFrameVersion = cacheVer;
+                    displayInitialized = true;
+                }
+            } else {
+                VirtualCpu cpu = menu.getBlockEntity().getCpu();
+                if (!displayInitialized || cpu.isFbDirty()) {
+                    displayRenderer.updatePixels(cpu.getFramebuffer());
+                    cpu.setFbDirty(false);
+                    displayInitialized = true;
+                }
             }
             displayRenderer.renderDirect(guiGraphics.pose().last().pose(), screenLeft, screenTop, screenRight, screenBottom);
         }
@@ -146,13 +166,18 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
     protected void renderLabels(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         int state = menu.getCpuState();
         boolean isOff = (state == VirtualCpu.State.OFF.ordinal());
+        int mode = ClientDisplayCache.getDisplayMode(
+                menu.getBlockEntity().getBlockPos(),
+                menu.getBlockEntity().getCpu().getDisplayMode()
+        );
 
         // Render CRT Terminal Text (only when in text console mode)
         if (isOff) {
             guiGraphics.drawString(this.font, "[PERSONAL COMPUTER POWERED OFF]", 14, 14, 0x447755, false);
             guiGraphics.drawString(this.font, "Press the Power Button below to boot.", 14, 26, 0x336644, false);
-        } else if (menu.getBlockEntity().getCpu().getDisplayMode() == 0) {
-            List<String> output = menu.getBlockEntity().getCpu().getTerminalOutput();
+        } else if (mode == 0) {
+            List<String> cachedOutput = ClientDisplayCache.getTerminalLines(menu.getBlockEntity().getBlockPos());
+            List<String> output = cachedOutput != null ? cachedOutput : menu.getBlockEntity().getCpu().getTerminalOutput();
             int maxLines = 13;
             int start = Math.max(0, output.size() - maxLines);
             int y = 10;
@@ -209,6 +234,13 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        if (menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal()) {
+            long now = System.nanoTime();
+            if (now - lastPadPollNanos >= 8_000_000L) {
+                lastPadPollNanos = now;
+                updateAndSendPadState();
+            }
+        }
         this.lastMouseX = mouseX;
         this.lastMouseY = mouseY;
         clearUnhoveredButtonFocus(mouseX, mouseY);
@@ -414,6 +446,7 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         displayRenderer.close();
         if (menu != null && menu.getBlockEntity() != null) {
             ComputerAudioPlayer.stopScreenAudio(menu.getBlockEntity().getBlockPos());
+            ClientDisplayCache.remove(menu.getBlockEntity().getBlockPos());
         }
     }
 }

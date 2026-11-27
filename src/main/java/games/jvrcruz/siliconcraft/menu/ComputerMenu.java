@@ -151,6 +151,9 @@ public class ComputerMenu extends AbstractContainerMenu {
         super.removed(player);
         if (!player.level().isClientSide) {
             blockEntity.getCpu().setGamepadState(0, GamepadState.NEUTRAL);
+            if (player instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+                blockEntity.onViewerClosed(serverPlayer);
+            }
         }
     }
 }

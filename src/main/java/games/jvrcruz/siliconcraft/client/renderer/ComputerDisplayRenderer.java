@@ -26,18 +26,19 @@ public class ComputerDisplayRenderer {
     public void updatePixels(int[] pixels) {
         if (pixels == null) return;
         int len = Math.min(pixels.length, WIDTH * HEIGHT);
-        for (int i = 0; i < len; i++) {
-            int x = i % WIDTH;
-            int y = i / WIDTH;
-            int argb = pixels[i];
-            int a = (argb >> 24) & 0xFF;
-            if (a == 0) a = 0xFF;
-            int r = (argb >> 16) & 0xFF;
-            int g = (argb >> 8) & 0xFF;
-            int b = argb & 0xFF;
-            // NativeImage setPixelRGBA expects ABGR: (a << 24) | (b << 16) | (g << 8) | r
-            int abgr = (a << 24) | (b << 16) | (g << 8) | r;
-            nativeImage.setPixelRGBA(x, y, abgr);
+        int i = 0;
+        for (int y = 0; y < HEIGHT && i < len; y++) {
+            for (int x = 0; x < WIDTH && i < len; x++, i++) {
+                int argb = pixels[i];
+                int a = (argb >> 24) & 0xFF;
+                if (a == 0) a = 0xFF;
+                int r = (argb >> 16) & 0xFF;
+                int g = (argb >> 8) & 0xFF;
+                int b = argb & 0xFF;
+                // NativeImage setPixelRGBA expects ABGR: (a << 24) | (b << 16) | (g << 8) | r
+                int abgr = (a << 24) | (b << 16) | (g << 8) | r;
+                nativeImage.setPixelRGBA(x, y, abgr);
+            }
         }
         dynamicTexture.upload();
     }

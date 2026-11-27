@@ -11,12 +11,13 @@ import games.jvrcruz.siliconcraft.data.SocData;
 import games.jvrcruz.siliconcraft.init.ModBlockEntities;
 import games.jvrcruz.siliconcraft.init.ModBlocks;
 import games.jvrcruz.siliconcraft.menu.ComputerMenu;
+import games.jvrcruz.siliconcraft.network.DisplayFramePacket;
 import games.jvrcruz.siliconcraft.network.PlayAudioPacket;
-import games.jvrcruz.siliconcraft.network.SyncFramebufferPacket;
 import games.jvrcruz.siliconcraft.network.FramebufferCodec;
 import games.jvrcruz.siliconcraft.network.SyncTerminalPacket;
 import games.jvrcruz.siliconcraft.vm.ComputerHost;
 import games.jvrcruz.siliconcraft.vm.ComputerThreadManager;
+import games.jvrcruz.siliconcraft.vm.DisplayStreamSession;
 import games.jvrcruz.siliconcraft.vm.VirtualCpu;
 import games.jvrcruz.siliconcraft.vm.DriveStorage;
 import games.jvrcruz.siliconcraft.vm.PeripheralBus;
@@ -30,6 +31,8 @@ import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.server.level.ServerLevel;
@@ -66,14 +69,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class ComputerBlockEntity extends BlockEntity implements MenuProvider, ComputerHost {
     private SocData socData = SocData.EMPTY;
     private final VirtualCpu cpu = new VirtualCpu();
+    private final DisplayStreamSession displayStreamSession = new DisplayStreamSession();
+    private final CopyOnWriteArrayList<ServerPlayer> activeViewers = new CopyOnWriteArrayList<>();
+    private volatile List<ServerPlayer> terminalTrackers = List.of();
+    private volatile @Nullable BlockPos cachedSpeakerPos = null;
+    private volatile List<ServerPlayer> speakerAudioListeners = List.of();
+    private volatile boolean worldTerminalDirty = false;
     private List<String> lastSyncedOutput = Collections.emptyList();
     private byte[] onboardStorage = new byte[0];
     private @Nullable UUID onboardDriveId;
-    private final Set<UUID> audioListeners = new HashSet<>();
+    private final Set<UUID> audioListeners = ConcurrentHashMap.newKeySet();
     private record WrappedPeripheral(SerialNetwork.Endpoint endpoint, ComputerPeripheral peripheral) {}
     private final Map<Integer, WrappedPeripheral> wrappedPeripherals = new HashMap<>();
     private final SerialNetwork serialNetwork;
@@ -199,6 +210,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         synchronized (cpu.getExecutionLock()) {
             cpu.cycleGraphicsHandler();
         }
+        ComputerThreadManager.wakeSync(this);
         setChanged();
         if (level != null && !level.isClientSide) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
@@ -325,16 +337,30 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
     public void removeSoc() {
         this.socData = SocData.EMPTY;
         this.cpu.powerOff();
+        if (hasActiveViewers()) {
+            ComputerThreadManager.unregisterExecution(this);
+        } else {
+            ComputerThreadManager.unregister(this);
+        }
         stopAudio();
         this.onboardStorage = new byte[0];
         this.onboardDriveId = null;
         recalculateHardwareCapabilities();
+        ComputerThreadManager.wakeSync(this);
         setChanged();
     }
 
+    private volatile long lastWorldTerminalVersion = -1L;
+
     public void syncTerminal(Level level, BlockPos pos, BlockState state) {
         if (level == null || level.isClientSide) return;
+        long ver = cpu.getTerminalVersion();
+        if (ver == lastWorldTerminalVersion && !worldTerminalDirty) {
+            return;
+        }
         List<String> currentOutput = cpu.getTerminalOutput();
+        lastWorldTerminalVersion = ver;
+        worldTerminalDirty = false;
         if (!currentOutput.equals(lastSyncedOutput)) {
             lastSyncedOutput = new ArrayList<>(currentOutput);
             setChanged();
@@ -349,6 +375,10 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         }
     }
 
+    public boolean hasActiveViewers() {
+        return !activeViewers.isEmpty();
+    }
+
     public void togglePower() {
         if (socData == null || socData.instructions().isEmpty()) {
             cpu.powerOff();
@@ -358,6 +388,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
             if (level != null) {
                 syncTerminal(level, worldPosition, getBlockState());
             }
+            ComputerThreadManager.wakeSync(this);
             return;
         }
 
@@ -365,7 +396,11 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         if (cpu.getState() == VirtualCpu.State.RUNNING) {
             ComputerThreadManager.register(this);
         } else {
-            ComputerThreadManager.unregister(this);
+            if (hasActiveViewers()) {
+                ComputerThreadManager.unregisterExecution(this);
+            } else {
+                ComputerThreadManager.unregister(this);
+            }
             stopAudio();
         }
 
@@ -376,6 +411,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
             }
             syncTerminal(level, worldPosition, getBlockState());
         }
+        ComputerThreadManager.wakeSync(this);
         setChanged();
     }
 
@@ -385,6 +421,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         if (level != null) {
             syncTerminal(level, worldPosition, getBlockState());
         }
+        ComputerThreadManager.wakeSync(this);
     }
 
     public void stepCpu() {
@@ -393,8 +430,8 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         if (level != null) {
             syncTerminal(level, worldPosition, getBlockState());
         }
+        ComputerThreadManager.wakeSync(this);
     }
-
 
     public void stopAudio() {
         synchronized (cpu.getExecutionLock()) {
@@ -421,7 +458,12 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
                 level.setBlock(pos, state.setValue(ComputerBlock.POWERED, true), 3);
             }
         } else {
-            ComputerThreadManager.unregister(this);
+            if (hasActiveViewers()) {
+                ComputerThreadManager.unregisterExecution(this);
+                ComputerThreadManager.registerSync(this);
+            } else {
+                ComputerThreadManager.unregister(this);
+            }
             if (state.getValue(ComputerBlock.POWERED)) {
                 level.setBlock(pos, state.setValue(ComputerBlock.POWERED, false), 3);
                 stopAudio();
@@ -429,9 +471,67 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         }
         if (level instanceof ServerLevel serverLevel) {
             servicePeripheral(serverLevel);
+            refreshSyncSnapshots(serverLevel, pos);
         }
-        syncTerminal(level, pos, state);
-        syncDisplayAndAudio(level, pos);
+        long ver = cpu.getTerminalVersion();
+        if (this.worldTerminalDirty || ver != this.lastWorldTerminalVersion) {
+            this.worldTerminalDirty = false;
+            this.lastWorldTerminalVersion = ver;
+            List<String> currentOutput = cpu.getTerminalOutput();
+            if (!currentOutput.equals(lastSyncedOutput)) {
+                lastSyncedOutput = new ArrayList<>(currentOutput);
+                setChanged();
+                level.sendBlockUpdated(pos, state, state, 2);
+                if (!hasActiveViewers() && level instanceof ServerLevel serverLevel) {
+                    PacketDistributor.sendToPlayersTrackingChunk(
+                            serverLevel,
+                            new ChunkPos(pos),
+                            new SyncTerminalPacket(pos, currentOutput)
+                    );
+                }
+            }
+        }
+    }
+
+    private void refreshSyncSnapshots(ServerLevel serverLevel, BlockPos pos) {
+        if (!activeViewers.isEmpty()) {
+            for (ServerPlayer viewer : activeViewers) {
+                if (!isPlayerConnected(viewer)
+                        || !(viewer.containerMenu instanceof ComputerMenu cMenu && cMenu.getBlockEntity() == this)) {
+                    activeViewers.remove(viewer);
+                    displayStreamSession.removeViewer(viewer.getUUID());
+                }
+            }
+        }
+
+        List<ServerPlayer> tracking = serverLevel.getChunkSource().chunkMap.getPlayers(new ChunkPos(pos), false);
+        this.terminalTrackers = tracking.isEmpty() ? List.of() : List.copyOf(tracking);
+
+        BlockPos speakerPos = null;
+        for (Direction dir : Direction.values()) {
+            BlockPos neighbor = pos.relative(dir);
+            LevelChunk chunk = SerialNetwork.loadedChunk(serverLevel, pos, neighbor);
+            if (chunk != null && chunk.getBlockState(neighbor).is(ModBlocks.SPEAKER.get())) {
+                speakerPos = neighbor;
+                break;
+            }
+        }
+        this.cachedSpeakerPos = speakerPos;
+
+        if (speakerPos != null) {
+            Vec3 source = SubLevelCoordinates.worldPosition(serverLevel, Vec3.atCenterOf(speakerPos));
+            double maxDistSq = 32.0 * 32.0;
+            List<ServerPlayer> nearby = new ArrayList<>();
+            for (ServerPlayer player : serverLevel.players()) {
+                if (SubLevelCoordinates.worldPosition(serverLevel, player.position()).distanceToSqr(source) <= maxDistSq
+                        || (player.containerMenu instanceof ComputerMenu cMenu && cMenu.getBlockEntity() == this)) {
+                    nearby.add(player);
+                }
+            }
+            this.speakerAudioListeners = nearby.isEmpty() ? List.of() : List.copyOf(nearby);
+        } else {
+            this.speakerAudioListeners = List.of();
+        }
     }
 
     private void servicePeripheral(ServerLevel level) {
@@ -519,11 +619,58 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         }
     }
 
+    @Override
     public void tickAsyncCpu(int cycles) {
         if (cpu.getState() != VirtualCpu.State.RUNNING) {
             return;
         }
-        cpu.tick(cycles);
+        cpu.tick(cycles, 1_500_000L);
+    }
+
+    @Override
+    public boolean hasPendingSyncWork() {
+        return (!activeViewers.isEmpty() && cpu.isAnyFbDirty()) || cpu.hasPendingAudio();
+    }
+
+    @Override
+    public boolean tickAsyncSync(long nowNanos) {
+        boolean didWork = false;
+        List<ServerPlayer> viewers = collectLiveViewers();
+        if (!viewers.isEmpty()) {
+            List<UUID> viewerIds = new ArrayList<>(viewers.size());
+            for (ServerPlayer viewer : viewers) {
+                viewerIds.add(viewer.getUUID());
+            }
+            if (displayStreamSession.tickDisplay(cpu, viewerIds, nowNanos,
+                    (frame, broadcastAll) -> emitFrameChunks(viewers, frame))) {
+                didWork = true;
+            }
+        }
+
+        if (displayStreamSession.tickTerminal(cpu, lines -> {
+            this.worldTerminalDirty = true;
+            emitTerminalPacket(new SyncTerminalPacket(worldPosition, lines), viewers);
+        })) {
+            didWork = true;
+        }
+
+        byte[] audioSamples = cpu.pollAudioSamples();
+        if (audioSamples != null && audioSamples.length > 0) {
+            didWork = true;
+            BlockPos speakerPos = this.cachedSpeakerPos;
+            if (speakerPos != null) {
+                PlayAudioPacket pkt = new PlayAudioPacket(worldPosition, speakerPos, audioSamples, 8000, true);
+                for (ServerPlayer player : this.speakerAudioListeners) {
+                    sendAudioDirect(player, pkt);
+                }
+            } else if (!viewers.isEmpty()) {
+                PlayAudioPacket pkt = new PlayAudioPacket(worldPosition, worldPosition, audioSamples, 8000, false);
+                for (ServerPlayer viewer : viewers) {
+                    sendAudioDirect(viewer, pkt);
+                }
+            }
+        }
+        return didWork;
     }
 
     @Override
@@ -542,6 +689,10 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
     public void setRemoved() {
         super.setRemoved();
         ComputerThreadManager.unregister(this);
+        activeViewers.clear();
+        terminalTrackers = List.of();
+        speakerAudioListeners = List.of();
+        displayStreamSession.resetBaseline();
         cpu.getNetworkPort().reset();
         cpu.getPeripheralBus().reset();
         wrappedPeripherals.clear();
@@ -553,6 +704,10 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
     public void onChunkUnloaded() {
         super.onChunkUnloaded();
         ComputerThreadManager.unregister(this);
+        activeViewers.clear();
+        terminalTrackers = List.of();
+        speakerAudioListeners = List.of();
+        displayStreamSession.resetBaseline();
         cpu.getNetworkPort().reset();
         cpu.getPeripheralBus().reset();
         wrappedPeripherals.clear();
@@ -560,58 +715,60 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         stopAudio();
     }
 
-    private void syncDisplayAndAudio(Level level, BlockPos pos) {
-        if (level == null || level.isClientSide || !(level instanceof ServerLevel serverLevel)) return;
-
-        // Sync Framebuffer if dirty to any players looking at this screen
-        if (cpu.isAnyFbDirty()) {
-            List<ServerPlayer> viewers = serverLevel.players().stream()
-                    .filter(player -> player.containerMenu instanceof ComputerMenu menu && menu.getBlockEntity() == this)
-                    .toList();
-            if (!viewers.isEmpty()) {
-                List<SyncFramebufferPacket> strips = snapshotDisplay(pos);
-                for (ServerPlayer player : viewers) {
-                    for (SyncFramebufferPacket strip : strips) PacketDistributor.sendToPlayer(player, strip);
-                }
+    private List<ServerPlayer> collectLiveViewers() {
+        if (activeViewers.isEmpty()) {
+            return List.of();
+        }
+        List<ServerPlayer> live = new ArrayList<>(activeViewers.size());
+        for (ServerPlayer player : activeViewers) {
+            if (isPlayerConnected(player)) {
+                live.add(player);
             }
         }
+        return live;
+    }
 
-        // Process audio buffer
-        byte[] audioSamples = cpu.pollAudioSamples();
-        if (audioSamples != null && audioSamples.length > 0) {
-            // Check for adjacent Speaker block
-            BlockPos speakerPos = null;
-            for (Direction dir : Direction.values()) {
-                BlockPos neighbor = pos.relative(dir);
-                LevelChunk chunk = SerialNetwork.loadedChunk(serverLevel, pos, neighbor);
-                if (chunk != null && chunk.getBlockState(neighbor).is(ModBlocks.SPEAKER.get())) {
-                    speakerPos = neighbor;
-                    break;
-                }
-            }
-
-            if (speakerPos != null) {
-                broadcastSpeakerAudio(serverLevel, speakerPos, audioSamples);
-            } else {
-                // No speaker: Audio plays ONLY on computer screen (players with screen open)
-                for (ServerPlayer player : serverLevel.players()) {
-                    if (player.containerMenu instanceof ComputerMenu cMenu && cMenu.getBlockEntity() == this) {
-                        sendAudio(player, new PlayAudioPacket(pos, pos, audioSamples, 8000, false));
-                    }
-                }
+    private void emitFrameChunks(List<ServerPlayer> targets, DisplayStreamSession.StreamFrame frame) {
+        if (targets.isEmpty()) return;
+        List<byte[]> chunks = frame.chunks();
+        int total = chunks.size();
+        for (int i = 0; i < total; i++) {
+            DisplayFramePacket pkt = new DisplayFramePacket(
+                    worldPosition,
+                    frame.mode(),
+                    frame.frameId(),
+                    i,
+                    total,
+                    frame.keyframe(),
+                    chunks.get(i)
+            );
+            for (ServerPlayer player : targets) {
+                sendPayloadDirect(player, pkt);
             }
         }
     }
 
-    private List<SyncFramebufferPacket> snapshotDisplay(BlockPos pos) {
-        int mode;
-        int[] pixels;
-        synchronized (cpu.getExecutionLock()) {
-            mode = cpu.getDisplayMode();
-            pixels = mode == 1 ? cpu.getActiveFramebuffer().clone() : new int[0];
-            cpu.clearAllFbDirty();
+    private void emitTerminalPacket(SyncTerminalPacket packet, List<ServerPlayer> liveViewers) {
+        List<ServerPlayer> trackers = this.terminalTrackers;
+        for (ServerPlayer tracker : trackers) {
+            sendPayloadDirect(tracker, packet);
         }
-        return SyncFramebufferPacket.frame(pos, mode, pixels);
+        for (ServerPlayer viewer : liveViewers) {
+            if (!trackers.contains(viewer)) {
+                sendPayloadDirect(viewer, packet);
+            }
+        }
+    }
+
+    private static boolean isPlayerConnected(ServerPlayer player) {
+        return player != null && !player.hasDisconnected()
+                && player.connection != null && player.connection.isAcceptingMessages();
+    }
+
+    private static void sendPayloadDirect(ServerPlayer player, CustomPacketPayload payload) {
+        if (isPlayerConnected(player)) {
+            player.connection.send(new ClientboundCustomPayloadPacket(payload));
+        }
     }
 
     public void broadcastSpeakerAudio(ServerLevel level, BlockPos speakerPos, byte[] audioSamples) {
@@ -621,14 +778,25 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         for (ServerPlayer player : level.players()) {
             if (SubLevelCoordinates.worldPosition(level, player.position()).distanceToSqr(source) <= maxDistSq
                     || player.containerMenu instanceof ComputerMenu menu && menu.getBlockEntity() == this) {
-                sendAudio(player, packet);
+                sendAudioDirect(player, packet);
             }
         }
     }
 
-    private void sendAudio(ServerPlayer player, PlayAudioPacket packet) {
-        PacketDistributor.sendToPlayer(player, packet);
-        audioListeners.add(player.getUUID());
+    private void sendAudioDirect(ServerPlayer player, PlayAudioPacket packet) {
+        if (isPlayerConnected(player)) {
+            player.connection.send(new ClientboundCustomPayloadPacket(packet));
+            audioListeners.add(player.getUUID());
+        }
+    }
+
+    public void onViewerClosed(ServerPlayer player) {
+        if (player == null) return;
+        activeViewers.remove(player);
+        displayStreamSession.removeViewer(player.getUUID());
+        if (cpu.getState() != VirtualCpu.State.RUNNING && !hasActiveViewers()) {
+            ComputerThreadManager.unregister(this);
+        }
     }
 
     private void saveCpuStateToNbt(CompoundTag cpuTag) {
@@ -1047,10 +1215,17 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
                 cpu.setFbDirty(true);
             }
 
+            displayStreamSession.resetBaseline();
+            lastWorldTerminalVersion = -1L;
+            worldTerminalDirty = false;
+
             if (level instanceof ServerLevel) {
                 cpu.getNetworkPort().setPolicy(NetworkConfig.policy());
                 if (cpu.getState() == VirtualCpu.State.RUNNING) {
                     ComputerThreadManager.register(this);
+                } else if (hasActiveViewers()) {
+                    ComputerThreadManager.unregisterExecution(this);
+                    ComputerThreadManager.registerSync(this);
                 } else {
                     ComputerThreadManager.unregister(this);
                 }
@@ -1136,9 +1311,20 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
     @Override
     public AbstractContainerMenu createMenu(int containerId, Inventory playerInventory, Player player) {
         if (player instanceof ServerPlayer serverPlayer) {
-            for (SyncFramebufferPacket strip : snapshotDisplay(worldPosition)) {
-                PacketDistributor.sendToPlayer(serverPlayer, strip);
+            activeViewers.addIfAbsent(serverPlayer);
+            if (level instanceof ServerLevel serverLevel) {
+                refreshSyncSnapshots(serverLevel, worldPosition);
             }
+            displayStreamSession.sendInitialSnapshot(
+                    serverPlayer.getUUID(),
+                    cpu,
+                    (frame, broadcastToAll) -> emitFrameChunks(
+                            broadcastToAll ? collectLiveViewers() : List.of(serverPlayer),
+                            frame
+                    ),
+                    lines -> sendPayloadDirect(serverPlayer, new SyncTerminalPacket(worldPosition, lines))
+            );
+            ComputerThreadManager.registerSync(this);
         }
         return new ComputerMenu(containerId, playerInventory, this, this.dataAccess);
     }

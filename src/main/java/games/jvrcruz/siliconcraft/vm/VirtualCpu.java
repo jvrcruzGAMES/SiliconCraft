@@ -19,7 +19,9 @@ import java.nio.charset.CharsetDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReferenceArray;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiConsumer;
 import java.util.function.LongSupplier;
 import java.util.zip.Deflater;
@@ -35,38 +37,48 @@ public class VirtualCpu {
         ERROR
     }
 
-    private volatile State state = State.OFF;
-    private int pc = 0;
-    private int regA = 0;
-    private int regB = 0;
-    private int regC = 0;
-    private int regD = 0;
-    private boolean flagZ = false;
-    private boolean flagS = false;
-    private int cycles = 0;
+    volatile State state = State.OFF;
+    int pc = 0;
+    int regA = 0;
+    int regB = 0;
+    int regC = 0;
+    int regD = 0;
+    boolean flagZ = false;
+    boolean flagS = false;
+    int cycles = 0;
     private String errorMessage = "";
 
     private final Object executionLock = new Object();
 
     private final Set<String> supportedInstructions = new HashSet<>();
+    private final boolean[] supportedOpcodeIds = new boolean[BinaryBytecode.MAX_OPCODE_ID + 1];
     private byte[] binaryImage = new byte[0];
-    private long[] binaryCode = new long[0];
+    long[] binaryCode = new long[0];
     private String[] binaryRodata = new String[0];
-    private BinaryBytecode.ExtOperand[] binaryExt = new BinaryBytecode.ExtOperand[0];
+    BinaryBytecode.ExtOperand[] binaryExt = new BinaryBytecode.ExtOperand[0];
     private List<BinaryBytecode.DataSegment> staticDataSegments = List.of();
-    private String pendingAssemblyError = null;
+    String pendingAssemblyError = null;
     private final Map<Integer, byte[]> driveBinaries = new HashMap<>();
     private final List<String> terminalOutput = new java.util.concurrent.CopyOnWriteArrayList<>();
     private final StringBuilder lineBuffer = new StringBuilder();
     private final ByteArrayOutputStream utf8ByteBuf = new ByteArrayOutputStream();
     private final Deque<Integer> callStack = new ArrayDeque<>();
     private final Deque<Integer> dataStack = new ArrayDeque<>();
-    private int sleepTicksRemaining = 0;
+    private int[] callStackArr = new int[64];
+    private int callSp = 0;
+    private int[] dataStackArr = new int[64];
+    private int dataSp = 0;
+    int sleepTicksRemaining = 0;
     private volatile LongSupplier timeSupplier = System::currentTimeMillis;
     private final Random random = new Random();
-    private int[] ram = new int[256];
+    int[] ram = new int[256];
     private boolean hasNvme = false;
     private int storageSize = 0;
+
+    volatile CpuJitCompiler.CompiledCpuProgram jitProgram = null;
+    private volatile boolean jitEnabled = true;
+    private volatile int jitCompileCount = 0;
+    public boolean jitSliceYielded = false;
 
     public static final int MAX_DRIVES = 4;
     private final DriveStorage[] storageDrives = new DriveStorage[MAX_DRIVES];
@@ -85,16 +97,29 @@ public class VirtualCpu {
     public static final int FB_HEIGHT = 540;
     private volatile int displayMode = 0; // 0 = text mode, 1 = framebuffer mode
     private final int[] framebuffer = new int[FB_WIDTH * FB_HEIGHT];
+    private final Object fbLock = new Object();
     private volatile boolean fbDirty = false;
+    private volatile long activeSliceBudgetNanos = 10_000_000L;
     private final VirtualGpu gpu = new VirtualGpu();
     private volatile GraphicsHandler graphicsHandler = GraphicsHandler.AUTO;
+    private volatile Thread syncWorkerThread = null;
+    private final AtomicLong terminalVersion = new AtomicLong(1L);
+
+    private static final int MAX_STACK_DEPTH = 65_536;
+    private static final int MAX_INTERRUPT_STACK_DEPTH = 1024;
+    private static final int MAX_AUDIO_QUEUE = 262_144;
+    private static final int MAX_LINE_BUFFER = 4096;
 
     // Bare-bones audio buffer (8000 Hz, 8-bit unsigned PCM samples)
     private byte[] audioQueue = new byte[65536];
     private int audioHead = 0;
     private int audioTail = 0;
-    private int audioCount = 0;
-    private boolean audioTriggered = false;
+    private volatile int audioCount = 0;
+    private volatile boolean audioTriggered = false;
+
+    long getActiveSliceBudgetNanos() {
+        return activeSliceBudgetNanos;
+    }
 
     // Interrupt & Exception Vectors
     public static final int VEC_DIV_ZERO = 0;
@@ -146,8 +171,9 @@ public class VirtualCpu {
     private final Map<Integer, Integer> ivt = new HashMap<>();
     private final Deque<InterruptEvent> interruptQueue = new ArrayDeque<>();
     private final Deque<CpuContext> interruptStack = new ArrayDeque<>();
-    private boolean interruptsEnabled = true;
-    private boolean inInterruptHandler = false;
+    volatile boolean interruptsEnabled = true;
+    volatile boolean inInterruptHandler = false;
+    volatile boolean interruptQueueNonEmpty = false;
 
     private final NetworkPort networkPort = new NetworkPort();
 
@@ -209,6 +235,7 @@ public class VirtualCpu {
                 this.supportedInstructions.add(instr.toUpperCase(Locale.ROOT).trim());
             }
         }
+        rebuildSupportedOpcodeIds();
         this.hasNvme = hasNvme;
         this.storageSize = storageSize;
         long targetStorageBytes = (long) Math.max(0, storageSize) * 1024L;
@@ -220,8 +247,20 @@ public class VirtualCpu {
         reset();
     }
 
+    private void rebuildSupportedOpcodeIds() {
+        Arrays.fill(this.supportedOpcodeIds, false);
+        for (int id = 1; id <= BinaryBytecode.MAX_OPCODE_ID; id++) {
+            String name = BinaryBytecode.getOpcodeName(id);
+            if (name != null && this.supportedInstructions.contains(name)) {
+                this.supportedOpcodeIds[id] = true;
+            }
+        }
+        this.jitProgram = null;
+    }
+
     private void applyBinaryImage(byte[] bytecode) {
         this.pendingAssemblyError = null;
+        this.jitProgram = null;
         if (bytecode == null || bytecode.length == 0) {
             this.binaryImage = new byte[0];
             this.binaryCode = new long[0];
@@ -304,58 +343,102 @@ public class VirtualCpu {
     }
 
     public void reset() {
-        networkPort.reset();
-        peripheralBus.reset();
-        this.pc = 0;
-        this.regA = 0;
-        this.regB = 0;
-        this.regC = 0;
-        this.regD = 0;
-        this.flagZ = false;
-        this.flagS = false;
-        this.cycles = 0;
-        this.errorMessage = "";
-        this.callStack.clear();
-        this.dataStack.clear();
-        this.sleepTicksRemaining = 0;
-        this.timerHz = 0;
-        this.timerIntervalCycles = 0;
-        clearPadStates();
-        this.keyBuffer.clear();
-        loadStaticData();
-        this.displayMode = 0;
-        Arrays.fill(this.framebuffer, 0xFF051009);
-        this.gpu.reset();
-        this.fbDirty = true;
-        this.audioHead = 0;
-        this.audioTail = 0;
-        this.audioCount = 0;
-        this.audioTriggered = false;
-        this.terminalOutput.clear();
-        this.lineBuffer.setLength(0);
-        this.utf8ByteBuf.reset();
-        this.selectedDrive = 0;
-        for (int i = 0; i < MAX_DRIVES; i++) {
-            if (getDriveCapacity(i) > 0) {
-                this.selectedDrive = i;
-                break;
+        synchronized (executionLock) {
+            networkPort.reset();
+            peripheralBus.reset();
+            this.pc = 0;
+            this.regA = 0;
+            this.regB = 0;
+            this.regC = 0;
+            this.regD = 0;
+            this.flagZ = false;
+            this.flagS = false;
+            this.cycles = 0;
+            this.errorMessage = "";
+            this.callStack.clear();
+            this.callSp = 0;
+            this.dataStack.clear();
+            this.dataSp = 0;
+            this.sleepTicksRemaining = 0;
+            this.timerHz = 0;
+            this.timerIntervalCycles = 0;
+            clearPadStates();
+            this.keyBuffer.clear();
+            loadStaticData();
+            this.displayMode = 0;
+            Arrays.fill(this.framebuffer, 0xFF051009);
+            this.gpu.reset();
+            clearAudioQueue();
+            this.terminalOutput.clear();
+            synchronized (this.lineBuffer) {
+                this.lineBuffer.setLength(0);
+                this.utf8ByteBuf.reset();
             }
-        }
-        this.interruptQueue.clear();
-        this.interruptStack.clear();
-        this.interruptsEnabled = true;
-        this.inInterruptHandler = false;
-        if (state != State.OFF) {
-            this.state = State.RUNNING;
-            if (this.gpu.isInstalled()) {
-                this.gpu.powerOn();
+            markFbDirty();
+            markTerminalDirty();
+            this.selectedDrive = 0;
+            for (int i = 0; i < MAX_DRIVES; i++) {
+                if (getDriveCapacity(i) > 0) {
+                    this.selectedDrive = i;
+                    break;
+                }
             }
+            synchronized (this.interruptQueue) {
+                this.interruptQueue.clear();
+                this.interruptQueueNonEmpty = false;
+            }
+            this.interruptStack.clear();
+            this.interruptsEnabled = true;
+            this.inInterruptHandler = false;
+            if (state != State.OFF) {
+                this.state = State.RUNNING;
+                if (this.gpu.isInstalled()) {
+                    this.gpu.powerOn();
+                }
+            }
+            queueResetInterrupt();
         }
-        queueResetInterrupt();
     }
 
     public Object getExecutionLock() {
         return executionLock;
+    }
+
+    public void attachSyncWorker(Thread worker) {
+        this.syncWorkerThread = worker;
+        this.gpu.attachSyncWorker(worker);
+    }
+
+    public void detachSyncWorker(Thread worker) {
+        if (this.syncWorkerThread == worker) {
+            this.syncWorkerThread = null;
+        }
+        this.gpu.detachSyncWorker(worker);
+    }
+
+    public void wakeSyncWorker() {
+        Thread worker = this.syncWorkerThread;
+        if (worker != null) {
+            LockSupport.unpark(worker);
+        }
+    }
+
+    public long getTerminalVersion() {
+        return terminalVersion.get();
+    }
+
+    public boolean hasPendingAudio() {
+        return audioTriggered || audioCount >= 512;
+    }
+
+    private void markFbDirty() {
+        this.fbDirty = true;
+        wakeSyncWorker();
+    }
+
+    private void markTerminalDirty() {
+        this.terminalVersion.incrementAndGet();
+        wakeSyncWorker();
     }
 
     public void powerOn() {
@@ -366,6 +449,7 @@ public class VirtualCpu {
                 this.gpu.powerOn();
             }
         }
+        wakeSyncWorker();
     }
 
     public void powerOff() {
@@ -378,16 +462,15 @@ public class VirtualCpu {
             peripheralBus.reset();
             this.terminalOutput.add("[POWER OFF]");
             clearAudioQueue();
+            markTerminalDirty();
         }
     }
 
-    public void clearAudioQueue() {
-        synchronized (audioQueue) {
-            this.audioHead = 0;
-            this.audioTail = 0;
-            this.audioCount = 0;
-            this.audioTriggered = false;
-        }
+    public synchronized void clearAudioQueue() {
+        this.audioHead = 0;
+        this.audioTail = 0;
+        this.audioCount = 0;
+        this.audioTriggered = false;
     }
 
     public void togglePower() {
@@ -400,6 +483,22 @@ public class VirtualCpu {
         }
     }
 
+    public boolean isJitEnabled() {
+        return jitEnabled;
+    }
+
+    public void setJitEnabled(boolean jitEnabled) {
+        this.jitEnabled = jitEnabled;
+    }
+
+    public boolean isJitCompiled() {
+        return jitProgram != null;
+    }
+
+    public int getJitCompileCount() {
+        return jitCompileCount;
+    }
+
     public void step() {
         synchronized (executionLock) {
             if (state != State.RUNNING && state != State.PAUSED) {
@@ -407,14 +506,23 @@ public class VirtualCpu {
             }
             executeNextInstruction();
             if (gpu.isInstalled()) {
-                gpu.tick(gpu.getBatchBudget());
+                gpu.tryTick(gpu.getBatchBudget());
             }
         }
     }
 
     public void tick(int maxCycles) {
+        tick(maxCycles, 10_000_000L);
+    }
+
+    public void tick(int maxCycles, long maxWallNanos) {
         synchronized (executionLock) {
-            if (state != State.RUNNING) {
+            if (state != State.RUNNING || maxCycles <= 0) {
+                return;
+            }
+            this.activeSliceBudgetNanos = maxWallNanos > 0 ? maxWallNanos : 10_000_000L;
+            if (pendingAssemblyError != null) {
+                jitHandlePendingAssemblyError();
                 return;
             }
             checkTimerTrigger();
@@ -423,28 +531,57 @@ public class VirtualCpu {
                 if (sleepTicksRemaining > 0) {
                     sleepTicksRemaining--;
                     if (gpu.isInstalled()) {
-                        gpu.tick(gpu.getBatchBudget());
+                        gpu.tryTick(gpu.getBatchBudget());
                     }
                     return;
                 }
             }
-            int count = 0;
-            long startNanos = System.nanoTime();
-            while (state == State.RUNNING && count < maxCycles && !Thread.currentThread().isInterrupted()) {
-                executeNextInstruction();
-                count++;
-                if ((count & 63) == 0) {
-                    checkTimerTrigger();
-                    if (System.nanoTime() - startNanos > 10_000_000L) { // 10ms safety threshold
+
+            if (jitEnabled) {
+                if (this.jitProgram == null) {
+                    this.jitProgram = CpuJitCompiler.compile(this.binaryCode, this.binaryExt, this.supportedOpcodeIds);
+                    this.jitCompileCount++;
+                }
+                long startNanos = System.nanoTime();
+                int remaining = maxCycles;
+                while (state == State.RUNNING
+                        && remaining > 0
+                        && sleepTicksRemaining == 0
+                        && !Thread.currentThread().isInterrupted()) {
+                    CpuJitCompiler.CompiledCpuProgram prog = this.jitProgram;
+                    if (prog == null) {
+                        prog = CpuJitCompiler.compile(this.binaryCode, this.binaryExt, this.supportedOpcodeIds);
+                        this.jitProgram = prog;
+                        this.jitCompileCount++;
+                    }
+                    int executed = prog.execute(this, remaining, startNanos);
+                    remaining -= executed;
+                    if (executed == 0 && this.jitProgram == prog) {
+                        break;
+                    }
+                    if (System.nanoTime() - startNanos > this.activeSliceBudgetNanos) {
                         break;
                     }
                 }
-                if (sleepTicksRemaining > 0) {
-                    break;
+            } else {
+                long startNanos = System.nanoTime();
+                int count = 0;
+                while (state == State.RUNNING && count < maxCycles && !Thread.currentThread().isInterrupted()) {
+                    executeNextInstruction();
+                    count++;
+                    if ((count & 63) == 0) {
+                        checkTimerTrigger();
+                        if (System.nanoTime() - startNanos > this.activeSliceBudgetNanos) {
+                            break;
+                        }
+                    }
+                    if (sleepTicksRemaining > 0) {
+                        break;
+                    }
                 }
             }
             if (gpu.isInstalled()) {
-                gpu.tick(gpu.getBatchBudget());
+                gpu.tryTick(gpu.getBatchBudget());
             }
         }
     }
@@ -460,17 +597,22 @@ public class VirtualCpu {
         }
     }
 
-    private void checkAndDispatchInterrupt() {
-        if (!interruptsEnabled || inInterruptHandler || interruptQueue.isEmpty()) {
-            return;
+    private boolean checkAndDispatchInterrupt() {
+        if (!interruptsEnabled || inInterruptHandler || !interruptQueueNonEmpty) {
+            return false;
         }
         InterruptEvent event = null;
         synchronized (interruptQueue) {
             if (!interruptQueue.isEmpty()) {
                 event = interruptQueue.poll();
             }
+            interruptQueueNonEmpty = !interruptQueue.isEmpty();
         }
         if (event != null && ivt.containsKey(event.vector)) {
+            if (interruptStack.size() >= MAX_INTERRUPT_STACK_DEPTH) {
+                haltWithException("Interrupt stack overflow", pc, "");
+                return false;
+            }
             int handlerPc = ivt.get(event.vector);
             interruptStack.push(new CpuContext(pc, regA, regB, regC, regD, flagZ, flagS, true));
             inInterruptHandler = true;
@@ -479,68 +621,25 @@ public class VirtualCpu {
             regC = event.regC;
             pc = handlerPc;
             sleepTicksRemaining = 0;
+            return true;
         }
+        return false;
     }
 
     private int opCount(long word) {
-        int fmt = BinaryBytecode.extractFormat(word);
-        return switch (fmt) {
-            case BinaryBytecode.FMT_0, BinaryBytecode.FMT_3 -> BinaryBytecode.extractFlags(word);
-            case BinaryBytecode.FMT_1 -> 2;
-            case BinaryBytecode.FMT_2 -> 1;
-            default -> 0;
-        };
+        return BinaryBytecode.extractOpCount(word);
     }
 
     private int opMode(long word, int idx) {
-        int fmt = BinaryBytecode.extractFormat(word);
-        return switch (fmt) {
-            case BinaryBytecode.FMT_0 -> idx == 0 ? BinaryBytecode.extractFmt0Op0Mode(word)
-                    : (idx == 1 ? BinaryBytecode.extractFmt0Op1Mode(word) : BinaryBytecode.MODE_NONE);
-            case BinaryBytecode.FMT_1 -> idx == 0 ? BinaryBytecode.extractFmt1Mode0(word)
-                    : (idx == 1 ? BinaryBytecode.extractFmt1Mode1(word) : BinaryBytecode.MODE_NONE);
-            case BinaryBytecode.FMT_3 -> {
-                int extOffset = BinaryBytecode.extractImm32(word);
-                int pos = extOffset + idx;
-                yield (pos >= 0 && pos < binaryExt.length) ? binaryExt[pos].mode() : BinaryBytecode.MODE_NONE;
-            }
-            default -> BinaryBytecode.MODE_NONE;
-        };
+        return BinaryBytecode.extractOpMode(word, idx, binaryExt);
     }
 
     private int opReg(long word, int idx) {
-        int fmt = BinaryBytecode.extractFormat(word);
-        return switch (fmt) {
-            case BinaryBytecode.FMT_0 -> idx == 0 ? BinaryBytecode.extractFmt0Op0Reg(word)
-                    : (idx == 1 ? BinaryBytecode.extractFmt0Op1Reg(word) : 0);
-            case BinaryBytecode.FMT_1 -> {
-                int mode = idx == 0 ? BinaryBytecode.extractFmt1Mode0(word) : BinaryBytecode.extractFmt1Mode1(word);
-                if (mode == BinaryBytecode.MODE_REG || mode == BinaryBytecode.MODE_RAM_REG) {
-                    yield idx == 0 ? BinaryBytecode.extractFmt1Val0(word) : BinaryBytecode.extractFmt1Val1(word);
-                }
-                yield 0;
-            }
-            case BinaryBytecode.FMT_3 -> {
-                int extOffset = BinaryBytecode.extractImm32(word);
-                int pos = extOffset + idx;
-                yield (pos >= 0 && pos < binaryExt.length) ? binaryExt[pos].reg() : 0;
-            }
-            default -> 0;
-        };
+        return BinaryBytecode.extractOpReg(word, idx, binaryExt);
     }
 
     private int opImm(long word, int idx) {
-        int fmt = BinaryBytecode.extractFormat(word);
-        return switch (fmt) {
-            case BinaryBytecode.FMT_0 -> BinaryBytecode.extractImm32(word);
-            case BinaryBytecode.FMT_1 -> idx == 0 ? BinaryBytecode.extractFmt1Val0(word) : BinaryBytecode.extractFmt1Val1(word);
-            case BinaryBytecode.FMT_3 -> {
-                int extOffset = BinaryBytecode.extractImm32(word);
-                int pos = extOffset + idx;
-                yield (pos >= 0 && pos < binaryExt.length) ? binaryExt[pos].imm() : 0;
-            }
-            default -> 0;
-        };
+        return BinaryBytecode.extractOpImm(word, idx, binaryExt);
     }
 
     private int readRam(int addr) {
@@ -597,7 +696,7 @@ public class VirtualCpu {
         }
     }
 
-    private void executeNextInstruction() {
+    void executeNextInstruction() {
         checkAndDispatchInterrupt();
 
         if (pendingAssemblyError != null) {
@@ -611,6 +710,7 @@ public class VirtualCpu {
             state = State.HALTED;
             flushLineBuffer();
             terminalOutput.add("[PROGRAM TERMINATED: END OF FILE]");
+            markTerminalDirty();
             return;
         }
 
@@ -734,18 +834,17 @@ public class VirtualCpu {
                 case BinaryBytecode.OP_CALL -> {
                     requireOperands(word, 1, "CALL requires target");
                     int destPc = readOperand(word, 0);
-                    callStack.push(pc);
+                    jitPushCall(pc);
                     pc = Math.max(0, Math.min(destPc, binaryCode.length));
                 }
                 case BinaryBytecode.OP_RET -> execRet();
                 case BinaryBytecode.OP_PUSH -> {
                     requireOperands(word, 1, "PUSH requires value");
-                    dataStack.push(readOperand(word, 0));
+                    jitPushData(readOperand(word, 0));
                 }
                 case BinaryBytecode.OP_POP -> {
                     requireOperands(word, 1, "POP requires dest");
-                    if (dataStack.isEmpty()) throw new IllegalStateException("POP on empty stack: Data stack underflow");
-                    writeOperand(word, 0, dataStack.pop());
+                    writeOperand(word, 0, jitPopData());
                 }
                 case BinaryBytecode.OP_IVEC -> {
                     requireOperands(word, 2, "IVEC requires vector, handler");
@@ -754,11 +853,6 @@ public class VirtualCpu {
                 case BinaryBytecode.OP_IRET -> execIret();
                 case BinaryBytecode.OP_CLI -> interruptsEnabled = false;
                 case BinaryBytecode.OP_STI -> interruptsEnabled = true;
-                case BinaryBytecode.OP_INT -> execInt(word, currentPc);
-                case BinaryBytecode.OP_OUT -> execOut(word);
-                case BinaryBytecode.OP_OUTH -> execOuth(word);
-                case BinaryBytecode.OP_OUTC -> execOutc(word);
-                case BinaryBytecode.OP_CLS -> execCls();
                 case BinaryBytecode.OP_SLEEP -> {
                     requireOperands(word, 1, "SLEEP requires ticks");
                     int ticks = readOperand(word, 0);
@@ -766,30 +860,14 @@ public class VirtualCpu {
                 }
                 case BinaryBytecode.OP_TIME -> {
                     requireOperands(word, 1, "TIME requires dest");
-                    long t = timeSupplier != null ? timeSupplier.getAsLong() : 0L;
-                    writeOperand(word, 0, (int) (t & 0x7FFFFFFF));
+                    writeOperand(word, 0, jitReadTime());
                 }
                 case BinaryBytecode.OP_RAND -> {
                     requireOperands(word, 2, "RAND requires dest, max");
-                    int max = readOperand(word, 1);
-                    writeOperand(word, 0, max > 0 ? random.nextInt(max) : 0);
+                    writeOperand(word, 0, jitNextRand(readOperand(word, 1)));
                 }
                 case BinaryBytecode.OP_INPAD -> execInpad(word);
                 case BinaryBytecode.OP_INAXIS -> execInaxis(word);
-                case BinaryBytecode.OP_TIMER -> {
-                    requireOperands(word, 1, "TIMER requires hz");
-                    setTimerHz(readOperand(word, 0));
-                }
-                case BinaryBytecode.OP_VBLANK -> execVblank(word);
-                case BinaryBytecode.OP_SSIZE -> execSSize(word);
-                case BinaryBytecode.OP_SREAD -> execSRead(word);
-                case BinaryBytecode.OP_SWRITE -> execSWrite(word);
-                case BinaryBytecode.OP_SBLKR -> execSBlkr(word);
-                case BinaryBytecode.OP_SBLKW -> execSBlkw(word);
-                case BinaryBytecode.OP_SCOUNT -> execSCount(word);
-                case BinaryBytecode.OP_SSEL -> execSSel(word);
-                case BinaryBytecode.OP_SDRV -> execSDrv(word);
-                case BinaryBytecode.OP_SEXEC -> execSExec(word, currentPc);
                 case BinaryBytecode.OP_FBMODE -> execFbMode(word);
                 case BinaryBytecode.OP_FBSET -> execFbSet(word);
                 case BinaryBytecode.OP_FBGET -> execFbGet(word);
@@ -797,14 +875,7 @@ public class VirtualCpu {
                 case BinaryBytecode.OP_FBRECT -> execFbRect(word);
                 case BinaryBytecode.OP_FBLINE -> execFbLine(word);
                 case BinaryBytecode.OP_FBLIT -> execFbLit(word);
-                case BinaryBytecode.OP_FBSWAP -> {
-                    displayMode = 1;
-                    gpu.setDisplayMode(1);
-                    if (isUsingGpu()) {
-                        gpu.submitSwap();
-                    }
-                    fbDirty = true;
-                }
+                case BinaryBytecode.OP_FBSWAP -> jitFbSwap();
                 case BinaryBytecode.OP_FBWIDTH -> {
                     requireOperands(word, 1, "FBWIDTH requires dest");
                     writeOperand(word, 0, FB_WIDTH);
@@ -832,99 +903,123 @@ public class VirtualCpu {
                     writeOperand(word, 0, audioCount);
                 }
                 case BinaryBytecode.OP_ATONE -> execATone(word);
-                case BinaryBytecode.OP_APLAY -> audioTriggered = true;
-                case BinaryBytecode.OP_PINFO -> submitPeripheralRequest(word, PeripheralBus.Operation.INFO);
-                case BinaryBytecode.OP_PWRAP -> submitPeripheralRequest(word, PeripheralBus.Operation.WRAP);
-                case BinaryBytecode.OP_PCALL -> submitPeripheralRequest(word, PeripheralBus.Operation.CALL);
-                case BinaryBytecode.OP_PCALLS -> submitPeripheralRequest(word, PeripheralBus.Operation.CALL_STRING);
-                case BinaryBytecode.OP_PSTATUS -> {
-                    requireOperands(word, 1, "PSTATUS requires dest");
-                    writeOperand(word, 0, peripheralBus.status());
-                }
-                case BinaryBytecode.OP_PSCAN -> submitPeripheralRequest(word, PeripheralBus.Operation.SCAN);
-                case BinaryBytecode.OP_PRESULT -> {
-                    requireOperands(word, 1, "PRESULT requires dest");
-                    writeOperand(word, 0, peripheralBus.consumeResult());
-                }
-                case BinaryBytecode.OP_PLEN -> {
-                    requireOperands(word, 1, "PLEN requires dest");
-                    writeOperand(word, 0, peripheralBus.textLength());
-                }
-                case BinaryBytecode.OP_PRESULTS -> readPeripheralText(word);
-                case BinaryBytecode.OP_NOPEN -> submitNetwork(word, NetworkPort.Operation.OPEN);
-                case BinaryBytecode.OP_NSEND -> submitNetwork(word, NetworkPort.Operation.SEND);
-                case BinaryBytecode.OP_NRECV -> submitNetwork(word, NetworkPort.Operation.RECEIVE);
-                case BinaryBytecode.OP_NCLOSE -> submitNetwork(word, NetworkPort.Operation.CLOSE);
-                case BinaryBytecode.OP_NHTTP -> submitNetwork(word, NetworkPort.Operation.HTTP);
-                case BinaryBytecode.OP_NWSOPEN -> submitNetwork(word, NetworkPort.Operation.WEBSOCKET);
-                case BinaryBytecode.OP_NWSTEXT -> submitNetwork(word, NetworkPort.Operation.SEND_TEXT);
-                case BinaryBytecode.OP_NTLS -> submitNetwork(word, NetworkPort.Operation.TLS);
-                case BinaryBytecode.OP_NHTTP3 -> submitNetwork(word, NetworkPort.Operation.HTTP3);
-                case BinaryBytecode.OP_NRESPOND -> submitNetwork(word, NetworkPort.Operation.RESPOND);
-                case BinaryBytecode.OP_NRESPONDT -> submitNetwork(word, NetworkPort.Operation.RESPOND_TEXT);
-                case BinaryBytecode.OP_NACCEPT -> submitNetwork(word, NetworkPort.Operation.ACCEPT);
-                case BinaryBytecode.OP_NLISTEN -> submitNetwork(word, NetworkPort.Operation.LISTEN);
-                case BinaryBytecode.OP_NSTATUS -> {
-                    requireOperands(word, 1, "NSTATUS requires dest");
-                    writeOperand(word, 0, networkPort.status());
-                }
-                case BinaryBytecode.OP_NLEN -> {
-                    requireOperands(word, 1, "NLEN requires dest");
-                    writeOperand(word, 0, networkPort.resultLength());
-                }
-                case BinaryBytecode.OP_NRESULT -> readNetworkResult(word);
-                case BinaryBytecode.OP_NREADY -> {
-                    requireOperands(word, 1, "NREADY requires dest");
-                    writeOperand(word, 0, networkPort.ready() ? 1 : 0);
-                }
-                case BinaryBytecode.OP_NUTF8 -> transcodeNetworkText(word);
-                case BinaryBytecode.OP_GALLOC -> {
-                    if (opCount(word) != 2
-                            || (opMode(word, 0) != BinaryBytecode.MODE_REG && opMode(word, 0) != BinaryBytecode.MODE_IMM)
-                            || opMode(word, 1) != BinaryBytecode.MODE_IMM) {
-                        throw new IllegalArgumentException("GALLOC requires a size and an immediate heap base");
-                    }
-                    int size = readOperand(word, 0);
-                    int base = opImm(word, 1);
-                    try {
-                        if (size == 0) {
-                            GuestHeap.initialize(ram, base);
-                            regA = 0;
-                        } else {
-                            int address = GuestHeap.allocate(ram, base, size,
-                                    regA, regB, regC, regD, dataStack, interruptStack);
-                            if (address == 0) pc = currentPc; // Retry after an interrupted collection.
-                            else regA = address;
-                        }
-                    } catch (IndexOutOfBoundsException e) {
-                        // The generated program cannot resume with a missing allocation.
-                        haltWithException(e.getMessage(), currentPc, BinaryBytecode.formatInstructionSummary(word));
-                    }
+                case BinaryBytecode.OP_APLAY -> {
+                    audioTriggered = true;
+                    wakeSyncWorker();
                 }
                 case BinaryBytecode.OP_HLT -> {
                     state = State.HALTED;
                     flushLineBuffer();
                     terminalOutput.add("[EXECUTION HALTED]");
+                    markTerminalDirty();
                 }
-                default -> {
-                    String summary = BinaryBytecode.formatInstructionSummary(word);
-                    triggerException(VEC_ILLEGAL_OPCODE, "Unknown opcode: " + summary, currentPc, summary);
-                }
+                default -> execTier3(opcodeId, word, currentPc);
             }
         } catch (Exception e) {
-            int vec = VEC_GENERAL_EXCEPTION;
-            String desc = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-            if (e instanceof ArithmeticException) {
-                vec = VEC_DIV_ZERO;
-            } else if (e instanceof IndexOutOfBoundsException) {
-                vec = VEC_OUT_OF_BOUNDS;
-            } else if (e instanceof IllegalStateException && desc.toLowerCase(Locale.ROOT).contains("stack")) {
-                vec = VEC_STACK_FAULT;
-            }
-            triggerException(vec, desc, currentPc, BinaryBytecode.formatInstructionSummary(word));
+            jitHandleException(e, currentPc);
         }
 
-        if (terminalOutput.size() > 60) {
+        trimTerminalOutput();
+    }
+
+    private void execTier3(int opcodeId, long word, int currentPc) {
+        switch (opcodeId) {
+            case BinaryBytecode.OP_INT -> execInt(word, currentPc);
+            case BinaryBytecode.OP_OUT -> execOut(word);
+            case BinaryBytecode.OP_OUTH -> execOuth(word);
+            case BinaryBytecode.OP_OUTC -> execOutc(word);
+            case BinaryBytecode.OP_CLS -> execCls();
+            case BinaryBytecode.OP_TIMER -> {
+                requireOperands(word, 1, "TIMER requires hz");
+                setTimerHz(readOperand(word, 0));
+            }
+            case BinaryBytecode.OP_VBLANK -> execVblank(word);
+            case BinaryBytecode.OP_SSIZE -> execSSize(word);
+            case BinaryBytecode.OP_SREAD -> execSRead(word);
+            case BinaryBytecode.OP_SWRITE -> execSWrite(word);
+            case BinaryBytecode.OP_SBLKR -> execSBlkr(word);
+            case BinaryBytecode.OP_SBLKW -> execSBlkw(word);
+            case BinaryBytecode.OP_SCOUNT -> execSCount(word);
+            case BinaryBytecode.OP_SSEL -> execSSel(word);
+            case BinaryBytecode.OP_SDRV -> execSDrv(word);
+            case BinaryBytecode.OP_SEXEC -> execSExec(word, currentPc);
+            case BinaryBytecode.OP_PINFO -> submitPeripheralRequest(word, PeripheralBus.Operation.INFO);
+            case BinaryBytecode.OP_PWRAP -> submitPeripheralRequest(word, PeripheralBus.Operation.WRAP);
+            case BinaryBytecode.OP_PCALL -> submitPeripheralRequest(word, PeripheralBus.Operation.CALL);
+            case BinaryBytecode.OP_PCALLS -> submitPeripheralRequest(word, PeripheralBus.Operation.CALL_STRING);
+            case BinaryBytecode.OP_PSTATUS -> {
+                requireOperands(word, 1, "PSTATUS requires dest");
+                writeOperand(word, 0, peripheralBus.status());
+            }
+            case BinaryBytecode.OP_PSCAN -> submitPeripheralRequest(word, PeripheralBus.Operation.SCAN);
+            case BinaryBytecode.OP_PRESULT -> {
+                requireOperands(word, 1, "PRESULT requires dest");
+                writeOperand(word, 0, peripheralBus.consumeResult());
+            }
+            case BinaryBytecode.OP_PLEN -> {
+                requireOperands(word, 1, "PLEN requires dest");
+                writeOperand(word, 0, peripheralBus.textLength());
+            }
+            case BinaryBytecode.OP_PRESULTS -> readPeripheralText(word);
+            case BinaryBytecode.OP_NOPEN -> submitNetwork(word, NetworkPort.Operation.OPEN);
+            case BinaryBytecode.OP_NSEND -> submitNetwork(word, NetworkPort.Operation.SEND);
+            case BinaryBytecode.OP_NRECV -> submitNetwork(word, NetworkPort.Operation.RECEIVE);
+            case BinaryBytecode.OP_NCLOSE -> submitNetwork(word, NetworkPort.Operation.CLOSE);
+            case BinaryBytecode.OP_NHTTP -> submitNetwork(word, NetworkPort.Operation.HTTP);
+            case BinaryBytecode.OP_NWSOPEN -> submitNetwork(word, NetworkPort.Operation.WEBSOCKET);
+            case BinaryBytecode.OP_NWSTEXT -> submitNetwork(word, NetworkPort.Operation.SEND_TEXT);
+            case BinaryBytecode.OP_NTLS -> submitNetwork(word, NetworkPort.Operation.TLS);
+            case BinaryBytecode.OP_NHTTP3 -> submitNetwork(word, NetworkPort.Operation.HTTP3);
+            case BinaryBytecode.OP_NRESPOND -> submitNetwork(word, NetworkPort.Operation.RESPOND);
+            case BinaryBytecode.OP_NRESPONDT -> submitNetwork(word, NetworkPort.Operation.RESPOND_TEXT);
+            case BinaryBytecode.OP_NACCEPT -> submitNetwork(word, NetworkPort.Operation.ACCEPT);
+            case BinaryBytecode.OP_NLISTEN -> submitNetwork(word, NetworkPort.Operation.LISTEN);
+            case BinaryBytecode.OP_NSTATUS -> {
+                requireOperands(word, 1, "NSTATUS requires dest");
+                writeOperand(word, 0, networkPort.status());
+            }
+            case BinaryBytecode.OP_NLEN -> {
+                requireOperands(word, 1, "NLEN requires dest");
+                writeOperand(word, 0, networkPort.resultLength());
+            }
+            case BinaryBytecode.OP_NRESULT -> readNetworkResult(word);
+            case BinaryBytecode.OP_NREADY -> {
+                requireOperands(word, 1, "NREADY requires dest");
+                writeOperand(word, 0, networkPort.ready() ? 1 : 0);
+            }
+            case BinaryBytecode.OP_NUTF8 -> transcodeNetworkText(word);
+            case BinaryBytecode.OP_GALLOC -> {
+                if (opCount(word) != 2
+                        || (opMode(word, 0) != BinaryBytecode.MODE_REG && opMode(word, 0) != BinaryBytecode.MODE_IMM)
+                        || opMode(word, 1) != BinaryBytecode.MODE_IMM) {
+                    throw new IllegalArgumentException("GALLOC requires a size and an immediate heap base");
+                }
+                int size = readOperand(word, 0);
+                int base = opImm(word, 1);
+                try {
+                    if (size == 0) {
+                        GuestHeap.initialize(ram, base);
+                        regA = 0;
+                    } else {
+                        int address = GuestHeap.allocate(ram, base, size,
+                                regA, regB, regC, regD, getDataStack(), interruptStack);
+                        if (address == 0) pc = currentPc; // Retry after an interrupted collection.
+                        else regA = address;
+                    }
+                } catch (IndexOutOfBoundsException e) {
+                    // The generated program cannot resume with a missing allocation.
+                    haltWithException(e.getMessage(), currentPc, BinaryBytecode.formatInstructionSummary(word));
+                }
+            }
+            default -> {
+                String summary = BinaryBytecode.formatInstructionSummary(word);
+                triggerException(VEC_ILLEGAL_OPCODE, "Unknown opcode: " + summary, currentPc, summary);
+            }
+        }
+    }
+
+    private void trimTerminalOutput() {
+        while (terminalOutput.size() > 60) {
             terminalOutput.remove(0);
         }
     }
@@ -1098,14 +1193,7 @@ public class VirtualCpu {
     }
 
     private void execRet() {
-        if (callStack.isEmpty()) {
-            throw new IllegalStateException("RET without CALL: Call stack underflow");
-        }
-        pc = callStack.pop();
-        if (inInterruptHandler && !interruptStack.isEmpty() && !interruptStack.peek().restoreRegs()) {
-            interruptStack.pop();
-            inInterruptHandler = !interruptStack.isEmpty();
-        }
+        pc = jitExecRet();
     }
 
     private void execIret() {
@@ -1129,6 +1217,10 @@ public class VirtualCpu {
         requireOperands(word, 1, "INT requires vector");
         int vec = readOperand(word, 0);
         if (ivt.containsKey(vec)) {
+            if (interruptStack.size() >= MAX_INTERRUPT_STACK_DEPTH) {
+                haltWithException("Interrupt stack overflow", currentPc, BinaryBytecode.formatInstructionSummary(word));
+                return;
+            }
             interruptStack.push(new CpuContext(pc, regA, regB, regC, regD, flagZ, flagS, false));
             inInterruptHandler = true;
             regA = vec;
@@ -1140,6 +1232,10 @@ public class VirtualCpu {
 
     public void triggerException(int vector, String description, int lineNum, String lineCode) {
         if (ivt.containsKey(vector)) {
+            if (interruptStack.size() >= MAX_INTERRUPT_STACK_DEPTH) {
+                haltWithException("Interrupt stack overflow: " + description, lineNum, lineCode);
+                return;
+            }
             int resumePc = lineNum >= 0 ? lineNum + 1 : pc;
             interruptStack.push(new CpuContext(resumePc, regA, regB, regC, regD, flagZ, flagS, false));
             inInterruptHandler = true;
@@ -1156,6 +1252,7 @@ public class VirtualCpu {
         errorMessage = "Exception not handled: " + description + (lineNum >= 0 ? " at line " + lineNum + ": '" + lineCode + "'" : "");
         flushLineBuffer();
         terminalOutput.add("[CPU EXCEPTION] " + errorMessage);
+        markTerminalDirty();
     }
 
     public void queueResetInterrupt() {
@@ -1167,6 +1264,7 @@ public class VirtualCpu {
             }
             if (interruptQueue.size() < 64) {
                 interruptQueue.addFirst(new InterruptEvent(VEC_RESET, 0, 0, 0));
+                interruptQueueNonEmpty = true;
             }
         }
     }
@@ -1180,6 +1278,7 @@ public class VirtualCpu {
             }
             if (interruptQueue.size() < 64) {
                 interruptQueue.add(new InterruptEvent(VEC_TIMER, 0, 0, 0));
+                interruptQueueNonEmpty = true;
             }
         }
     }
@@ -1191,6 +1290,7 @@ public class VirtualCpu {
         synchronized (interruptQueue) {
             if (interruptQueue.size() < 64) {
                 interruptQueue.add(new InterruptEvent(VEC_KEYBOARD, keyChar, 0, 0));
+                interruptQueueNonEmpty = true;
             }
         }
     }
@@ -1204,6 +1304,7 @@ public class VirtualCpu {
             if (interruptQueue.size() < 64) {
                 interruptQueue.add(new InterruptEvent(VEC_MOUSE_MOVE, x, y, 0));
             }
+            interruptQueueNonEmpty = !interruptQueue.isEmpty();
         }
     }
 
@@ -1211,6 +1312,7 @@ public class VirtualCpu {
         synchronized (interruptQueue) {
             if (interruptQueue.size() < 64) {
                 interruptQueue.add(new InterruptEvent(VEC_MOUSE_CLICK, x, y, button));
+                interruptQueueNonEmpty = true;
             }
         }
     }
@@ -1237,8 +1339,11 @@ public class VirtualCpu {
 
     private void execCls() {
         terminalOutput.clear();
-        lineBuffer.setLength(0);
-        utf8ByteBuf.reset();
+        synchronized (lineBuffer) {
+            lineBuffer.setLength(0);
+            utf8ByteBuf.reset();
+        }
+        markTerminalDirty();
     }
 
     private void execInpad(long word) {
@@ -1537,6 +1642,7 @@ public class VirtualCpu {
         applyBinaryImage(targetBinary);
         loadStaticData();
         this.callStack.clear();
+        this.callSp = 0;
         this.pc = 0;
         this.selectedDrive = drive;
         this.flagZ = false;
@@ -1550,7 +1656,7 @@ public class VirtualCpu {
         int mode = readOperand(word, 0);
         displayMode = mode;
         gpu.setDisplayMode(mode);
-        fbDirty = true;
+        markFbDirty();
     }
 
     private void execFbSet(long word) {
@@ -1565,7 +1671,7 @@ public class VirtualCpu {
         if ((color & 0xFF000000) == 0) color |= 0xFF000000;
         if (x >= 0 && x < FB_WIDTH && y >= 0 && y < FB_HEIGHT) {
             framebuffer[y * FB_WIDTH + x] = color;
-            fbDirty = true;
+            markFbDirty();
         }
     }
 
@@ -1590,8 +1696,10 @@ public class VirtualCpu {
             return;
         }
         if ((color & 0xFF000000) == 0) color |= 0xFF000000;
-        Arrays.fill(framebuffer, color);
-        fbDirty = true;
+        synchronized (fbLock) {
+            Arrays.fill(framebuffer, color);
+        }
+        markFbDirty();
     }
 
     private void execFbRect(long word) {
@@ -1613,11 +1721,13 @@ public class VirtualCpu {
         int yEnd = Math.min(FB_HEIGHT, ry + rh);
 
         if (xEnd > xStart && yEnd > yStart) {
-            for (int y = yStart; y < yEnd; y++) {
-                int rowOffset = y * FB_WIDTH;
-                Arrays.fill(framebuffer, rowOffset + xStart, rowOffset + xEnd, color);
+            synchronized (fbLock) {
+                for (int y = yStart; y < yEnd; y++) {
+                    int rowOffset = y * FB_WIDTH;
+                    Arrays.fill(framebuffer, rowOffset + xStart, rowOffset + xEnd, color);
+                }
             }
-            fbDirty = true;
+            markFbDirty();
         }
     }
 
@@ -1647,18 +1757,20 @@ public class VirtualCpu {
 
         long firstStep = Math.max(0, majorDirection > 0 ? -majorStart : majorStart - majorLimit);
         long lastStep = Math.min(majorLength, majorDirection > 0 ? majorLimit - majorStart : majorStart);
-        for (long step = firstStep; step <= lastStep; step++) {
-            long minorStep = majorLength == 0 ? 0
-                    : Long.divideUnsigned(step * minorLength + (majorLength - 1) / 2, majorLength);
-            long major = majorStart + step * majorDirection;
-            long minor = minorStart + minorStep * minorDirection;
-            long x = xMajor ? major : minor;
-            long y = xMajor ? minor : major;
-            if (x >= 0 && x < FB_WIDTH && y >= 0 && y < FB_HEIGHT) {
-                framebuffer[(int) y * FB_WIDTH + (int) x] = color;
+        synchronized (fbLock) {
+            for (long step = firstStep; step <= lastStep; step++) {
+                long minorStep = majorLength == 0 ? 0
+                        : Long.divideUnsigned(step * minorLength + (majorLength - 1) / 2, majorLength);
+                long major = majorStart + step * majorDirection;
+                long minor = minorStart + minorStep * minorDirection;
+                long x = xMajor ? major : minor;
+                long y = xMajor ? minor : major;
+                if (x >= 0 && x < FB_WIDTH && y >= 0 && y < FB_HEIGHT) {
+                    framebuffer[(int) y * FB_WIDTH + (int) x] = color;
+                }
             }
         }
-        fbDirty = true;
+        markFbDirty();
     }
 
     private void execFbLit(long word) {
@@ -1673,21 +1785,23 @@ public class VirtualCpu {
             return;
         }
 
-        for (int py = 0; py < bh; py++) {
-            int targetY = dy + py;
-            if (targetY < 0 || targetY >= FB_HEIGHT) continue;
-            for (int px = 0; px < bw; px++) {
-                int targetX = dx + px;
-                if (targetX < 0 || targetX >= FB_WIDTH) continue;
-                int ramIndex = ramSrc + py * bw + px;
-                if (ramIndex >= 0 && ramIndex < ram.length) {
-                    int c = ram[ramIndex];
-                    if ((c & 0xFF000000) == 0) c |= 0xFF000000;
-                    framebuffer[targetY * FB_WIDTH + targetX] = c;
+        synchronized (fbLock) {
+            for (int py = 0; py < bh; py++) {
+                int targetY = dy + py;
+                if (targetY < 0 || targetY >= FB_HEIGHT) continue;
+                for (int px = 0; px < bw; px++) {
+                    int targetX = dx + px;
+                    if (targetX < 0 || targetX >= FB_WIDTH) continue;
+                    int ramIndex = ramSrc + py * bw + px;
+                    if (ramIndex >= 0 && ramIndex < ram.length) {
+                        int c = ram[ramIndex];
+                        if ((c & 0xFF000000) == 0) c |= 0xFF000000;
+                        framebuffer[targetY * FB_WIDTH + targetX] = c;
+                    }
                 }
             }
         }
-        fbDirty = true;
+        markFbDirty();
     }
 
     // --- GPU & Graphics Handler Instructions ---
@@ -1828,7 +1942,7 @@ public class VirtualCpu {
         displayMode = 1;
         gpu.setDisplayMode(1);
         gpu.submitSwap();
-        fbDirty = true;
+        markFbDirty();
     }
 
     private void execGpuSync() {
@@ -1838,8 +1952,9 @@ public class VirtualCpu {
 
     // --- Audio Instructions ---
     private void ensureAudioQueueCapacity(int minCapacity) {
-        if (minCapacity > audioQueue.length) {
-            int newCap = Math.max(audioQueue.length * 2, minCapacity);
+        int clamped = Math.min(minCapacity, MAX_AUDIO_QUEUE);
+        if (clamped > audioQueue.length) {
+            int newCap = Math.min(MAX_AUDIO_QUEUE, Math.max(audioQueue.length * 2, clamped));
             byte[] newQueue = new byte[newCap];
             for (int i = 0; i < audioCount; i++) {
                 newQueue[i] = audioQueue[(audioHead + i) % audioQueue.length];
@@ -1850,62 +1965,36 @@ public class VirtualCpu {
         }
     }
 
-    private synchronized void execAPush(long word) {
-        requireOperands(word, 1, "APUSH requires sample");
-        int sample = readOperand(word, 0) & 0xFF;
+    private void enqueueAudioSample(byte sample) {
+        if (audioCount >= MAX_AUDIO_QUEUE) {
+            audioQueue[audioHead] = sample;
+            audioHead = (audioHead + 1) % audioQueue.length;
+            audioTail = audioHead;
+            return;
+        }
         ensureAudioQueueCapacity(audioCount + 1);
-        audioQueue[audioTail] = (byte) sample;
+        audioQueue[audioTail] = sample;
         audioTail = (audioTail + 1) % audioQueue.length;
         audioCount++;
     }
 
+    private synchronized void execAPush(long word) {
+        requireOperands(word, 1, "APUSH requires sample");
+        jitAPushVal(readOperand(word, 0));
+    }
+
     private synchronized void execABufw(long word) {
         requireOperands(word, 2, "ABUFW requires ram_src, count");
-        int ramSrc = readOperand(word, 0);
-        int count = readOperand(word, 1);
-        ensureAudioQueueCapacity(audioCount + count);
-        for (int i = 0; i < count; i++) {
-            int rAddr = ramSrc + i;
-            if (rAddr >= 0 && rAddr < ram.length) {
-                audioQueue[audioTail] = (byte) (ram[rAddr] & 0xFF);
-                audioTail = (audioTail + 1) % audioQueue.length;
-                audioCount++;
-            }
-        }
+        jitABufwVal(readOperand(word, 0), readOperand(word, 1));
     }
 
     private synchronized void execAClr() {
-        audioHead = 0;
-        audioTail = 0;
-        audioCount = 0;
-        audioTriggered = false;
+        clearAudioQueue();
     }
 
     private synchronized void execATone(long word) {
         requireOperands(word, 2, "ATONE requires freq, duration_ms");
-        int freq = readOperand(word, 0);
-        int ms = readOperand(word, 1);
-        if (ms > 0) {
-            int numSamples = (int) ((8000L * ms) / 1000L);
-            ensureAudioQueueCapacity(audioCount + numSamples);
-            if (freq <= 0) {
-                for (int i = 0; i < numSamples; i++) {
-                    audioQueue[audioTail] = (byte) 128;
-                    audioTail = (audioTail + 1) % audioQueue.length;
-                    audioCount++;
-                }
-            } else {
-                int period = Math.max(1, 8000 / freq);
-                int half = Math.max(1, period / 2);
-                for (int i = 0; i < numSamples; i++) {
-                    byte s = (byte) ((i % period < half) ? 200 : 50);
-                    audioQueue[audioTail] = s;
-                    audioTail = (audioTail + 1) % audioQueue.length;
-                    audioCount++;
-                }
-            }
-            audioTriggered = true;
-        }
+        jitAToneVal(readOperand(word, 0), readOperand(word, 1));
     }
 
     public synchronized byte[] pollAudioSamples() {
@@ -1928,10 +2017,18 @@ public class VirtualCpu {
 
     public int[] getFramebuffer() { return framebuffer; }
     public boolean isFbDirty() { return fbDirty; }
-    public void setFbDirty(boolean dirty) { this.fbDirty = dirty; }
+    public void setFbDirty(boolean dirty) {
+        this.fbDirty = dirty;
+        if (dirty) {
+            wakeSyncWorker();
+        }
+    }
     public int getDisplayMode() { return displayMode; }
     public void setDisplayMode(int mode) {
-        this.displayMode = mode;
+        if (this.displayMode != mode) {
+            this.displayMode = mode;
+            markFbDirty();
+        }
         this.gpu.setDisplayMode(mode);
     }
 
@@ -1952,7 +2049,7 @@ public class VirtualCpu {
         } else if (!gpu.isInstalled()) {
             gpu.powerOff();
         }
-        fbDirty = true;
+        markFbDirty();
     }
 
     public void configureGpu(boolean present, String archName, int vramBytes, int computeUnits) {
@@ -1968,14 +2065,14 @@ public class VirtualCpu {
         } else if (!gpu.isInstalled()) {
             gpu.powerOff();
         }
-        fbDirty = true;
+        markFbDirty();
     }
 
     public GraphicsHandler getGraphicsHandler() { return graphicsHandler; }
 
     public void setGraphicsHandler(GraphicsHandler handler) {
         this.graphicsHandler = (handler == null) ? GraphicsHandler.AUTO : handler;
-        this.fbDirty = true;
+        markFbDirty();
         this.gpu.setFbDirty(true);
     }
 
@@ -1999,6 +2096,28 @@ public class VirtualCpu {
             return gpu.getFrontBuffer();
         }
         return framebuffer;
+    }
+
+    public int[] snapshotActiveFramebuffer() {
+        if (isUsingGpu()) {
+            return gpu.snapshotFrontBuffer();
+        }
+        return framebuffer.clone();
+    }
+
+    public int snapshotActiveDisplay(int[] dest) {
+        if (isUsingGpu()) {
+            this.fbDirty = false;
+            return gpu.consumeFrontBuffer(dest);
+        }
+        synchronized (fbLock) {
+            int mode = this.displayMode;
+            if (mode == 1 && dest != null && dest.length >= framebuffer.length) {
+                System.arraycopy(framebuffer, 0, dest, 0, framebuffer.length);
+            }
+            this.fbDirty = false;
+            return mode;
+        }
     }
 
     public boolean isAnyFbDirty() {
@@ -2028,27 +2147,41 @@ public class VirtualCpu {
     }
 
     private void execOut(long word) {
-        boolean newline = isNewlineFlag(word);
-        if (BinaryBytecode.extractFormat(word) == BinaryBytecode.FMT_2) {
-            lineBuffer.append(readRodata(BinaryBytecode.extractImm32(word)));
-        } else if (opCount(word) > 0) {
-            lineBuffer.append(readOperand(word, 0));
+        boolean shouldFlush = isNewlineFlag(word);
+        synchronized (lineBuffer) {
+            if (BinaryBytecode.extractFormat(word) == BinaryBytecode.FMT_2) {
+                lineBuffer.append(readRodata(BinaryBytecode.extractImm32(word)));
+            } else if (opCount(word) > 0) {
+                lineBuffer.append(readOperand(word, 0));
+            }
+            if (!shouldFlush && lineBuffer.length() >= MAX_LINE_BUFFER) {
+                shouldFlush = true;
+            }
         }
-        if (newline) {
+        if (shouldFlush) {
             flushLineBuffer();
+        } else {
+            markTerminalDirty();
         }
     }
 
     private void execOuth(long word) {
-        boolean newline = isNewlineFlag(word);
-        if (BinaryBytecode.extractFormat(word) == BinaryBytecode.FMT_2) {
-            lineBuffer.append(readRodata(BinaryBytecode.extractImm32(word)));
-        } else if (opCount(word) > 0) {
-            int val = readOperand(word, 0);
-            lineBuffer.append("0x").append(Integer.toHexString(val).toUpperCase(Locale.ROOT));
+        boolean shouldFlush = isNewlineFlag(word);
+        synchronized (lineBuffer) {
+            if (BinaryBytecode.extractFormat(word) == BinaryBytecode.FMT_2) {
+                lineBuffer.append(readRodata(BinaryBytecode.extractImm32(word)));
+            } else if (opCount(word) > 0) {
+                int val = readOperand(word, 0);
+                lineBuffer.append("0x").append(Integer.toHexString(val).toUpperCase(Locale.ROOT));
+            }
+            if (!shouldFlush && lineBuffer.length() >= MAX_LINE_BUFFER) {
+                shouldFlush = true;
+            }
         }
-        if (newline) {
+        if (shouldFlush) {
             flushLineBuffer();
+        } else {
+            markTerminalDirty();
         }
     }
 
@@ -2066,14 +2199,17 @@ public class VirtualCpu {
 
     private void emitCharByte(int val) {
         if (val == 10) { // '\n'
-            flushUtf8();
-            if (lineBuffer.length() == 0) {
-                terminalOutput.add("");
-                if (terminalOutput.size() > 60) {
-                    terminalOutput.remove(0);
+            synchronized (lineBuffer) {
+                flushUtf8();
+                if (lineBuffer.length() == 0) {
+                    terminalOutput.add("");
+                    if (terminalOutput.size() > 60) {
+                        terminalOutput.remove(0);
+                    }
+                    markTerminalDirty();
+                } else {
+                    flushLineBuffer();
                 }
-            } else {
-                flushLineBuffer();
             }
             return;
         }
@@ -2081,38 +2217,44 @@ public class VirtualCpu {
             return;
         }
 
-        if (val >= 0 && val <= 127) {
-            // ASCII Character
-            flushUtf8();
-            lineBuffer.append((char) val);
-        } else if (val > 255) {
-            // Full Unicode Code Point
-            flushUtf8();
-            if (Character.isValidCodePoint(val)) {
-                lineBuffer.appendCodePoint(val);
-            } else {
-                lineBuffer.append('?');
-            }
-        } else if (val > 127) {
-            // UTF-8 stream byte (128..255)
-            utf8ByteBuf.write((byte) val);
-            byte[] bytes = utf8ByteBuf.toByteArray();
-            try {
-                CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder();
-                CharBuffer charBuf = decoder.decode(ByteBuffer.wrap(bytes));
-                lineBuffer.append(charBuf.toString());
-                utf8ByteBuf.reset();
-            } catch (CharacterCodingException e) {
-                // Continuation bytes needed; flush if buffer exceeds 4 bytes
-                if (utf8ByteBuf.size() >= 4) {
+        boolean needsFlush;
+        synchronized (lineBuffer) {
+            if (val >= 0 && val <= 127) {
+                // ASCII Character
+                flushUtf8();
+                lineBuffer.append((char) val);
+            } else if (val > 255) {
+                // Full Unicode Code Point
+                flushUtf8();
+                if (Character.isValidCodePoint(val)) {
+                    lineBuffer.appendCodePoint(val);
+                } else {
                     lineBuffer.append('?');
+                }
+            } else if (val > 127) {
+                // UTF-8 stream byte (128..255)
+                utf8ByteBuf.write((byte) val);
+                byte[] bytes = utf8ByteBuf.toByteArray();
+                try {
+                    CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder();
+                    CharBuffer charBuf = decoder.decode(ByteBuffer.wrap(bytes));
+                    lineBuffer.append(charBuf.toString());
                     utf8ByteBuf.reset();
+                } catch (CharacterCodingException e) {
+                    // Continuation bytes needed; flush if buffer exceeds 4 bytes
+                    if (utf8ByteBuf.size() >= 4) {
+                        lineBuffer.append('?');
+                        utf8ByteBuf.reset();
+                    }
                 }
             }
+            needsFlush = lineBuffer.length() >= 42;
         }
 
-        if (lineBuffer.length() >= 42) {
+        if (needsFlush) {
             flushLineBuffer();
+        } else {
+            markTerminalDirty();
         }
     }
 
@@ -2130,27 +2272,34 @@ public class VirtualCpu {
     }
 
     private void flushLineBuffer() {
-        flushUtf8();
-        if (lineBuffer.length() > 0) {
-            String content = lineBuffer.toString();
-            lineBuffer.setLength(0);
-            if (content.contains("\n")) {
-                String[] split = content.split("\n", -1);
-                for (int i = 0; i < split.length - 1; i++) {
-                    terminalOutput.add(split[i]);
+        boolean changed = false;
+        synchronized (lineBuffer) {
+            flushUtf8();
+            if (lineBuffer.length() > 0) {
+                String content = lineBuffer.toString();
+                lineBuffer.setLength(0);
+                changed = true;
+                if (content.contains("\n")) {
+                    String[] split = content.split("\n", -1);
+                    for (int i = 0; i < split.length - 1; i++) {
+                        terminalOutput.add(split[i]);
+                        if (terminalOutput.size() > 60) {
+                            terminalOutput.remove(0);
+                        }
+                    }
+                    if (!split[split.length - 1].isEmpty()) {
+                        lineBuffer.append(split[split.length - 1]);
+                    }
+                } else {
+                    terminalOutput.add(content);
                     if (terminalOutput.size() > 60) {
                         terminalOutput.remove(0);
                     }
                 }
-                if (!split[split.length - 1].isEmpty()) {
-                    lineBuffer.append(split[split.length - 1]);
-                }
-            } else {
-                terminalOutput.add(content);
-                if (terminalOutput.size() > 60) {
-                    terminalOutput.remove(0);
-                }
             }
+        }
+        if (changed) {
+            markTerminalDirty();
         }
     }
 
@@ -2260,16 +2409,54 @@ public class VirtualCpu {
     public String getErrorMessage() { return errorMessage; }
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
 
-    public Deque<Integer> getCallStack() { return callStack; }
-    public void setCallStack(Collection<Integer> stack) {
-        this.callStack.clear();
-        if (stack != null) this.callStack.addAll(stack);
+    public Deque<Integer> getCallStack() {
+        callStack.clear();
+        for (int i = callSp - 1; i >= 0; i--) {
+            callStack.addLast(callStackArr[i]);
+        }
+        return callStack;
     }
 
-    public Deque<Integer> getDataStack() { return dataStack; }
+    public void setCallStack(Collection<Integer> stack) {
+        this.callStack.clear();
+        this.callSp = 0;
+        if (stack != null && !stack.isEmpty()) {
+            int n = stack.size();
+            if (n > callStackArr.length) {
+                callStackArr = new int[Math.max(64, n)];
+            }
+            int idx = n;
+            for (Integer v : stack) {
+                callStackArr[--idx] = v != null ? v : 0;
+            }
+            this.callSp = n;
+            this.callStack.addAll(stack);
+        }
+    }
+
+    public Deque<Integer> getDataStack() {
+        dataStack.clear();
+        for (int i = dataSp - 1; i >= 0; i--) {
+            dataStack.addLast(dataStackArr[i]);
+        }
+        return dataStack;
+    }
+
     public void setDataStack(Collection<Integer> stack) {
         this.dataStack.clear();
-        if (stack != null) this.dataStack.addAll(stack);
+        this.dataSp = 0;
+        if (stack != null && !stack.isEmpty()) {
+            int n = stack.size();
+            if (n > dataStackArr.length) {
+                dataStackArr = new int[Math.max(64, n)];
+            }
+            int idx = n;
+            for (Integer v : stack) {
+                dataStackArr[--idx] = v != null ? v : 0;
+            }
+            this.dataSp = n;
+            this.dataStack.addAll(stack);
+        }
     }
 
     public Deque<CpuContext> getInterruptStack() { return interruptStack; }
@@ -2297,6 +2484,7 @@ public class VirtualCpu {
                 this.supportedInstructions.add(instr.toUpperCase(Locale.ROOT).trim());
             }
         }
+        rebuildSupportedOpcodeIds();
     }
 
     public void loadBinaryImage(byte[] scbcBytes) {
@@ -2469,12 +2657,16 @@ public class VirtualCpu {
     }
 
     public List<String> getTerminalOutput() {
-        if (lineBuffer.length() > 0) {
+        String partial;
+        synchronized (lineBuffer) {
+            partial = lineBuffer.length() > 0 ? lineBuffer.toString() : null;
+        }
+        if (partial != null) {
             List<String> combined = new ArrayList<>(terminalOutput);
-            combined.add(lineBuffer.toString());
+            combined.add(partial);
             return combined;
         }
-        return terminalOutput;
+        return new ArrayList<>(terminalOutput);
     }
 
     public void setTerminalOutput(List<String> lines) {
@@ -2482,8 +2674,11 @@ public class VirtualCpu {
         if (lines != null) {
             this.terminalOutput.addAll(lines);
         }
-        this.lineBuffer.setLength(0);
-        this.utf8ByteBuf.reset();
+        synchronized (lineBuffer) {
+            this.lineBuffer.setLength(0);
+            this.utf8ByteBuf.reset();
+        }
+        markTerminalDirty();
     }
 
     public Set<String> getSupportedInstructions() { return supportedInstructions; }
@@ -2592,5 +2787,434 @@ public class VirtualCpu {
         } else {
             this.driveBinaries.remove(drive);
         }
+    }
+
+    // --- JIT Runtime Helpers (invoked by ASM-generated CpuJitCompiler classes) ---
+
+    static int jitReadRam(int[] ram, int addr) {
+        if (addr >= 0 && addr < ram.length) {
+            return ram[addr];
+        }
+        throw new IndexOutOfBoundsException("RAM address " + addr + " out of bounds");
+    }
+
+    static void jitWriteRam(int[] ram, int addr, int val) {
+        if (addr >= 0 && addr < ram.length) {
+            ram[addr] = val;
+            return;
+        }
+        throw new IndexOutOfBoundsException("RAM write to address " + addr + " out of bounds");
+    }
+
+    static void jitThrowDivZero() {
+        throw new ArithmeticException("Division by zero");
+    }
+
+    static void jitThrowModZero() {
+        throw new ArithmeticException("Modulo by zero");
+    }
+
+    void jitHandlePendingAssemblyError() {
+        String err = pendingAssemblyError;
+        pendingAssemblyError = null;
+        if (err != null) {
+            haltWithException(err, 0, "");
+            trimTerminalOutput();
+        }
+    }
+
+    void jitTerminateEof() {
+        state = State.HALTED;
+        flushLineBuffer();
+        terminalOutput.add("[PROGRAM TERMINATED: END OF FILE]");
+        trimTerminalOutput();
+        markTerminalDirty();
+    }
+
+    void jitExecHlt() {
+        state = State.HALTED;
+        flushLineBuffer();
+        terminalOutput.add("[EXECUTION HALTED]");
+        trimTerminalOutput();
+        markTerminalDirty();
+    }
+
+    boolean jitPeriodicCheck(int currentCycles, long startNanos) {
+        this.cycles = currentCycles;
+        checkTimerTrigger();
+        boolean yield = Thread.currentThread().isInterrupted()
+                || (System.nanoTime() - startNanos > this.activeSliceBudgetNanos);
+        this.jitSliceYielded = yield;
+        return yield;
+    }
+
+    boolean jitCheckAndDispatchInterrupt() {
+        return checkAndDispatchInterrupt();
+    }
+
+    void jitTriggerIllegalOpcode(int currentPc, long word) {
+        String summary = BinaryBytecode.formatInstructionSummary(word);
+        triggerException(VEC_ILLEGAL_OPCODE, "Illegal instruction: " + summary, currentPc, summary);
+        trimTerminalOutput();
+    }
+
+    void jitHandleException(Exception e, int currentPc) {
+        int vec = VEC_GENERAL_EXCEPTION;
+        String desc = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+        if (e instanceof ArithmeticException) {
+            vec = VEC_DIV_ZERO;
+        } else if (e instanceof IndexOutOfBoundsException) {
+            vec = VEC_OUT_OF_BOUNDS;
+        } else if (e instanceof IllegalStateException && desc.toLowerCase(Locale.ROOT).contains("stack")) {
+            vec = VEC_STACK_FAULT;
+        }
+        long word = (binaryCode != null && currentPc >= 0 && currentPc < binaryCode.length)
+                ? binaryCode[currentPc]
+                : 0L;
+        triggerException(vec, desc, currentPc, BinaryBytecode.formatInstructionSummary(word));
+        trimTerminalOutput();
+    }
+
+    void jitPushCall(int returnPc) {
+        if (callSp == callStackArr.length) {
+            if (callStackArr.length >= MAX_STACK_DEPTH) {
+                throw new IllegalStateException("Call stack overflow");
+            }
+            callStackArr = Arrays.copyOf(callStackArr, Math.min(MAX_STACK_DEPTH, callStackArr.length * 2));
+        }
+        callStackArr[callSp++] = returnPc;
+    }
+
+    int jitExecRet() {
+        if (callSp == 0) {
+            throw new IllegalStateException("RET without CALL: Call stack underflow");
+        }
+        int retPc = callStackArr[--callSp];
+        if (inInterruptHandler && !interruptStack.isEmpty() && !interruptStack.peek().restoreRegs()) {
+            interruptStack.pop();
+            inInterruptHandler = !interruptStack.isEmpty();
+        }
+        return retPc;
+    }
+
+    void jitPushData(int value) {
+        if (dataSp == dataStackArr.length) {
+            if (dataStackArr.length >= MAX_STACK_DEPTH) {
+                throw new IllegalStateException("Data stack overflow");
+            }
+            dataStackArr = Arrays.copyOf(dataStackArr, Math.min(MAX_STACK_DEPTH, dataStackArr.length * 2));
+        }
+        dataStackArr[dataSp++] = value;
+    }
+
+    int jitPopData() {
+        if (dataSp == 0) {
+            throw new IllegalStateException("POP on empty stack: Data stack underflow");
+        }
+        return dataStackArr[--dataSp];
+    }
+
+    void jitExecIvec(int vector, int handler) {
+        ivt.put(vector, handler);
+    }
+
+    int jitExecIret() {
+        execIret();
+        return this.pc;
+    }
+
+    int jitReadTime() {
+        long t = timeSupplier != null ? timeSupplier.getAsLong() : 0L;
+        return (int) (t & 0x7FFFFFFF);
+    }
+
+    int jitNextRand(int max) {
+        return max > 0 ? random.nextInt(max) : 0;
+    }
+
+    void jitFbMode(int mode) {
+        displayMode = mode;
+        gpu.setDisplayMode(mode);
+        markFbDirty();
+    }
+
+    void jitFbSet(int x, int y, int color) {
+        if (isUsingGpu()) {
+            gpu.submitSetPixel(x, y, color);
+            return;
+        }
+        if ((color & 0xFF000000) == 0) color |= 0xFF000000;
+        if (x >= 0 && x < FB_WIDTH && y >= 0 && y < FB_HEIGHT) {
+            framebuffer[y * FB_WIDTH + x] = color;
+            markFbDirty();
+        }
+    }
+
+    int jitFbGet(int x, int y) {
+        if (isUsingGpu()) {
+            return gpu.getBackPixel(x, y);
+        } else if (x >= 0 && x < FB_WIDTH && y >= 0 && y < FB_HEIGHT) {
+            return framebuffer[y * FB_WIDTH + x];
+        }
+        return 0;
+    }
+
+    void jitFbClr(int color) {
+        if (isUsingGpu()) {
+            gpu.submitClear(color);
+            return;
+        }
+        if ((color & 0xFF000000) == 0) color |= 0xFF000000;
+        synchronized (fbLock) {
+            Arrays.fill(framebuffer, color);
+        }
+        markFbDirty();
+    }
+
+    void jitFbRect(int rx, int ry, int rw, int rh, int color) {
+        if (isUsingGpu()) {
+            gpu.submitFillRect(rx, ry, rw, rh, color);
+            return;
+        }
+        if ((color & 0xFF000000) == 0) color |= 0xFF000000;
+
+        int xStart = Math.max(0, rx);
+        int xEnd = Math.min(FB_WIDTH, rx + rw);
+        int yStart = Math.max(0, ry);
+        int yEnd = Math.min(FB_HEIGHT, ry + rh);
+
+        if (xEnd > xStart && yEnd > yStart) {
+            synchronized (fbLock) {
+                for (int y = yStart; y < yEnd; y++) {
+                    int rowOffset = y * FB_WIDTH;
+                    Arrays.fill(framebuffer, rowOffset + xStart, rowOffset + xEnd, color);
+                }
+            }
+            markFbDirty();
+        }
+    }
+
+    void jitFbLine(int x0, int y0, int x1, int y1, int color) {
+        if (isUsingGpu()) {
+            gpu.submitDrawLine(x0, y0, x1, y1, color);
+            return;
+        }
+        if ((color & 0xFF000000) == 0) color |= 0xFF000000;
+
+        long dx = Math.abs((long) x1 - x0);
+        long dy = Math.abs((long) y1 - y0);
+        boolean xMajor = dx >= dy;
+        long majorLength = xMajor ? dx : dy;
+        long minorLength = xMajor ? dy : dx;
+        long majorStart = xMajor ? x0 : y0;
+        long minorStart = xMajor ? y0 : x0;
+        int majorDirection = (xMajor ? x0 <= x1 : y0 <= y1) ? 1 : -1;
+        int minorDirection = (xMajor ? y0 <= y1 : x0 <= x1) ? 1 : -1;
+        int majorLimit = (xMajor ? FB_WIDTH : FB_HEIGHT) - 1;
+
+        long firstStep = Math.max(0, majorDirection > 0 ? -majorStart : majorStart - majorLimit);
+        long lastStep = Math.min(majorLength, majorDirection > 0 ? majorLimit - majorStart : majorStart);
+        synchronized (fbLock) {
+            for (long step = firstStep; step <= lastStep; step++) {
+                long minorStep = majorLength == 0 ? 0
+                        : Long.divideUnsigned(step * minorLength + (majorLength - 1) / 2, majorLength);
+                long major = majorStart + step * majorDirection;
+                long minor = minorStart + minorStep * minorDirection;
+                long x = xMajor ? major : minor;
+                long y = xMajor ? minor : major;
+                if (x >= 0 && x < FB_WIDTH && y >= 0 && y < FB_HEIGHT) {
+                    framebuffer[(int) y * FB_WIDTH + (int) x] = color;
+                }
+            }
+        }
+        markFbDirty();
+    }
+
+    void jitFbLit(int dx, int dy, int ramSrc, int bw, int bh) {
+        if (isUsingGpu()) {
+            gpu.submitBlitFromRam(dx, dy, ram, ramSrc, bw, bh, false);
+            return;
+        }
+
+        synchronized (fbLock) {
+            for (int py = 0; py < bh; py++) {
+                int targetY = dy + py;
+                if (targetY < 0 || targetY >= FB_HEIGHT) continue;
+                for (int px = 0; px < bw; px++) {
+                    int targetX = dx + px;
+                    if (targetX < 0 || targetX >= FB_WIDTH) continue;
+                    int ramIndex = ramSrc + py * bw + px;
+                    if (ramIndex >= 0 && ramIndex < ram.length) {
+                        int c = ram[ramIndex];
+                        if ((c & 0xFF000000) == 0) c |= 0xFF000000;
+                        framebuffer[targetY * FB_WIDTH + targetX] = c;
+                    }
+                }
+            }
+        }
+        markFbDirty();
+    }
+
+    void jitFbSwap() {
+        displayMode = 1;
+        gpu.setDisplayMode(1);
+        if (isUsingGpu()) {
+            gpu.submitSwap();
+        }
+        markFbDirty();
+    }
+
+    boolean jitGfxSel(int mode) {
+        GraphicsHandler target = switch (mode) {
+            case 1 -> GraphicsHandler.CPU;
+            case 2 -> GraphicsHandler.GPU;
+            default -> GraphicsHandler.AUTO;
+        };
+        setGraphicsHandler(target);
+        flagZ = !isUsingGpu();
+        flagS = false;
+        return flagZ;
+    }
+
+    int jitGfxStat(int query) {
+        return switch (query) {
+            case 0 -> gpu.isInstalled() ? 1 : 0;
+            case 1 -> isUsingGpu() ? 1 : 0;
+            case 2 -> graphicsHandler.ordinal();
+            case 3 -> gpu.getVramCapacityBytes();
+            case 4 -> gpu.getVramCapacityBytes() / 1024;
+            case 5 -> (int) gpu.getCommandsExecuted();
+            case 6 -> gpu.getComputeUnits();
+            case 7 -> gpu.isBusy() ? 1 : 0;
+            case 8 -> gpu.getFramesPresented();
+            default -> 0;
+        };
+    }
+
+    void jitGpuClr(int color) {
+        requireGpuFeature("GPUCLR");
+        gpu.submitClear(color);
+    }
+
+    void jitGpuRect(int x, int y, int w, int h, int color) {
+        requireGpuFeature("GPURECT");
+        gpu.submitFillRect(x, y, w, h, color);
+    }
+
+    void jitGpuLine(int x0, int y0, int x1, int y1, int color) {
+        requireGpuFeature("GPULINE");
+        gpu.submitDrawLine(x0, y0, x1, y1, color);
+    }
+
+    void jitGpuCirc(int cx, int cy, int r, int color, int filled) {
+        requireGpuFeature("GPUCIRC");
+        gpu.submitDrawCircle(cx, cy, r, color, filled != 0);
+    }
+
+    void jitGpuTri(int addr) {
+        requireGpuFeature("GPUTRI");
+        verifyRamBuffer(addr, 7);
+        gpu.submitFillTriangle(
+                ram[addr],
+                ram[addr + 1],
+                ram[addr + 2],
+                ram[addr + 3],
+                ram[addr + 4],
+                ram[addr + 5],
+                ram[addr + 6]
+        );
+    }
+
+    void jitGpuVram(int vramOffset, int ramSrc, int count) {
+        requireGpuFeature("GPUVRAM");
+        gpu.uploadVram(vramOffset, ram, ramSrc, count);
+    }
+
+    void jitGpuBlit(int x, int y, int vramOffset, int w, int h) {
+        requireGpuFeature("GPUBLIT");
+        gpu.submitBlitFromVram(x, y, vramOffset, w, h, true);
+    }
+
+    void jitGpuSwap() {
+        requireGpuFeature("GPUSWAP");
+        displayMode = 1;
+        gpu.setDisplayMode(1);
+        gpu.submitSwap();
+        markFbDirty();
+    }
+
+    void jitGpuSync() {
+        requireGpuFeature("GPUSYNC");
+        gpu.flush();
+    }
+
+    synchronized void jitAPushVal(int rawSample) {
+        enqueueAudioSample((byte) (rawSample & 0xFF));
+        if (audioCount >= 512) {
+            wakeSyncWorker();
+        }
+    }
+
+    synchronized void jitABufwVal(int ramSrc, int count) {
+        if (count <= 0) {
+            return;
+        }
+        int start = Math.max(0, ramSrc);
+        long rawEnd = (long) ramSrc + count;
+        int end = (int) Math.min(ram.length, rawEnd);
+        if (end <= start) {
+            return;
+        }
+        if (end - start > MAX_AUDIO_QUEUE) {
+            start = end - MAX_AUDIO_QUEUE;
+        }
+        int copyCount = end - start;
+        ensureAudioQueueCapacity(audioCount + copyCount);
+        for (int rAddr = start; rAddr < end; rAddr++) {
+            enqueueAudioSample((byte) (ram[rAddr] & 0xFF));
+        }
+        if (audioCount >= 512) {
+            wakeSyncWorker();
+        }
+    }
+
+    synchronized void jitAClr() {
+        clearAudioQueue();
+    }
+
+    synchronized int jitAStat() {
+        return audioCount;
+    }
+
+    synchronized void jitAToneVal(int freq, int ms) {
+        if (ms > 0) {
+            long rawSamples = (8000L * ms) / 1000L;
+            int numSamples = (int) Math.min(MAX_AUDIO_QUEUE, Math.max(0L, rawSamples));
+            ensureAudioQueueCapacity(audioCount + numSamples);
+            if (freq <= 0) {
+                for (int i = 0; i < numSamples; i++) {
+                    enqueueAudioSample((byte) 128);
+                }
+            } else {
+                int period = Math.max(1, 8000 / freq);
+                int half = Math.max(1, period / 2);
+                for (int i = 0; i < numSamples; i++) {
+                    byte s = (byte) ((i % period < half) ? 200 : 50);
+                    enqueueAudioSample(s);
+                }
+            }
+            audioTriggered = true;
+            wakeSyncWorker();
+        }
+    }
+
+    synchronized void jitAPlay() {
+        audioTriggered = true;
+        wakeSyncWorker();
+    }
+
+    void jitExecComplex(long word, int currentPc) {
+        execTier3(BinaryBytecode.extractOpcode(word), word, currentPc);
+        trimTerminalOutput();
     }
 }

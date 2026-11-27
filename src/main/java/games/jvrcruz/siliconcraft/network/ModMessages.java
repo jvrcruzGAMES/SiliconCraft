@@ -14,11 +14,13 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
+import net.neoforged.neoforge.network.registration.HandlerThread;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 public class ModMessages {
     public static void register(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar(Siliconcraft.MODID).versioned("1.4.0");
+        PayloadRegistrar registrar = event.registrar(Siliconcraft.MODID).versioned("1.5.0");
+        PayloadRegistrar networkRegistrar = registrar.executesOn(HandlerThread.NETWORK);
         CreatePeripherals.registerPayloads(registrar);
 
         registrar.playToServer(ChipForgePacket.TYPE, ChipForgePacket.STREAM_CODEC, ModMessages::handleChipForge);
@@ -38,12 +40,16 @@ public class ModMessages {
         registrar.playToServer(DeleteProgramPacket.TYPE, DeleteProgramPacket.STREAM_CODEC, ModMessages::handleDeleteProgram);
         registrar.playToServer(RequestProgramsPacket.TYPE, RequestProgramsPacket.STREAM_CODEC, ModMessages::handleRequestPrograms);
         registrar.playToClient(SyncProgramsPacket.TYPE, SyncProgramsPacket.STREAM_CODEC, ModMessages::handleSyncPrograms);
-        registrar.playToClient(SyncTerminalPacket.TYPE, SyncTerminalPacket.STREAM_CODEC, ModMessages::handleSyncTerminal);
-        registrar.playToClient(SyncFramebufferPacket.TYPE, SyncFramebufferPacket.STREAM_CODEC, (pkt, ctx) -> games.jvrcruz.siliconcraft.client.ClientPayloadHandler.handleSyncFramebuffer(pkt, ctx));
-        registrar.playToClient(PlayAudioPacket.TYPE, PlayAudioPacket.STREAM_CODEC, (pkt, ctx) -> games.jvrcruz.siliconcraft.client.ClientPayloadHandler.handlePlayAudio(pkt, ctx));
+        networkRegistrar.playToClient(SyncTerminalPacket.TYPE, SyncTerminalPacket.STREAM_CODEC,
+                (pkt, ctx) -> games.jvrcruz.siliconcraft.client.ClientPayloadHandler.handleSyncTerminal(pkt, ctx));
+        networkRegistrar.playToClient(DisplayFramePacket.TYPE, DisplayFramePacket.STREAM_CODEC,
+                (pkt, ctx) -> games.jvrcruz.siliconcraft.client.ClientPayloadHandler.handleDisplayFrame(pkt, ctx));
+        networkRegistrar.playToClient(PlayAudioPacket.TYPE, PlayAudioPacket.STREAM_CODEC,
+                (pkt, ctx) -> games.jvrcruz.siliconcraft.client.ClientPayloadHandler.handlePlayAudio(pkt, ctx));
         registrar.playToClient(PeripheralNoticePacket.TYPE, PeripheralNoticePacket.STREAM_CODEC,
                 (packet, context) -> games.jvrcruz.siliconcraft.client.ClientPayloadHandler.handlePeripheralNotice(packet, context));
-        registrar.playToClient(StopAudioPacket.TYPE, StopAudioPacket.STREAM_CODEC, (pkt, ctx) -> games.jvrcruz.siliconcraft.client.ClientPayloadHandler.handleStopAudio(pkt, ctx));
+        networkRegistrar.playToClient(StopAudioPacket.TYPE, StopAudioPacket.STREAM_CODEC,
+                (pkt, ctx) -> games.jvrcruz.siliconcraft.client.ClientPayloadHandler.handleStopAudio(pkt, ctx));
     }
 
     private static void handleArchitectureWriter(ArchitectureWriterPacket packet, IPayloadContext context) {
@@ -267,18 +273,6 @@ public class ModMessages {
                     } else if (packet.inputType() == 3) {
                         compBe.getCpu().setPadState(packet.arg1(), packet.arg2());
                     }
-                }
-            }
-        });
-    }
-
-    private static void handleSyncTerminal(SyncTerminalPacket packet, IPayloadContext context) {
-        context.enqueueWork(() -> {
-            Player player = context.player();
-            if (player != null && player.level() != null && player.level().isLoaded(packet.pos())) {
-                BlockEntity be = player.level().getBlockEntity(packet.pos());
-                if (be instanceof ComputerBlockEntity compBe) {
-                    compBe.getCpu().setTerminalOutput(packet.lines());
                 }
             }
         });

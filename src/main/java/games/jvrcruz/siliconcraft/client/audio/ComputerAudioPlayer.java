@@ -14,20 +14,44 @@ import javax.sound.sampled.DataLine;
 import javax.sound.sampled.SourceDataLine;
 import java.nio.ByteBuffer;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
 public class ComputerAudioPlayer {
+    private static final int MAX_AUDIO_THREADS = 16;
+    private static final int MAX_AUDIO_QUEUE = 64;
+
     private static ExecutorService audioExecutor = createExecutor();
 
     private static ExecutorService createExecutor() {
-        return Executors.newCachedThreadPool(r -> {
-            Thread t = new Thread(r, "SiliconCraft-Audio");
-            t.setDaemon(true);
-            return t;
-        });
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                2,
+                MAX_AUDIO_THREADS,
+                30L,
+                TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(MAX_AUDIO_QUEUE),
+                r -> {
+                    Thread t = new Thread(r, "SiliconCraft-Audio");
+                    t.setDaemon(true);
+                    return t;
+                },
+                (rejected, pool) -> {
+                    Runnable oldest = pool.getQueue().poll();
+                    if (oldest instanceof StreamTask task) {
+                        ACTIVE_STREAMS.remove(task.stream);
+                        task.stream.stop();
+                    }
+                    if (!pool.isShutdown()) {
+                        pool.execute(rejected);
+                    }
+                }
+        );
+        executor.allowCoreThreadTimeOut(true);
+        return executor;
     }
 
     private static ExecutorService getExecutor() {
@@ -120,10 +144,19 @@ public class ComputerAudioPlayer {
         play(new ActiveAudioStream(computerPos, worldPos, level), pcmSamples, sampleRate);
     }
 
-    private static synchronized void play(ActiveAudioStream stream, byte[] pcmSamples, int sampleRate) {
-        if (pcmSamples == null || pcmSamples.length == 0) return;
-        ACTIVE_STREAMS.add(stream);
-        getExecutor().submit(() -> {
+    private static final class StreamTask implements Runnable {
+        final ActiveAudioStream stream;
+        final byte[] pcmSamples;
+        final int sampleRate;
+
+        StreamTask(ActiveAudioStream stream, byte[] pcmSamples, int sampleRate) {
+            this.stream = stream;
+            this.pcmSamples = pcmSamples;
+            this.sampleRate = sampleRate;
+        }
+
+        @Override
+        public void run() {
             try {
                 if (!stream.begin()) return;
                 if (!playViaOpenAl(stream, pcmSamples, sampleRate, stream.worldPos)) {
@@ -133,7 +166,18 @@ public class ComputerAudioPlayer {
                 stream.finish();
                 ACTIVE_STREAMS.remove(stream);
             }
-        });
+        }
+    }
+
+    private static synchronized void play(ActiveAudioStream stream, byte[] pcmSamples, int sampleRate) {
+        if (pcmSamples == null || pcmSamples.length == 0) return;
+        ACTIVE_STREAMS.add(stream);
+        try {
+            getExecutor().execute(new StreamTask(stream, pcmSamples, sampleRate));
+        } catch (Throwable t) {
+            ACTIVE_STREAMS.remove(stream);
+            stream.stop();
+        }
     }
 
     private static boolean playViaOpenAl(ActiveAudioStream stream, byte[] pcmSamples, int sampleRate, BlockPos worldPos) {
