@@ -44,22 +44,6 @@
     ]
   },
   {
-    "N1 (deprecated)": [
-      {
-        "Introduction": "n-language/n1/README.md"
-      },
-      {
-        "Language reference": "n-language/n1/reference.md"
-      },
-      {
-        "Peripherals and networking": "n-language/n1/peripherals-network.md"
-      },
-      {
-        "Examples": "n-language/n1/examples/README.md"
-      }
-    ]
-  },
-  {
     "N2": [
       {
         "Introduction": "n-language/n2/README.md"
@@ -72,6 +56,9 @@
       },
       {
         "Projects and imports": "n-language/n2/projects.md"
+      },
+      {
+        "External compiler (scc)": "n-language/n2/compiler.md"
       },
       {
         "DeviceKit peripherals": "n-language/n2/peripherals.md"
@@ -88,7 +75,7 @@
     ]
   },
   {
-    "N language standards": "n-language/README.md"
+    "N language overview": "n-language/README.md"
   },
   {
     "Project": "project.md"

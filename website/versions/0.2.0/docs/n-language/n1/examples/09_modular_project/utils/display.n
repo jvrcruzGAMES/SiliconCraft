@@ -1,9 +1,0 @@
-// N1 module: pass arguments through shared variables.
-var banner_title = ""
-
-func show_header() {
-    println "================================"
-    print "  >> "
-    println banner_title
-    println "================================"
-}

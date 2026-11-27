@@ -39,17 +39,9 @@ public class ModBlockEntities {
             BLOCK_ENTITIES.register("architecture_writer", () ->
                     BlockEntityType.Builder.of(ArchitectureWriterBlockEntity::new, ModBlocks.ARCHITECTURE_WRITER.get()).build(null));
 
-    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<AssemblyWriterBlockEntity>> ASSEMBLY_WRITER =
-            BLOCK_ENTITIES.register("assembly_writer", () ->
-                    BlockEntityType.Builder.of(AssemblyWriterBlockEntity::new, ModBlocks.ASSEMBLY_WRITER.get()).build(null));
-
-    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<CodeCompilerBlockEntity>> CODE_COMPILER =
-            BLOCK_ENTITIES.register("code_compiler", () ->
-                    BlockEntityType.Builder.of(CodeCompilerBlockEntity::new, ModBlocks.CODE_COMPILER.get()).build(null));
-
-    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ProjectCompilerBlockEntity>> PROJECT_COMPILER =
-            BLOCK_ENTITIES.register("project_compiler", () ->
-                    BlockEntityType.Builder.of(ProjectCompilerBlockEntity::new, ModBlocks.PROJECT_COMPILER.get()).build(null));
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ProjectManagerBlockEntity>> PROJECT_MANAGER =
+            BLOCK_ENTITIES.register("project_manager", () ->
+                    BlockEntityType.Builder.of(ProjectManagerBlockEntity::new, ModBlocks.PROJECT_MANAGER.get()).build(null));
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<PeripheralDeviceBlockEntity>> PERIPHERAL_DEVICE =
             BLOCK_ENTITIES.register("peripheral_device", () -> BlockEntityType.Builder.of(PeripheralDeviceBlockEntity::new,
                     ModBlocks.CHAT_BOX.get(), ModBlocks.DISTANCE_DETECTOR.get(), ModBlocks.ENVIRONMENT_DETECTOR.get(),

@@ -18,7 +18,7 @@ public record SyncTerminalPacket(BlockPos pos, List<String> lines) implements Cu
             StreamCodec.composite(
                     BlockPos.STREAM_CODEC,
                     SyncTerminalPacket::pos,
-                    ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list()),
+                    LargePayloadCodec.STRING_LIST_STREAM_CODEC,
                     SyncTerminalPacket::lines,
                     SyncTerminalPacket::new
             );

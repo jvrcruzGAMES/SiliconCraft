@@ -5,6 +5,9 @@ out/
 bin/
 .gradletasknamecache
 
+# Rust compiler build output
+compiler/target/
+
 # Java / JVM
 *.class
 *.jar

@@ -36,7 +36,6 @@ Discover wired peripherals with `PSCAN dst, after` or `peripheral_scan(after)`. 
 
 - [Assembly peripherals](../assembly/peripherals.md): numeric ports, request instructions, status codes, and device methods.
 - [N2 DeviceKit](../n-language/n2/peripherals.md): named direction constants, helper functions, and managed text results.
-- [N1 inline Assembly](../n-language/n1/peripherals-network.md): compatibility path for deprecated programs.
 
 For instance, place an Environment Detector north of the computer (port 2), wrap it, then query its biome or world coordinates. World-coordinate queries work without Sable; when the detector is on a Sable sublevel, its center is transformed into world space.
 

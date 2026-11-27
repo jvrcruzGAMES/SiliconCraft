@@ -302,19 +302,18 @@ vblank_handler:
 
 ## 15. Modular Assembly & Multi-File Projects
 
-SiliconCraft supports multi-file assembly projects with file inclusion directives:
+SiliconCraft supports multi-file assembly projects when assembled with the standalone `scc` compiler:
 
 ### Supported Directives
 ```assembly
 include "math_helpers.asm"     ; Relative or project-root include
 .include "constants.s"         ; Alternative dot syntax
-#include <hardware.asm>        ; C-style bracket syntax
-import "logic.n"               ; Run high-level .n modules directly from assembly!
+#include <hardware.asm>        ; Search include directories (-I) and project root
 ```
 
-- **Cross-Language Interoperability**: Assembly files can include and call `.n` files, and `.n` files can call assembly routines.
-- **Entrypoint Discovery**: The Project Compiler automatically detects entrypoints (`main.asm`, `main.s`, `main.n`, `entry.*`, `start.*`).
-- **Standard Object Format (`.o`)**: The assembled output is a unified, fully linked bytecode file with the standard `.o` extension.
+- **Include Search Paths**: Pass `-I <dir>` to `scc` (or `scc asm`) to share assembly headers across multiple projects.
+- **Entrypoint Discovery**: `scc` automatically detects entrypoints (`main.asm`, `main.s`, `entry.*`, `start.*`) or uses `--entry <file>`.
+- **Portable `.sc` Package Format**: The assembled output is a `.sc` JSON package ready to upload through the **Project Manager** (and burn via the **Programmer**).
 
 ## Analog controller input (0.1.2)
 

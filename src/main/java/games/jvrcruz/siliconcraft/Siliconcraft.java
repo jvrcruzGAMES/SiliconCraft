@@ -51,6 +51,9 @@ public class Siliconcraft {
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.GameShuttingDownEvent event) -> {
             shutdownAll();
         });
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedOutEvent event) -> {
+            games.jvrcruz.siliconcraft.network.ChunkedProjectUploadManager.cancelPlayer(event.getEntity().getUUID());
+        });
 
         // Client world disconnect listener
         if (FMLEnvironment.dist == Dist.CLIENT) {
@@ -69,6 +72,9 @@ public class Siliconcraft {
     public static void shutdownAll() {
         try {
             games.jvrcruz.siliconcraft.vm.ComputerThreadManager.shutdown();
+        } catch (Throwable ignored) {}
+        try {
+            games.jvrcruz.siliconcraft.network.ChunkedProjectUploadManager.clearAll();
         } catch (Throwable ignored) {}
 
         if (FMLEnvironment.dist == Dist.CLIENT) {

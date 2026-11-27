@@ -26,8 +26,6 @@ public class ClientModEvents {
             event.register(ModMenuTypes.COMPUTER_MENU.get(), ComputerScreen::new);
         }
         event.register(ModMenuTypes.ARCHITECTURE_WRITER_MENU.get(), ArchitectureWriterScreen::new);
-        event.register(ModMenuTypes.ASSEMBLY_WRITER_MENU.get(), AssemblyWriterScreen::new);
-        event.register(ModMenuTypes.CODE_COMPILER_MENU.get(), CodeCompilerScreen::new);
-        event.register(ModMenuTypes.PROJECT_COMPILER_MENU.get(), ProjectCompilerScreen::new);
+        event.register(ModMenuTypes.PROJECT_MANAGER_MENU.get(), ProjectManagerScreen::new);
     }
 }

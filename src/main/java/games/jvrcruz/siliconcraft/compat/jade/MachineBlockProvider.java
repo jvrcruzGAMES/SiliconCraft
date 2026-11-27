@@ -72,21 +72,6 @@ public class MachineBlockProvider implements IBlockComponentProvider, IServerDat
                 data.putString("ArchName", arch.name());
                 data.putInt("ArchOps", arch.instructions().size());
             }
-        } else if (be instanceof ProjectCompilerBlockEntity projectCompiler) {
-            data.putString("MachineType", "project_compiler");
-            ArchitectureData arch = projectCompiler.getInstalledArchitecture();
-            if (arch != null) {
-                data.putString("ArchName", arch.name());
-                data.putInt("ArchOps", arch.instructions().size());
-            }
-        } else if (be instanceof CodeCompilerBlockEntity codeCompiler) {
-            data.putString("MachineType", "code_compiler");
-            ItemStack writeup = codeCompiler.getItemHandler().getStackInSlot(0);
-            ArchitectureData arch = writeup.get(ModDataComponents.ARCHITECTURE_DATA.get());
-            if (arch != null) {
-                data.putString("ArchName", arch.name());
-                data.putInt("ArchOps", arch.instructions().size());
-            }
         } else if (be instanceof ProgrammerBlockEntity programmer) {
             data.putString("MachineType", "programmer");
             ItemStack targetStack = programmer.getItemHandler().getStackInSlot(1);
@@ -176,15 +161,6 @@ public class MachineBlockProvider implements IBlockComponentProvider, IServerDat
                 case "soc_manufacturer" -> {
                     if (isWorking) {
                         tooltip.add(Component.literal("Synthesizing System-on-Chip...").withStyle(ChatFormatting.YELLOW));
-                    }
-                }
-                case "project_compiler", "code_compiler" -> {
-                    if (data.contains("ArchName")) {
-                        tooltip.add(Component.literal("Target Arch: ").withStyle(ChatFormatting.GRAY)
-                                .append(Component.literal(data.getString("ArchName")).withStyle(ChatFormatting.AQUA))
-                                .append(Component.literal(" (" + data.getInt("ArchOps") + " opcodes)").withStyle(ChatFormatting.DARK_AQUA)));
-                    } else {
-                        tooltip.add(Component.literal("No Architecture Installed").withStyle(ChatFormatting.DARK_GRAY));
                     }
                 }
                 case "programmer" -> {

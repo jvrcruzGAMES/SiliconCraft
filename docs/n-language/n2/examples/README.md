@@ -1,6 +1,6 @@
 # N2 examples
 
-Compile these files with the N2 Code Compiler. For the multi-file example, import its entire folder into the Project Compiler.
+Compile these files with the external [`scc` compiler](../compiler.md) (`scc <file>.n2 -o <file>.sc` or `scc 07_oop_game_project -o game.sc`), then upload the generated `.sc` package through the **Project Manager**.
 
 | Source | Topic |
 |---|---|

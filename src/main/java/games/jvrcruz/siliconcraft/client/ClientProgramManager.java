@@ -14,4 +14,10 @@ public class ClientProgramManager {
             PROGRAMS.addAll(list);
         }
     }
+
+    public static void addPrograms(List<ProgramEntry> list) {
+        if (list != null) {
+            PROGRAMS.addAll(list);
+        }
+    }
 }

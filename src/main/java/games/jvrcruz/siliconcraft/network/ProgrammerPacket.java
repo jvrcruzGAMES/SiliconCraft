@@ -16,7 +16,7 @@ public record ProgrammerPacket(BlockPos pos, List<String> lines) implements Cust
 
     public static final StreamCodec<ByteBuf, ProgrammerPacket> STREAM_CODEC = StreamCodec.composite(
             BlockPos.STREAM_CODEC, ProgrammerPacket::pos,
-            ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list()), ProgrammerPacket::lines,
+            LargePayloadCodec.STRING_LIST_STREAM_CODEC, ProgrammerPacket::lines,
             ProgrammerPacket::new
     );
 

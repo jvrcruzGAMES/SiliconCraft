@@ -16,6 +16,8 @@ public class ProgramSavedData extends SavedData {
     private final List<ProgramEntry> programs = new ArrayList<>();
     private boolean defaultsInitialized = false;
 
+    public record RenameResult(boolean success, String finalName, String error) {}
+
     public ProgramSavedData() {
         if (!defaultsInitialized) {
             initDefaultPrograms();
@@ -27,7 +29,7 @@ public class ProgramSavedData extends SavedData {
         if (programs.isEmpty()) {
             programs.add(new ProgramEntry(
                     "demo_counter",
-                    "counter.o",
+                    "counter.sc",
                     "Any",
                     List.of(
                             "; Countdown demo",
@@ -43,7 +45,7 @@ public class ProgramSavedData extends SavedData {
             ));
             programs.add(new ProgramEntry(
                     "demo_fibonacci",
-                    "fibonacci.o",
+                    "fibonacci.sc",
                     "Any",
                     List.of(
                             "; Fibonacci sequence",
@@ -73,6 +75,49 @@ public class ProgramSavedData extends SavedData {
         programs.removeIf(p -> p.name().equalsIgnoreCase(entry.name()));
         programs.add(entry);
         setDirty();
+    }
+
+    public RenameResult renameProgram(String id, String rawNewName) {
+        if (id == null || id.isBlank()) {
+            return new RenameResult(false, "", "Missing project identifier.");
+        }
+
+        int targetIndex = -1;
+        for (int i = 0; i < programs.size(); i++) {
+            ProgramEntry p = programs.get(i);
+            if (p.id().equals(id) || p.name().equalsIgnoreCase(id)) {
+                targetIndex = i;
+                break;
+            }
+        }
+        if (targetIndex == -1) {
+            return new RenameResult(false, "", "Project not found.");
+        }
+
+        List<String> otherNames = new ArrayList<>();
+        for (int i = 0; i < programs.size(); i++) {
+            if (i != targetIndex) {
+                otherNames.add(programs.get(i).name());
+            }
+        }
+
+        String candidate;
+        try {
+            candidate = ScProjectFile.validateRenameName(rawNewName, otherNames);
+        } catch (IllegalArgumentException e) {
+            return new RenameResult(false, "", e.getMessage());
+        }
+
+        ProgramEntry target = programs.get(targetIndex);
+        programs.set(targetIndex, new ProgramEntry(
+                target.id(),
+                candidate,
+                target.archName(),
+                target.lines(),
+                target.requiredInstructions()
+        ));
+        setDirty();
+        return new RenameResult(true, candidate, null);
     }
 
     public boolean removeProgram(String id) {

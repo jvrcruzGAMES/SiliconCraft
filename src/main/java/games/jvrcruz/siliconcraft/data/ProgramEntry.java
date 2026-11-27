@@ -2,6 +2,7 @@ package games.jvrcruz.siliconcraft.data;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import games.jvrcruz.siliconcraft.network.LargePayloadCodec;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -20,10 +21,10 @@ public record ProgramEntry(String id, String name, String archName, List<String>
     );
 
     public static final StreamCodec<ByteBuf, ProgramEntry> STREAM_CODEC = StreamCodec.composite(
-        ByteBufCodecs.STRING_UTF8, ProgramEntry::id,
-        ByteBufCodecs.STRING_UTF8, ProgramEntry::name,
-        ByteBufCodecs.STRING_UTF8, ProgramEntry::archName,
-        ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list()), ProgramEntry::lines,
+        LargePayloadCodec.LARGE_STRING, ProgramEntry::id,
+        LargePayloadCodec.LARGE_STRING, ProgramEntry::name,
+        LargePayloadCodec.LARGE_STRING, ProgramEntry::archName,
+        LargePayloadCodec.STRING_LIST_STREAM_CODEC, ProgramEntry::lines,
         ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list()), ProgramEntry::requiredInstructions,
         ProgramEntry::new
     );

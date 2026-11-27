@@ -55,6 +55,11 @@ public class ProgrammerScreen extends BaseMachineScreen<ProgrammerMenu> {
         // Burn button
         burnButton = Button.builder(Component.literal("⚡ Write"), b -> {
             if (selectedProgram != null && selectedProgram.lines() != null && !selectedProgram.lines().isEmpty()) {
+                if (games.jvrcruz.siliconcraft.network.LargePayloadCodec.compressStringList(selectedProgram.lines()).length
+                        > games.jvrcruz.siliconcraft.network.LargePayloadCodec.MAX_WIRE_BYTES - 1024) {
+                    statusText = "Program too large!";
+                    return;
+                }
                 PacketDistributor.sendToServer(new ProgrammerPacket(
                         menu.getBlockEntity().getBlockPos(),
                         new ArrayList<>(selectedProgram.lines())
@@ -213,8 +218,8 @@ public class ProgrammerScreen extends BaseMachineScreen<ProgrammerMenu> {
 
         if (progs.isEmpty()) {
             guiGraphics.drawString(this.font, "No programs!", listLeft + 4, listTop + 6, 0x888888, false);
-            guiGraphics.drawString(this.font, "Use Compiler or", listLeft + 4, listTop + 16, 0x666666, false);
-            guiGraphics.drawString(this.font, "Assembly Writer", listLeft + 4, listTop + 26, 0x666666, false);
+            guiGraphics.drawString(this.font, "Use Project", listLeft + 4, listTop + 16, 0x666666, false);
+            guiGraphics.drawString(this.font, "Manager (.sc)", listLeft + 4, listTop + 26, 0x666666, false);
             if (burnButton != null) burnButton.active = false;
             if (deleteButton != null) deleteButton.active = false;
         } else {

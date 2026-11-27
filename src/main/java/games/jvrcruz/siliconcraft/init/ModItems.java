@@ -49,6 +49,7 @@ public class ModItems {
     public static final DeferredItem<BlockItem> ASSEMBLY_WRITER_ITEM = ITEMS.registerSimpleBlockItem("assembly_writer", ModBlocks.ASSEMBLY_WRITER);
     public static final DeferredItem<BlockItem> CODE_COMPILER_ITEM = ITEMS.registerSimpleBlockItem("code_compiler", ModBlocks.CODE_COMPILER);
     public static final DeferredItem<BlockItem> PROJECT_COMPILER_ITEM = ITEMS.registerSimpleBlockItem("project_compiler", ModBlocks.PROJECT_COMPILER);
+    public static final DeferredItem<BlockItem> PROJECT_MANAGER_ITEM = ITEMS.registerSimpleBlockItem("project_manager", ModBlocks.PROJECT_MANAGER);
     public static final DeferredItem<BlockItem> SERIAL_CABLE_ITEM = ITEMS.registerSimpleBlockItem("serial_cable", ModBlocks.SERIAL_CABLE);
     public static final DeferredItem<BlockItem> SERIAL_EXPANSION_ITEM = ITEMS.registerSimpleBlockItem("serial_expansion", ModBlocks.SERIAL_EXPANSION);
     public static final DeferredItem<BlockItem> SPEAKER_ITEM = ITEMS.registerSimpleBlockItem("speaker", ModBlocks.SPEAKER);

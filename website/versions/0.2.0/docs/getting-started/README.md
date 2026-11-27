@@ -9,7 +9,7 @@ This guide walks you through building, programming, and expanding your first com
 - [Optional integrations](integrations.md): supported blocks and behavior without integration mods.
 - [Server network settings](network-settings.md): transports, destination policy, TLS, and listeners.
 
-When your computer is ready, continue with [Assembly](../assembly/README.md), [N2](../n-language/n2/README.md), or the [deprecated N1 chapter](../n-language/n1/README.md).
+When your computer is ready, continue with [Assembly](../assembly/README.md) or [N2](../n-language/n2/README.md).
 
 ---
 
@@ -25,7 +25,7 @@ When your computer is ready, continue with [Assembly](../assembly/README.md), [N
 3. **Redstone Dust**: Used as the semiconductor doping agent in chip forging and audio circuits.
 4. **Coal / Charcoal or FE**: All SiliconCraft machines accept furnace fuel (Coal, Charcoal, etc.) or Forge Energy (FE).
 5. **Wood Slabs & Planks**: Used as the substrate base in the SoC Manufacturer and speaker enclosures.
-6. **Diamond**: Required as the NVMe controller when forging ultra-fast Storage drives, and for crafting the Project Compiler.
+6. **Diamond**: Required as the NVMe controller when forging ultra-fast Storage drives.
 7. **Note Block**: Required for crafting the Speaker block.
 
 ---
@@ -36,7 +36,7 @@ Before forging a CPU microchip or assembling a GPU, you design its supported ins
 
 1. Craft and place an **Architecture Writer** block.
 2. Open its interface.
-3. Click **`Mode: CPU` / `Mode: GPU`** to choose whether you are drafting a **CPU Architecture Writeup** (for the Chip Forge and code/project compilers) or a **GPU Architecture Writeup** (for the GPU Assembler).
+3. Click **`Mode: CPU` / `Mode: GPU`** to choose whether you are drafting a **CPU Architecture Writeup** (for the Chip Forge) or a **GPU Architecture Writeup** (for the GPU Assembler).
 4. Enter your custom **Architecture Name** (e.g. `RISC-1`, `GPU-1`).
 5. Select which instructions (`NOP`, `MOV`, `ADD`, `OUT`, `HLT`, etc. in CPU mode) or graphics operations (`FBCLR`, `GPUCLR`, `GPURECT`, `GPUCIRC`, `GPUTRI`, `GPUVRAM`, `GPUBLIT`, `GPUSWAP`, etc. in GPU mode) your design will support from the scrollable list.
 6. Insert a piece of **Paper** (or a blank writeup) into the top-left input slot.
@@ -87,46 +87,33 @@ The **GPU Assembler** fabricates a dedicated **GPU** expansion card from a reusa
 
 ---
 
-## 6. Writing, Compiling & Flashing Programs
+## 6. Managing & Flashing Programs
 
-SiliconCraft separates program writing and compilation from physical ROM/Storage burning, ensuring your CPU hardware matches your software instructions before spending resources.
+Starting in **SiliconCraft 0.2.0**, code compilation happens externally so large N2 and Assembly projects can be built with standard developer tooling without stalling the game server.
 
-### Option A: High-Level Programming with the Code Compiler
-1. Write an `.n` or `.n2` file on your computer (see [n-language/README.md](../n-language/README.md)).
-2. Place and open the **Code Compiler** block.
-3. Insert your **Architecture Writeup** into the slot.
-4. Click **Choose File** and select your `.n` or `.n2` source. Check the N1 or N2 standard before compiling.
-5. The compiler verifies syntax and validates every required opcode against your architecture writeup.
-6. Click **[+ Compile & Add]** to compile and assemble it directly into a standard `.o` bytecode image in your Program Library.
+### Step 1: Compile Externally to a `.sc` Package
+Use **`scc`** (see [External N2 Compiler (`scc`), Make & CMake](../n-language/n2/compiler.md)) on your computer:
+- **N2 Programs & Projects**: Compile single `.n2` files or multi-file folders (`main.n2`, modules, `-I` library directories, **Make**, or **CMake**) into `<name>.sc`.
+- **Assembly Programs**: Assemble `.asm` / `.s` files and multi-file assembly projects (`scc asm main.asm -o boot.sc`) into `<name>.sc`.
+- **N1 Discontinued**: Legacy `.n` files are no longer supported in 0.2.0.
 
-### Option B: Multi-File & Assembly Projects with the Project Compiler
-For complex applications spanning multiple files, subdirectories, or mixed language codebases:
-1. Craft and place the **Project Compiler** block.
-2. Supports `.n2`, `.n`, `.asm`, and `.s` source files.
-   - Use `main.n2`, `main.n`, `main.asm`, or `main.s` as a project entrypoint.
-   - `.n` files can import assembly subroutines (`import "math_sub.asm"`).
-   - `.asm` files can import other assembly files (`include "helper.asm"`, `.include`, `#include`, `.import`).
-   - `.asm` files can run and import `.n` files (`include "logic.n"`).
-   - Imported assembly modules are automatically wrapped with safe jump skips to preserve entrypoint flow.
-3. Open the Project Compiler GUI, insert your **Architecture Writeup**, and click either **📁 .zip** or **📂 Folder** to select your project.
-4. Click **[+ Compile Project]**. The toolchain compiles and preassembles the entire project down to a single optimized **`.o`** bytecode image in your Program Library!
+> **Legacy Blocks**: Existing **Code Compiler**, **Project Compiler**, and **Assembly Writer** blocks no longer open a UI or compile code; they are kept as decorative facing blocks for world compatibility.
 
-### Option C: Assembly Programming with the Assembly Writer
-1. Write your `.s` or `.asm` file on your computer (see [assembly-syntax.md](../assembly/syntax.md)).
-2. Place and open the **Assembly Writer** block.
-3. Insert your **Architecture Writeup** into the slot.
-4. Click **📁 Choose .s / .asm** to load the file.
-5. The validator verifies that all opcodes in your assembly program are supported by the writeup.
-6. Click **[+ Add to Programs]** to assemble and register it as a `.o` bytecode image in your Program Library.
+### Step 2: Import, Rename & Remove with the Project Manager
+1. Craft and place a **Project Manager** block.
+2. Open its interface:
+   - **`+ Add .sc`**: Opens a file picker to import a compiled `.sc` package into your world's Program Library. Large projects are compressed and transferred automatically via chunked upload.
+   - **`Rename`**: Type a new name in the input box and click **Rename** to rename the selected project.
+   - **`Remove`**: Delete the selected project from your Program Library.
 
-### Flashing with the Programmer
-The **Programmer** writes your programs to physical chips and drives:
-1. Open the **Programmer** block (formerly ROM Programmer).
+### Step 3: Flash Hardware with the Programmer
+The **Programmer** writes imported `.sc` programs to physical chips and drives:
+1. Open the **Programmer** block.
 2. Insert either a blank **ROM Chip** OR a **Storage Drive** (Flash / NVMe) into the input slot.
-3. The right panel displays the scrollable list of all registered programs in your library.
+3. The right panel displays the scrollable list of imported programs in your library.
 4. Click any program to select it.
 5. Click **⚡ Burn to ROM** (or **⚡ Write to Drive**). The flashed item appears in the output slot!
-6. **Deleting Programs**: To remove an obsolete program from your library, select it and click the **Delete** button.
+6. **Deleting Programs**: To remove an obsolete program from your library, select it and click **Delete** (or use **Remove** in the Project Manager).
 
 ---
 
@@ -205,15 +192,17 @@ ISI
 - **F**: Blast Furnace
 - **S**: Silicon Powder
 
-### Project Compiler
+### Project Manager
 ```
-ABA
-ACA
-ABA
+IGI
+RCR
+ISI
 ```
-- **A**: Iron Ingot
-- **B**: Diamond
-- **C**: Code Compiler
+- **I**: Iron Ingot
+- **G**: Glass Pane
+- **R**: Redstone Dust
+- **C**: Chest
+- **S**: Silicon Powder
 
 ### Speaker
 ```

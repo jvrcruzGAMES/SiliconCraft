@@ -2,7 +2,7 @@
 
 [Versioned documentation website](http://sc.jvrcruz.games/) · [Website build and release instructions](website/README.md)
 
-[Documentation chapters](docs/README.md): [Getting Started](docs/getting-started/README.md) · [Assembly](docs/assembly/README.md) · [N1 (deprecated)](docs/n-language/n1/README.md) · [N2](docs/n-language/n2/README.md)
+[Documentation chapters](docs/README.md): [Getting Started](docs/getting-started/README.md) · [Assembly](docs/assembly/README.md) · [N2](docs/n-language/n2/README.md)
 
 [![Minecraft Version](https://img.shields.io/badge/Minecraft-1.21.1-brightgreen.svg)](https://neoforged.net/)
 [![Mod Loader](https://img.shields.io/badge/Loader-NeoForge-orange.svg)](https://neoforged.net/)
@@ -10,20 +10,21 @@
 
 **SiliconCraft** is a modular personal computing, microcontroller, and custom silicon architecture mod for Minecraft (NeoForge 1.21.1).
 
-Design your own silicon chips from silicon powder, assemble modular personal computers, write programs in the high-level **N language** or native assembly, render hardware-accelerated 960×540 retro graphics, synthesize 8-bit PCM audio, connect physical gamepads, and automate your world with custom virtual hardware—with the virtual CPU running on background workers and world interactions handled by the server tick.
+Design your own silicon chips and GPUs from silicon powder, assemble modular personal computers, compile programs in the high-level **N2 language** or native assembly with the external **`scc`** toolchain, render hardware-accelerated 960×540 graphics, synthesize 8-bit PCM audio, connect physical gamepads, and automate your world with custom virtual hardware—with virtual CPUs and GPUs running off the server tick loop.
 
 ---
 
 ## ⚡ Key Features
 
-### 🖥️ Modular Personal Computers
+### 🖥️ Modular Personal Computers & Dedicated GPU Acceleration
 - **Custom Silicon Core**: Assemble a PC by inserting a fabricated **SoC (System-on-Chip)** into a **Computer Case**.
 - **Expansion Bays**:
   - **8 RAM Slots**: Expand memory by up to **16,384 KB** (16 MB) using forged RAM modules.
   - **2 Storage Slots**: Support both non-volatile **Flash Storage** and high-speed **NVMe SSDs** (up to 2,048 MB per drive).
+  - **1 GPU Slot (`VirtualGpu`)**: Install a dedicated **GPU** card (either onboard in the SoC or in the PC expansion bay—maximum 1 GPU per machine) for double-buffered rasterization, VRAM sprites (`GPU*` instructions), and automatic `<Glass>` acceleration.
 - **Dual Display Modes**:
   - **Text Console Mode**: Crisp 40×13 retro terminal output with syntax coloring for logs, BIOS messages, and shells.
-  - **Framebuffer Mode**: 960×540 resolution with 32-bit ARGB color for games, raycasters, and animations.
+  - **Framebuffer Mode**: 960×540 resolution with 32-bit ARGB color for games, raycasters, and animations, switchable between `AUTO`, `CPU`, and `GPU` handlers.
 - **Full State Persistence**:
   - CPU registers, flags, call/data stacks, interrupt tables (IVT), and RAM contents are **compressed and saved to disk**.
   - Your programs keep running across world saves, reloads, and dimensional travel without losing RAM contents or resetting.
@@ -32,19 +33,21 @@ Design your own silicon chips from silicon powder, assemble modular personal com
 
 ---
 
-a### 🔬 Chip Forging & Architecture Design
-- **Custom Architectures**: Select instructions in the **Architecture Writer**, then use the resulting Architecture Writeup with silicon powder and redstone in the **Chip Forge**.
+### 🔬 Chip & GPU Forging & Architecture Design
+- **Custom Architectures**: Toggle the **Architecture Writer** between **CPU** and **GPU** modes to design a **CPU Architecture Writeup** (for the **Chip Forge**) or a **GPU Architecture Writeup** (for the **GPU Assembler**).
 - **Bespoke Instruction Sets**:
-  - Choose which instructions your CPU supports, including arithmetic, logic, stack operations, subroutines, storage, graphics, audio, interrupts, peripherals, and networking.
-- **Integrated BIOS / ROM**: Write a program to a ROM chip with the **Programmer**, then combine it with your forged chip in the **SoC Manufacturer**.
+  - Choose which instructions your CPU supports, including arithmetic, logic, stack operations, subroutines, storage, graphics, GPU acceleration, audio, interrupts, peripherals, and networking.
+- **Integrated BIOS / ROM**: Import compiled `.sc` programs via the **Project Manager**, burn a program to a ROM chip with the **Programmer**, and combine it with your forged CPU (and optional GPU/RAM/Storage) in the **SoC Manufacturer**.
 
 ---
 
-### 💾 Memory Forge & Programmer
+### 💾 Memory Forge, Project Manager & External Compiler (`scc`)
+- **External N2 Compiler (`compiler/`)**: Compile `.n2` and `.asm`/`.s` projects offline into portable `.sc` packages with CLI, **Make**, and **CMake** support ([compiler docs](docs/n-language/n2/compiler.md)). Note that legacy N1 (`.n`) is discontinued as of 0.2.0.
+- **Project Manager**: Upload `.sc` packages (with automatic compression and chunked upload for large projects), rename, or remove programs from your world library.
 - **Memory Forge**: Construct high-capacity RAM sticks (2,048 KB each) and solid-state drives (Flash drives and high-throughput NVMe SSDs).
 - **Programmer**:
-  - Browse, inspect, and burn software onto removable storage drives.
-  - Tooltips clearly show the program's name, description, and required CPU instructions.
+  - Browse, inspect, and burn imported `.sc` software onto removable ROM chips and storage drives.
+  - Tooltips clearly show the program's name, architecture, and required CPU instructions.
   - Hold **SHIFT** to view the full, detailed opcode breakdown.
 
 ---
@@ -64,7 +67,7 @@ a### 🔬 Chip Forging & Architecture Design
 - **Keyboard Emulation (Built-in)**:
   - Arrow Keys / WASD, Space / Z (Jump / B), X (Spin / A), C / J (Run / Y), V / K (Action / X), Q / E (Shoulders), Enter (Start), Shift (Select).
 - **External Controller Integration**:
-  - In 0.1.2, read both sticks and triggers as analog values, plus L3/R3 stick buttons, using `INAXIS` or N2 `<GameController>` helpers.
+  - Read both sticks and triggers as analog values, plus L3/R3 stick buttons, using `INAXIS` or N2 `<GameController>` helpers.
   - Seamlessly connect your physical gamepad (Xbox, PlayStation, Nintendo Switch, Steam Deck) when **Controlify** is installed.
 
 ---
@@ -83,8 +86,8 @@ SiliconCraft works completely out-of-the-box as a standalone mod, but seamlessly
 | Mod | Platform | Type | What It Unlocks |
 |---|---|---|---|
 | **[Controlify](https://www.curseforge.com/minecraft/mc-mods/controlify)** | CurseForge / Modrinth | Client | **External Controller Support**: Enables physical gamepad input. Connect Xbox, PlayStation, Switch Pro, Steam Deck, or generic USB/Bluetooth controllers to play computer games directly on the screen. (Disabled if Controlify is not present). |
-| **[Jade](https://www.curseforge.com/minecraft/mc-mods/jade)** | CurseForge / Modrinth | Client & Server | **In-World HUD Tooltips**: Look at any Personal Computer, Computer Case, Speaker, or Machine to see CPU state (`[RUNNING]`, `[OFF]`, `[ERROR]`), SoC opcode count, installed RAM, storage capacity, cycle count, and active error messages. |
-| **[JEI (Just Enough Items)](https://www.curseforge.com/minecraft/mc-mods/jei)** | CurseForge / Modrinth | Client & Server | Recipe categories for Chip Forge, Memory Forge, SoC Manufacturer, and Computer Assembly. |
+| **[Jade](https://www.curseforge.com/minecraft/mc-mods/jade)** | CurseForge / Modrinth | Client & Server | **In-World HUD Tooltips**: Look at any Personal Computer, Computer Case, Speaker, or Machine to see CPU state (`[RUNNING]`, `[OFF]`, `[ERROR]`), SoC opcode count, GPU VRAM/handler, installed RAM, storage capacity, cycle count, and active error messages. |
+| **[JEI (Just Enough Items)](https://www.curseforge.com/minecraft/mc-mods/jei)** | CurseForge / Modrinth | Client & Server | Recipe categories for Chip Forge, GPU Assembler, Memory Forge, SoC Manufacturer, and Computer Assembly. |
 | **Create** | Modrinth | Client & Server | Digital Redstone Link for named wireless redstone channels. |
 | **Create: Aeronautics + Sable** | Modrinth | Client & Server | Airship Sensor for position, orientation, pressure, and velocity readings. |
 | **Sable** | Modrinth | Client & Server | Coordinate handling for computers, peripherals, and positional speaker audio on moving structures. |
@@ -99,16 +102,16 @@ Sable Companion is included inside the mod JAR; it does not need a separate inst
 ## 🛠️ Quick Start Guide
 
 ### 1. Synthesize a System-on-Chip (SoC)
-1. Choose your instructions in the **Architecture Writer** and create an **Architecture Writeup**.
-2. Forge a chip using the writeup, **Silicon Powder**, and **Redstone Dust** in the **Chip Forge**.
-3. Compile a program and write it to a ROM chip using the **Programmer**.
-4. Combine the chip and programmed ROM with the required materials in the **SoC Manufacturer**. See the [getting started guide](docs/getting-started/README.md) for the full workflow.
+1. Choose your instructions in the **Architecture Writer** (`Mode: CPU`) and create a **CPU Architecture Writeup** (optionally switch to `Mode: GPU` for a **GPU Architecture Writeup**).
+2. Forge a chip using the CPU writeup, **Silicon Powder**, and **Redstone Dust** in the **Chip Forge** (and optionally build a GPU in the **GPU Assembler**).
+3. Compile your N2 or Assembly project into a `.sc` package with **`scc`**, upload it via the **Project Manager**, and write it to a ROM chip using the **Programmer**.
+4. Combine the chip and programmed ROM (plus optional GPU, RAM, and Storage) with the required materials in the **SoC Manufacturer**. See the [getting started guide](docs/getting-started/README.md) for the full workflow.
 
 ### 2. Assemble Your Computer
 1. Place a **Computer Case** on the ground.
 2. Right-click the case with your synthesized **SoC** in hand. The case will transform into a **Personal Computer**!
 3. Right-click the Personal Computer to open the chassis screen.
-4. Insert **RAM Modules** into the green RAM bays (up to 8 sticks) and **Storage Drives** into the blue NVMe/Flash bays.
+4. Insert **RAM Modules** into the green RAM bays (up to 8 sticks), **Storage Drives** into the blue NVMe/Flash bays, and an optional **GPU** card into the GPU slot (if your SoC does not already have one).
 
 ### 3. Power On & Run Programs
 1. Click the **⏻ ON** button to boot your computer.

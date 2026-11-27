@@ -2,6 +2,7 @@ package games.jvrcruz.siliconcraft.data;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import games.jvrcruz.siliconcraft.network.LargePayloadCodec;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -39,7 +40,7 @@ public record SocData(List<String> instructions, int ramCapacity, List<String> b
         SocData::instructions,
         ByteBufCodecs.VAR_INT,
         SocData::ramCapacity,
-        ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list()),
+        LargePayloadCodec.STRING_LIST_STREAM_CODEC,
         SocData::bios,
         ByteBufCodecs.BOOL,
         SocData::hasNvme,

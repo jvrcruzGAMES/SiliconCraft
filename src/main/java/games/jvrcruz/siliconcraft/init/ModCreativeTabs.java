@@ -38,6 +38,7 @@ public class ModCreativeTabs {
                         output.accept(ModItems.MEMORY_FORGE_ITEM.get());
                         output.accept(ModItems.GPU_ASSEMBLER_ITEM.get());
                         output.accept(ModItems.PROGRAMMER_ITEM.get());
+                        output.accept(ModItems.PROJECT_MANAGER_ITEM.get());
                         output.accept(ModItems.SOC_MANUFACTURER_ITEM.get());
                         output.accept(ModItems.COMPUTER_CASE_ITEM.get());
                         output.accept(ModItems.COMPUTER_ITEM.get());

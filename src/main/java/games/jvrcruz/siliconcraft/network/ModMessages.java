@@ -18,7 +18,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 public class ModMessages {
     public static void register(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar(Siliconcraft.MODID).versioned("1.2.0");
+        PayloadRegistrar registrar = event.registrar(Siliconcraft.MODID).versioned("1.3.0");
         CreatePeripherals.registerPayloads(registrar);
 
         registrar.playToServer(ChipForgePacket.TYPE, ChipForgePacket.STREAM_CODEC, ModMessages::handleChipForge);
@@ -31,10 +31,10 @@ public class ModMessages {
         registrar.playToServer(ComputerInputPacket.TYPE, ComputerInputPacket.STREAM_CODEC, ModMessages::handleComputerInput);
         registrar.playToServer(GamepadInputPacket.TYPE, GamepadInputPacket.STREAM_CODEC, ModMessages::handleGamepadInput);
 
-        // Program library packets
-        registrar.playToServer(AddAssemblyProgramPacket.TYPE, AddAssemblyProgramPacket.STREAM_CODEC, ModMessages::handleAddAssemblyProgram);
-        registrar.playToServer(CompileProgramPacket.TYPE, CompileProgramPacket.STREAM_CODEC, ModMessages::handleCompileProgram);
-        registrar.playToServer(CompileProjectPacket.TYPE, CompileProjectPacket.STREAM_CODEC, ModMessages::handleCompileProject);
+        // Program library packets (.sc Project Manager + Programmer)
+        registrar.playToServer(UploadProjectStartPacket.TYPE, UploadProjectStartPacket.STREAM_CODEC, ModMessages::handleUploadProjectStart);
+        registrar.playToServer(UploadProjectChunkPacket.TYPE, UploadProjectChunkPacket.STREAM_CODEC, ModMessages::handleUploadProjectChunk);
+        registrar.playToServer(RenameProgramPacket.TYPE, RenameProgramPacket.STREAM_CODEC, ModMessages::handleRenameProgram);
         registrar.playToServer(DeleteProgramPacket.TYPE, DeleteProgramPacket.STREAM_CODEC, ModMessages::handleDeleteProgram);
         registrar.playToServer(RequestProgramsPacket.TYPE, RequestProgramsPacket.STREAM_CODEC, ModMessages::handleRequestPrograms);
         registrar.playToClient(SyncProgramsPacket.TYPE, SyncProgramsPacket.STREAM_CODEC, ModMessages::handleSyncPrograms);
@@ -58,37 +58,48 @@ public class ModMessages {
         });
     }
 
-    private static void handleAddAssemblyProgram(AddAssemblyProgramPacket packet, IPayloadContext context) {
+    private static void handleUploadProjectStart(UploadProjectStartPacket packet, IPayloadContext context) {
         context.enqueueWork(() -> {
-            Player player = context.player();
-            if (player instanceof ServerPlayer serverPlayer && serverPlayer.level().isLoaded(packet.pos())) {
-                BlockEntity be = serverPlayer.level().getBlockEntity(packet.pos());
-                if (be instanceof AssemblyWriterBlockEntity writerBe) {
-                    writerBe.addAssemblyProgram(serverPlayer, packet.name(), packet.lines());
-                }
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                ChunkedProjectUploadManager.handleStart(serverPlayer, packet);
             }
         });
     }
 
-    private static void handleCompileProgram(CompileProgramPacket packet, IPayloadContext context) {
+    private static void handleUploadProjectChunk(UploadProjectChunkPacket packet, IPayloadContext context) {
         context.enqueueWork(() -> {
-            Player player = context.player();
-            if (player instanceof ServerPlayer serverPlayer && serverPlayer.level().isLoaded(packet.pos())) {
-                BlockEntity be = serverPlayer.level().getBlockEntity(packet.pos());
-                if (be instanceof CodeCompilerBlockEntity compilerBe) {
-                    compilerBe.compileAndAddProgram(serverPlayer, packet.name(), packet.sourceLines(), packet.standard());
-                }
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                ChunkedProjectUploadManager.handleChunk(serverPlayer, packet);
             }
         });
     }
 
-    private static void handleCompileProject(CompileProjectPacket packet, IPayloadContext context) {
+    private static void handleRenameProgram(RenameProgramPacket packet, IPayloadContext context) {
         context.enqueueWork(() -> {
             Player player = context.player();
             if (player instanceof ServerPlayer serverPlayer && serverPlayer.level().isLoaded(packet.pos())) {
+                if (serverPlayer.distanceToSqr(packet.pos().getCenter()) > 100.0) {
+                    return;
+                }
                 BlockEntity be = serverPlayer.level().getBlockEntity(packet.pos());
-                if (be instanceof ProjectCompilerBlockEntity compilerBe) {
-                    compilerBe.compileAndAddProject(serverPlayer, packet.projectName(), packet.files(), packet.standard());
+                if (!(be instanceof ProjectManagerBlockEntity)) {
+                    return;
+                }
+                ProgramSavedData savedData = ProgramSavedData.get(serverPlayer.serverLevel());
+                ProgramSavedData.RenameResult result = savedData.renameProgram(packet.id(), packet.newName());
+                if (result.success()) {
+                    syncProgramsToAll(savedData.getPrograms());
+                    serverPlayer.displayClientMessage(
+                            net.minecraft.network.chat.Component.literal("Renamed project to: " + result.finalName())
+                                    .withStyle(net.minecraft.ChatFormatting.GREEN),
+                            false
+                    );
+                } else {
+                    serverPlayer.displayClientMessage(
+                            net.minecraft.network.chat.Component.literal("Rename failed: " + result.error())
+                                    .withStyle(net.minecraft.ChatFormatting.RED),
+                            false
+                    );
                 }
             }
         });
@@ -101,7 +112,7 @@ public class ModMessages {
                 ProgramSavedData savedData = ProgramSavedData.get(serverPlayer.serverLevel());
                 boolean removed = savedData.removeProgram(packet.id());
                 if (removed) {
-                    PacketDistributor.sendToAllPlayers(new SyncProgramsPacket(savedData.getPrograms()));
+                    syncProgramsToAll(savedData.getPrograms());
                     player.displayClientMessage(net.minecraft.network.chat.Component.literal("Deleted program from library.").withStyle(net.minecraft.ChatFormatting.YELLOW), false);
                 }
             }
@@ -113,14 +124,30 @@ public class ModMessages {
             Player player = context.player();
             if (player instanceof ServerPlayer serverPlayer) {
                 ProgramSavedData data = ProgramSavedData.get(serverPlayer.serverLevel());
-                PacketDistributor.sendToPlayer(serverPlayer, new SyncProgramsPacket(data.getPrograms()));
+                syncProgramsToPlayer(serverPlayer, data.getPrograms());
             }
         });
     }
 
+    public static void syncProgramsToAll(java.util.List<games.jvrcruz.siliconcraft.data.ProgramEntry> programs) {
+        for (SyncProgramsPacket batch : SyncProgramsPacket.buildBatches(programs)) {
+            PacketDistributor.sendToAllPlayers(batch);
+        }
+    }
+
+    public static void syncProgramsToPlayer(ServerPlayer player, java.util.List<games.jvrcruz.siliconcraft.data.ProgramEntry> programs) {
+        for (SyncProgramsPacket batch : SyncProgramsPacket.buildBatches(programs)) {
+            PacketDistributor.sendToPlayer(player, batch);
+        }
+    }
+
     private static void handleSyncPrograms(SyncProgramsPacket packet, IPayloadContext context) {
         context.enqueueWork(() -> {
-            ClientProgramManager.setPrograms(packet.programs());
+            if (packet.append()) {
+                ClientProgramManager.addPrograms(packet.programs());
+            } else {
+                ClientProgramManager.setPrograms(packet.programs());
+            }
         });
     }
 

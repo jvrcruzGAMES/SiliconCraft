@@ -102,6 +102,13 @@ public class ModBlocks {
                     .strength(3.5F, 4.0F)
                     .sound(SoundType.METAL)));
 
+    public static final DeferredBlock<ProjectManagerBlock> PROJECT_MANAGER = BLOCKS.register("project_manager",
+            () -> new ProjectManagerBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.METAL)
+                    .requiresCorrectToolForDrops()
+                    .strength(3.5F, 4.0F)
+                    .sound(SoundType.METAL)));
+
     public static final DeferredBlock<SpeakerBlock> SPEAKER = BLOCKS.register("speaker",
             () -> new SpeakerBlock(BlockBehaviour.Properties.of()
                     .mapColor(MapColor.METAL)

@@ -1,0 +1,136 @@
+name: Build & Release N2 Compiler (scc)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: 'Release tag to upload binaries to (e.g., 0.2.0 or v0.2.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.asset_suffix }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset_suffix: linux-x86_64
+            ext: ""
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_suffix: windows-x86_64
+            ext: ".exe"
+            archive: zip
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset_suffix: macos-arm64
+            ext: ""
+            archive: tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            asset_suffix: macos-x86_64
+            ext: ""
+            archive: tar.gz
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Run compiler test suite
+        working-directory: compiler
+        run: cargo test --locked || cargo test
+
+      - name: Build release binary
+        working-directory: compiler
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package compiler artifact (Unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        env:
+          VERSION_TAG: ${{ inputs.version_tag }}
+          TARGET: ${{ matrix.target }}
+          ASSET_SUFFIX: ${{ matrix.asset_suffix }}
+        run: |
+          TAG="${VERSION_TAG// /}"
+          if [[ -z "$TAG" || "$TAG" == *"/"* || "$TAG" == *".."* ]]; then
+            echo "::error::Invalid version_tag '$VERSION_TAG'"
+            exit 1
+          fi
+          PKG_DIR="scc-${TAG}-${ASSET_SUFFIX}"
+          mkdir -p "dist/${PKG_DIR}"
+          cp "compiler/target/${TARGET}/release/scc" "dist/${PKG_DIR}/scc"
+          chmod +x "dist/${PKG_DIR}/scc"
+          cp compiler/README.md "dist/${PKG_DIR}/README.md"
+          cp LICENSE "dist/${PKG_DIR}/LICENSE"
+          tar -C dist -czf "dist/${PKG_DIR}.tar.gz" "${PKG_DIR}"
+          rm -rf "dist/${PKG_DIR}"
+
+      - name: Package compiler artifact (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        env:
+          VERSION_TAG: ${{ inputs.version_tag }}
+          TARGET: ${{ matrix.target }}
+          ASSET_SUFFIX: ${{ matrix.asset_suffix }}
+        run: |
+          $tag = $env:VERSION_TAG.Trim()
+          if ([string]::IsNullOrWhiteSpace($tag) -or $tag.Contains('/') -or $tag.Contains('\') -or $tag.Contains('..')) {
+            Write-Error "Invalid version_tag '$tag'"
+            exit 1
+          }
+          $pkgDir = "scc-$tag-$($env:ASSET_SUFFIX)"
+          New-Item -ItemType Directory -Force -Path "dist\$pkgDir" | Out-Null
+          Copy-Item "compiler\target\$($env:TARGET)\release\scc.exe" "dist\$pkgDir\scc.exe"
+          Copy-Item "compiler\README.md" "dist\$pkgDir\README.md"
+          Copy-Item "LICENSE" "dist\$pkgDir\LICENSE"
+          Compress-Archive -Path "dist\$pkgDir" -DestinationPath "dist\$pkgDir.zip" -Force
+          Remove-Item -Recurse -Force "dist\$pkgDir"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scc-${{ matrix.asset_suffix }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Upload to GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download packaged compiler artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate SHA256 checksums
+        working-directory: artifacts
+        run: |
+          sha256sum scc-* > scc-checksums.sha256
+          ls -lh
+          cat scc-checksums.sha256
+
+      - name: Upload compiler binaries to release tag
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version_tag }}
+          files: |
+            artifacts/scc-*
+          fail_on_unmatched_files: true

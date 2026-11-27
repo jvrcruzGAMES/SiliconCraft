@@ -1,7 +1,6 @@
 package games.jvrcruz.siliconcraft;
 
 import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
-import games.jvrcruz.siliconcraft.compiler.n1.NCompiler;
 import games.jvrcruz.siliconcraft.vm.VirtualCpu;
 import org.junit.jupiter.api.Test;
 
@@ -171,43 +170,5 @@ public class NewDirectivesTest {
         cpu.tick(20);
         assertEquals(VirtualCpu.State.HALTED, cpu.getState());
         assertEquals(0, cpu.getTimerHz()); // VBLANK 0 turned it off
-    }
-
-    @Test
-    public void testNCompilerDirectivesAndNewFeatures() {
-        List<String> nSource = List.of(
-                "vblank.enable()",
-                "timer.start(60)",
-                "on_vblank(vblank_handler)",
-                "var pad = pad.get()",
-                "if (pad & pad.RIGHT) != 0 {",
-                "    var target = 50",
-                "    call(target)",
-                "}",
-                "vblank.disable()",
-                "halt",
-                "fn vblank_handler {",
-                "    var x = 1",
-                "    iret",
-                "}",
-                "ORG 0x100",
-                "DB 1, 2, 3, \"HELLO\"",
-                "DW 0x55AA"
-        );
-
-        NCompiler.CompileResult result = NCompiler.compile(nSource);
-        assertTrue(result.success(), "N compilation should succeed: " + result.errors());
-        List<String> asm = result.assembly();
-        assertNotNull(asm);
-        String fullAsm = String.join("\n", asm);
-        assertTrue(fullAsm.contains("VBLANK 1"));
-        assertTrue(fullAsm.contains("TIMER 60"));
-        assertTrue(fullAsm.contains("IVEC 13, vblank_handler"));
-        assertTrue(fullAsm.contains("INPAD"));
-        assertTrue(fullAsm.contains("CALL"));
-        assertTrue(fullAsm.contains("VBLANK 0"));
-        assertTrue(fullAsm.contains("ORG 0x100"));
-        assertTrue(fullAsm.contains("DB 1, 2, 3, \"HELLO\""));
-        assertTrue(fullAsm.contains("DW 0x55AA"));
     }
 }

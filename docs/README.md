@@ -2,18 +2,19 @@
 
 This directory is the working manual. The [documentation website](http://sc.jvrcruz.games/) keeps a separate manual for each published mod version, starting with **0.1.1**. Each version starts at `http://sc.jvrcruz.games/X.X.X/`, for example [0.2.0](http://sc.jvrcruz.games/0.2.0/). Select the version installed in your world before following its guides.
 
-Follow the chapters in order to build a computer, then choose Assembly or N2 to program it. N1 is deprecated and documented for existing programs.
+Follow the chapters in order to build a computer, then choose Assembly or N2 to program it.
 
 | Chapter | Contents |
 |---|---|
-| **1. [Getting Started](getting-started/README.md)** | Materials, hardware manufacturing, compiling and flashing programs, peripheral wiring, optional integrations, and server network settings. |
+| **1. [Getting Started](getting-started/README.md)** | Materials, hardware manufacturing, GPU assembly, Project Manager (`.sc`), flashing, peripheral wiring, and server settings. |
 | **2. [Assembly](assembly/README.md)** | Syntax, instruction reference, projects, peripheral methods, networking, and runnable examples. |
-| **3. [N1 — deprecated](n-language/n1/README.md)** | N standard 1 syntax, hardware APIs, inline Assembly, and legacy examples. |
-| **4. [N2](n-language/n2/README.md)** | N standard 2 syntax, libraries, projects, DeviceKit peripherals, networking, and examples. |
+| **3. [N2](n-language/n2/README.md)** | N2 language guide, libraries, projects, external compiler (`scc` / Make / CMake), DeviceKit peripherals, networking, and examples. |
 
 ## Version 0.2.0
 
-A dedicated **Graphics Card (`VirtualGpu`)** component brings hardware-accelerated double-buffered rasterization, VRAM sprite storage/blitting (`GPU*` instructions), and automatic `<Glass>` acceleration to SoCs and Personal Computers (maximum 1 GPU per machine). Toggle the **Architecture Writer** between **CPU** and **GPU** modes to draft a reusable **GPU Architecture Writeup**, then fabricate your GPU at the **GPU Assembler** with **Silicon Powder**, **Redstone Dust**, and up to 8 optional RAM modules for VRAM. Programs and users can switch between `AUTO`, `CPU`, and `GPU` graphics handlers at runtime via the PC GUI (`GFX:...`) or `GFXSEL`/`GFXSTAT`.
+- **Graphics Card (`VirtualGpu`)**: Dedicated graphics acceleration with double-buffered rasterization, VRAM sprite storage/blitting (`GPU*` instructions), and automatic `<Glass>` acceleration (maximum 1 GPU per SoC or computer). Toggle the **Architecture Writer** between **CPU** and **GPU** modes to draft a reusable **GPU Architecture Writeup**, then fabricate the GPU at the **GPU Assembler** with **Silicon Powder**, **Redstone Dust**, and up to 8 optional RAM modules for VRAM. Switch handlers at runtime between `AUTO`, `CPU`, and `GPU` via the PC GUI (`GFX:...`) or `GFXSEL`/`GFXSTAT`.
+- **External N2 Compiler (`scc`) & Project Manager (`.sc`)**: Programs are now compiled externally into `.sc` packages using the standalone Rust compiler (`scc`, see [External Compiler, Make & CMake](n-language/n2/compiler.md)), and imported into worlds using the new **Project Manager** block (chunked upload, rename, and remove) before flashing with the **Programmer**.
+- **Legacy Compiler Blocks & N1 Discontinuation**: **Code Compiler**, **Project Compiler**, and **Assembly Writer** are now UI-less legacy blocks retained only for existing worlds. **N1 (`.n`)** support has been completely discontinued as of 0.2.0.
 
 ## Version 0.1.2
 
@@ -23,6 +24,6 @@ The client publishes one bounded input sample on GUI ticks, clears it when the s
 
 ## Choose a language
 
-Use **N2** for new high-level programs, **Assembly** for direct control of instructions and memory, and **N1** to maintain existing `.n` programs. The [N language overview](n-language/README.md) explains compiler selection and file extensions.
+Use **N2** (`.n2`) for high-level programs and **Assembly** (`.asm` / `.s`) for direct control of instructions and memory. Both compile externally via `scc` into `.sc` packages; their required instructions must be supported by the installed SoC. See the [N language overview](n-language/README.md).
 
-SiliconCraft targets Minecraft 1.21.1 with NeoForge and Java 21. Programs compile into `.o` bytecode; their required instructions must be supported by the installed SoC. See the [project README](../README.md) and [MIT license](../LICENSE).
+SiliconCraft targets Minecraft 1.21.1 with NeoForge and Java 21. See the [project README](../README.md) and [MIT license](../LICENSE).

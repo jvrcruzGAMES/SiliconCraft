@@ -33,12 +33,6 @@ public class ModMenuTypes {
     public static final DeferredHolder<MenuType<?>, MenuType<ArchitectureWriterMenu>> ARCHITECTURE_WRITER_MENU =
             MENUS.register("architecture_writer_menu", () -> IMenuTypeExtension.create(ArchitectureWriterMenu::new));
 
-    public static final DeferredHolder<MenuType<?>, MenuType<AssemblyWriterMenu>> ASSEMBLY_WRITER_MENU =
-            MENUS.register("assembly_writer_menu", () -> IMenuTypeExtension.create(AssemblyWriterMenu::new));
-
-    public static final DeferredHolder<MenuType<?>, MenuType<CodeCompilerMenu>> CODE_COMPILER_MENU =
-            MENUS.register("code_compiler_menu", () -> IMenuTypeExtension.create(CodeCompilerMenu::new));
-
-    public static final DeferredHolder<MenuType<?>, MenuType<ProjectCompilerMenu>> PROJECT_COMPILER_MENU =
-            MENUS.register("project_compiler_menu", () -> IMenuTypeExtension.create(ProjectCompilerMenu::new));
+    public static final DeferredHolder<MenuType<?>, MenuType<ProjectManagerMenu>> PROJECT_MANAGER_MENU =
+            MENUS.register("project_manager_menu", () -> IMenuTypeExtension.create(ProjectManagerMenu::new));
 }

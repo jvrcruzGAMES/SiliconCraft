@@ -1,7 +1,6 @@
 package games.jvrcruz.siliconcraft;
 
 import games.jvrcruz.siliconcraft.compiler.Assembler;
-import games.jvrcruz.siliconcraft.compiler.n1.NCompiler;
 import games.jvrcruz.siliconcraft.compiler.n2.N2Compiler;
 import org.junit.jupiter.api.Test;
 
@@ -20,24 +19,6 @@ class DocumentationChapterExamplesTest {
             for (Path file : files.filter(path -> path.toString().endsWith(".asm")).sorted().toList()) {
                 var result = Assembler.assemble(Files.readAllLines(file));
                 assertTrue(result.success(), () -> file + ": " + result.errors());
-            }
-        }
-    }
-
-    @Test
-    void n1ChapterSourcesAndProjectsCompile() throws Exception {
-        Path directory = Path.of("docs/n-language/n1/examples");
-        try (var files = Files.list(directory)) {
-            for (Path file : files.sorted().toList()) {
-                if (Files.isDirectory(file)) {
-                    var result = NCompiler.compileProject(projectSources(file, ".n"), "main.n");
-                    assertTrue(result.success(), () -> file + ": " + result.errors());
-                    assertAssembles(file, result.assembly());
-                } else if (file.toString().endsWith(".n")) {
-                    var result = NCompiler.compile(Files.readAllLines(file));
-                    assertTrue(result.success(), () -> file + ": " + result.errors());
-                    assertAssembles(file, result.assembly());
-                }
             }
         }
     }

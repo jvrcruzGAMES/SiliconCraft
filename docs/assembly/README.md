@@ -9,6 +9,6 @@ Assembly controls SiliconCraft's virtual CPU directly. Programs use registers `A
 5. [Create and airship peripherals](create-peripherals.md): sensor readings and named Redstone Link channels.
 6. [Examples](examples/README.md): CPU programs plus runnable peripheral and networking sources.
 
-Use the Assembly Writer for `.asm` or `.s` files. Use the Project Compiler for projects with `main.asm` and includes. Burn the compiled `.o` program to ROM or storage with the Programmer. See [Getting Started](../getting-started/README.md) for the hardware workflow.
+Assemble `.asm` or `.s` files and multi-file assembly projects into `.sc` packages with `scc asm` (see [External compiler (`scc`)](../n-language/n2/compiler.md)), upload them through the **Project Manager**, and burn the program to ROM or storage with the **Programmer**. See [Getting Started](../getting-started/README.md) for the hardware workflow.
 
 [All chapters](../README.md) · [N2 equivalent APIs](../n-language/n2/README.md)

@@ -2,8 +2,8 @@ package games.jvrcruz.siliconcraft.data;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import games.jvrcruz.siliconcraft.network.LargePayloadCodec;
 import io.netty.buffer.ByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 
 import java.util.List;
@@ -18,7 +18,7 @@ public record RomData(List<String> lines) {
     );
 
     public static final StreamCodec<ByteBuf, RomData> STREAM_CODEC = StreamCodec.composite(
-        ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list()),
+        LargePayloadCodec.STRING_LIST_STREAM_CODEC,
         RomData::lines,
         RomData::new
     );

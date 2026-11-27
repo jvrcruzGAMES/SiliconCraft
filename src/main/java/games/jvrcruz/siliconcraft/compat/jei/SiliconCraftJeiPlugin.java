@@ -294,6 +294,8 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
                 Component.translatable("jei.siliconcraft.info.architecture_writer"));
         registration.addIngredientInfo(ModBlocks.PROGRAMMER.get(),
                 Component.translatable("jei.siliconcraft.info.programmer"));
+        registration.addIngredientInfo(ModBlocks.PROJECT_MANAGER.get(),
+                Component.translatable("jei.siliconcraft.info.project_manager"));
         registration.addIngredientInfo(ModBlocks.GPU_ASSEMBLER.get(),
                 Component.translatable("jei.siliconcraft.info.gpu_assembler"));
         registration.addIngredientInfo(ModItems.GPU.get(),
