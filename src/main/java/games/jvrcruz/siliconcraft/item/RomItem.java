@@ -2,6 +2,7 @@ package games.jvrcruz.siliconcraft.item;
 
 import games.jvrcruz.siliconcraft.data.RomData;
 import games.jvrcruz.siliconcraft.init.ModDataComponents;
+import games.jvrcruz.siliconcraft.vm.BinaryBytecode;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
@@ -18,15 +19,16 @@ public class RomItem extends Item {
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
         RomData data = stack.get(ModDataComponents.ROM_DATA.get());
-        if (data == null || data.lines().isEmpty()) {
+        if (data == null || data.bytecode().length == 0) {
             tooltip.add(Component.translatable("tooltip.siliconcraft.rom.empty").withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
         } else {
-            tooltip.add(Component.translatable("tooltip.siliconcraft.rom.lines", data.lines().size()).withStyle(ChatFormatting.LIGHT_PURPLE));
-            int show = Math.min(data.lines().size(), 3);
-            for (int i = 0; i < show; i++) {
-                tooltip.add(Component.literal("  " + (i + 1) + ": " + data.lines().get(i)).withStyle(ChatFormatting.DARK_GRAY));
+            int instrCount = data.getInstructionCount();
+            tooltip.add(Component.translatable("tooltip.siliconcraft.rom.lines", instrCount).withStyle(ChatFormatting.LIGHT_PURPLE));
+            List<String> preview = BinaryBytecode.previewInstructions(data.bytecode(), 3);
+            for (int i = 0; i < preview.size(); i++) {
+                tooltip.add(Component.literal("  " + (i + 1) + ": " + preview.get(i)).withStyle(ChatFormatting.DARK_GRAY));
             }
-            if (data.lines().size() > 3) {
+            if (instrCount > 3) {
                 tooltip.add(Component.literal("  ...").withStyle(ChatFormatting.DARK_GRAY));
             }
         }

@@ -129,7 +129,7 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
 
         // ROM (Blank)
         ItemStack romStack = new ItemStack(ModItems.ROM.get());
-        romStack.set(ModDataComponents.ROM_DATA.get(), new RomData(List.of()));
+        romStack.set(ModDataComponents.ROM_DATA.get(), RomData.EMPTY);
         memoryRecipes.add(new MemoryForgeJeiRecipe(
                 "Mode: ROM (Blank Cartridge)",
                 List.of(new ItemStack(ModItems.SILICON_POWDER.get(), 2), new ItemStack(Items.GOLD_INGOT, 1)),
@@ -216,12 +216,13 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
         List<SocManufacturerJeiRecipe> socRecipes = new ArrayList<>();
 
         // Sample BIOS ROM
+        byte[] sampleBios = games.jvrcruz.siliconcraft.compiler.Assembler.assemble(List.of("MOV A, 1", "OUT A", "HLT")).bytecode();
         ItemStack biosRom = new ItemStack(ModItems.ROM.get());
-        biosRom.set(ModDataComponents.ROM_DATA.get(), new RomData(List.of("MOV A, 1", "OUT A", "HLT")));
+        biosRom.set(ModDataComponents.ROM_DATA.get(), new RomData(sampleBios));
 
         // Minimal SoC (No RAM, No Storage)
         ItemStack minSoc = new ItemStack(ModItems.SOC.get());
-        minSoc.set(ModDataComponents.SOC_DATA.get(), new SocData(starterArch, 0, List.of("MOV A, 1", "OUT A", "HLT"), false, 0));
+        minSoc.set(ModDataComponents.SOC_DATA.get(), new SocData(starterArch, 0, sampleBios, false, 0));
         socRecipes.add(new SocManufacturerJeiRecipe(
                 Ingredient.of(ItemTags.WOODEN_SLABS),
                 new ItemStack(ModItems.SILICON_POWDER.get(), 2),
@@ -237,7 +238,7 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
 
         // Standard SoC (1x RAM, No Storage)
         ItemStack standardSoc = new ItemStack(ModItems.SOC.get());
-        standardSoc.set(ModDataComponents.SOC_DATA.get(), new SocData(starterArch, 256, List.of("MOV A, 1", "OUT A", "HLT"), false, 0));
+        standardSoc.set(ModDataComponents.SOC_DATA.get(), new SocData(starterArch, 256, sampleBios, false, 0));
         socRecipes.add(new SocManufacturerJeiRecipe(
                 Ingredient.of(ItemTags.WOODEN_SLABS),
                 new ItemStack(ModItems.SILICON_POWDER.get(), 2),
@@ -254,7 +255,7 @@ public class SiliconCraftJeiPlugin implements IModPlugin {
         // Advanced SoC (with Flash Storage + Optional GPU)
         GpuData sampleGpuData = new GpuData(true, "Silicon-GPU", RamData.MODULE_CAPACITY, Math.max(1, fullCount / 8 + 1), fullArch);
         ItemStack advancedSoc = new ItemStack(ModItems.SOC.get());
-        advancedSoc.set(ModDataComponents.SOC_DATA.get(), new SocData(fullArch, 256, List.of("MOV A, 1", "OUT A", "HLT"), false, 512, sampleGpuData));
+        advancedSoc.set(ModDataComponents.SOC_DATA.get(), new SocData(fullArch, 256, sampleBios, false, 512, sampleGpuData));
         socRecipes.add(new SocManufacturerJeiRecipe(
                 Ingredient.of(ItemTags.WOODEN_SLABS),
                 new ItemStack(ModItems.SILICON_POWDER.get(), 2),

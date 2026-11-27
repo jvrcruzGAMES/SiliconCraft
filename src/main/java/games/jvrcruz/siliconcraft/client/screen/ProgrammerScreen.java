@@ -3,8 +3,8 @@ package games.jvrcruz.siliconcraft.client.screen;
 import games.jvrcruz.siliconcraft.Siliconcraft;
 import games.jvrcruz.siliconcraft.client.ClientProgramManager;
 import games.jvrcruz.siliconcraft.data.ProgramEntry;
-import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
 import games.jvrcruz.siliconcraft.menu.ProgrammerMenu;
+import games.jvrcruz.siliconcraft.vm.BinaryBytecode;
 import games.jvrcruz.siliconcraft.network.DeleteProgramPacket;
 import games.jvrcruz.siliconcraft.network.ProgrammerPacket;
 import games.jvrcruz.siliconcraft.network.RequestProgramsPacket;
@@ -54,15 +54,15 @@ public class ProgrammerScreen extends BaseMachineScreen<ProgrammerMenu> {
 
         // Burn button
         burnButton = Button.builder(Component.literal("⚡ Write"), b -> {
-            if (selectedProgram != null && selectedProgram.lines() != null && !selectedProgram.lines().isEmpty()) {
-                if (games.jvrcruz.siliconcraft.network.LargePayloadCodec.compressStringList(selectedProgram.lines()).length
+            if (selectedProgram != null && selectedProgram.bytecode().length > 0) {
+                if (games.jvrcruz.siliconcraft.network.LargePayloadCodec.compressByteArray(selectedProgram.bytecode()).length
                         > games.jvrcruz.siliconcraft.network.LargePayloadCodec.MAX_WIRE_BYTES - 1024) {
                     statusText = "Program too large!";
                     return;
                 }
                 PacketDistributor.sendToServer(new ProgrammerPacket(
                         menu.getBlockEntity().getBlockPos(),
-                        new ArrayList<>(selectedProgram.lines())
+                        selectedProgram.bytecode()
                 ));
                 statusText = "Programmed " + selectedProgram.name();
             }
@@ -247,9 +247,9 @@ public class ProgrammerScreen extends BaseMachineScreen<ProgrammerMenu> {
                     int titleColor = isSelected ? 0x00FF88 : 0xEEEEEE;
                     guiGraphics.drawString(this.font, displayName, listLeft + 2, itemY + 1, titleColor, false);
 
-                    String subtext = entry.lines().size() + "L (" + (entry.archName().isEmpty() ? "any" : entry.archName()) + ")";
+                    String subtext = entry.getInstructionCount() + "I (" + (entry.archName().isEmpty() ? "any" : entry.archName()) + ")";
                     if (this.font.width(subtext) > 78) {
-                        subtext = entry.lines().size() + "L";
+                        subtext = entry.getInstructionCount() + "I";
                     }
                     guiGraphics.drawString(this.font, subtext, listLeft + 2, itemY + 8, 0x888888, false);
                 }
@@ -289,6 +289,16 @@ public class ProgrammerScreen extends BaseMachineScreen<ProgrammerMenu> {
         renderProgramTooltip(guiGraphics, mouseX, mouseY);
     }
 
+    private static String formatByteSize(int bytes) {
+        if (bytes >= 1024 * 1024) {
+            return String.format(java.util.Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0));
+        }
+        if (bytes >= 1024) {
+            return String.format(java.util.Locale.ROOT, "%.1f KB", bytes / 1024.0);
+        }
+        return bytes + " B";
+    }
+
     private void renderProgramTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         if (isDraggingScrollbar || !menu.getCarried().isEmpty()) return;
 
@@ -317,15 +327,16 @@ public class ProgrammerScreen extends BaseMachineScreen<ProgrammerMenu> {
                 tooltip.add(Component.literal("Architecture: ").withStyle(ChatFormatting.GRAY)
                         .append(Component.literal(arch).withStyle(ChatFormatting.AQUA)));
 
-                // Instructions / Line count
-                int lineCount = entry.lines() != null ? entry.lines().size() : 0;
+                // Instructions / Binary size
+                int instrCount = entry.getInstructionCount();
+                int byteCount = entry.bytecode().length;
                 tooltip.add(Component.literal("Size: ").withStyle(ChatFormatting.GRAY)
-                        .append(Component.literal(lineCount + " instructions").withStyle(ChatFormatting.YELLOW)));
+                        .append(Component.literal(instrCount + " instructions (" + formatByteSize(byteCount) + ")").withStyle(ChatFormatting.YELLOW)));
 
                 // Required Instructions
                 List<String> req = entry.requiredInstructions();
-                if ((req == null || req.isEmpty()) && entry.lines() != null && !entry.lines().isEmpty()) {
-                    req = new ArrayList<>(InstructionValidator.getRequiredInstructions(entry.lines()));
+                if ((req == null || req.isEmpty()) && byteCount > 0) {
+                    req = new ArrayList<>(BinaryBytecode.getRequiredInstructions(entry.bytecode()));
                 }
 
                 if (req != null && !req.isEmpty()) {

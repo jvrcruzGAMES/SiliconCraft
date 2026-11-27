@@ -65,6 +65,7 @@ neoForge {
 
     // Dedicated servers do not load Controlify's client bootstrap.
     addModdingDependenciesTo sourceSets.serverRuntime
+    addModdingDependenciesTo sourceSets.test
 
     parchment {
         mappingsVersion = project.parchment_mappings_version

@@ -62,7 +62,10 @@ public class ProgrammerBlockEntity extends BaseMachineBlockEntity {
         return dataAccess;
     }
 
-    public boolean burnProgram(List<String> lines) {
+    public boolean burnProgram(byte[] bytecode) {
+        if (bytecode == null || bytecode.length == 0) {
+            return false;
+        }
         ItemStack inputStack = itemHandler.getStackInSlot(1);
         if (inputStack.isEmpty() || (!inputStack.is(ModItems.ROM.get()) && !inputStack.is(ModItems.STORAGE.get()))) {
             return false;
@@ -79,7 +82,7 @@ public class ProgrammerBlockEntity extends BaseMachineBlockEntity {
         energyStorage.extractEnergyInternal(100, false);
 
         ItemStack programmed = inputStack.copyWithCount(1);
-        programmed.set(ModDataComponents.ROM_DATA.get(), new RomData(new ArrayList<>(lines)));
+        programmed.set(ModDataComponents.ROM_DATA.get(), new RomData(java.util.Arrays.copyOf(bytecode, bytecode.length)));
         inputStack.shrink(1);
 
         if (outStack.isEmpty()) {

@@ -1379,7 +1379,7 @@ impl CodeGenerator {
                     let id = self.next_label_id();
                     let pass = format!("_assert_pass_{}", id);
                     self.emit_req("CMP A, 0", "CMP");
-                    self.emit_req(&format!("JNE {}", pass), "JNE");
+                    self.emit_req(&format!("JNZ {}", pass), "JNZ");
                     self.emit_req(&format!("OUT \"Assertion failed at line {}\", 1", line), "OUT");
                     self.emit_req("HLT", "HLT");
                     self.emit_label(&pass);

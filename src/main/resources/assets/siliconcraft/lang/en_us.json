@@ -43,7 +43,7 @@
   "tooltip.siliconcraft.gpu.limit": "Install in SoC Manufacturer or PC GPU slot (Max 1 per Computer)",
   "tooltip.siliconcraft.soc.cpu": "CPU Architecture: %s instructions",
   "tooltip.siliconcraft.soc.ram": "RAM: %s",
-  "tooltip.siliconcraft.soc.bios": "BIOS ROM: Installed (%s lines)",
+  "tooltip.siliconcraft.soc.bios": "BIOS ROM: Installed (%s instructions)",
   "tooltip.siliconcraft.soc.nvme": "NVMe Storage: Installed (%s)",
   "tooltip.siliconcraft.soc.flash": "Flash Storage: Installed (%s)",
   "tooltip.siliconcraft.soc.no_storage": "Storage: None",

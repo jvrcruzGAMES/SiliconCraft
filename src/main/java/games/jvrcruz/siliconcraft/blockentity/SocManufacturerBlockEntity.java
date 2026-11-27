@@ -180,7 +180,7 @@ public class SocManufacturerBlockEntity extends BaseMachineBlockEntity {
                 socStack.set(ModDataComponents.SOC_DATA.get(), new SocData(
                         chipData.instructions(),
                         totalRam,
-                        romData.lines(),
+                        romData.bytecode(),
                         false,
                         storageCap,
                         gpuData

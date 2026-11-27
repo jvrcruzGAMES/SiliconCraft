@@ -3,7 +3,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use siliconcraft_compiler::sc::{inspect_sc_summary, FORMAT_ID};
+use siliconcraft_compiler::binary::{
+    decode_scbc, SCBC_MAGIC, SCPK_MAGIC, SECTION_MANIFEST, SECTION_METADATA, SECTION_PROGRAM,
+};
+use siliconcraft_compiler::sc::{inspect_sc_summary, ScPackage};
 use siliconcraft_compiler::{compile_n2_source, compile_path, compile_project_map, init_project, BuildOptions};
 
 fn repo_root() -> PathBuf {
@@ -35,11 +38,17 @@ fn compiles_all_n2_doc_examples() {
             let res = compile_path(&path, &default_opts())
                 .unwrap_or_else(|errs| panic!("Failed to compile {}: {:?}", path.display(), errs));
             assert!(!res.package.bytecode.is_empty(), "Empty bytecode for {}", path.display());
+            assert!(res.package.bytecode.starts_with(SCBC_MAGIC));
+            let image = decode_scbc(&res.package.bytecode)
+                .unwrap_or_else(|e| panic!("Invalid SCBC in {}: {}", path.display(), e));
+            assert!(!image.code.is_empty());
             assert_eq!(res.package.target, "n2");
             assert_eq!(res.package.arch, "N2");
-            let json = res.package.to_json();
-            assert!(json.contains(FORMAT_ID));
-            assert!(inspect_sc_summary(&json).is_ok());
+            let bytes = res.package.to_bytes().expect("serialize SCPK");
+            assert!(bytes.starts_with(SCPK_MAGIC));
+            let decoded = ScPackage::from_bytes(&bytes).expect("roundtrip SCPK");
+            assert_eq!(decoded.bytecode, res.package.bytecode);
+            assert!(inspect_sc_summary(&bytes).is_ok());
             count += 1;
         }
     }
@@ -227,10 +236,10 @@ fn resolves_include_dirs_for_n2_and_assembly() {
     assert!(!n2_out.package.bytecode.is_empty());
 
     // Assembly include test
-    fs::write(lib_dir.join("defs.asm"), "MOV R0, 42\n").unwrap();
+    fs::write(lib_dir.join("defs.asm"), "MOV A, 42\n").unwrap();
     fs::write(
         proj_dir.join("boot.asm"),
-        "include \"defs.asm\"\nOUT R0, 0\nHALT\n",
+        "include \"defs.asm\"\nOUT A, 0\nHLT\n",
     )
     .unwrap();
     let asm_opts = BuildOptions {
@@ -260,20 +269,115 @@ fn init_project_scaffolds_and_builds_via_cli() {
     assert!(tmp.join("CMakeLists.txt").is_file());
 
     let sc_path = tmp.join("build/demo_app.sc");
+    let bc_path = tmp.join("build/demo_app.o");
     let scc_bin = env!("CARGO_BIN_EXE_scc");
     let status = Command::new(scc_bin)
         .arg(tmp.join("src"))
-        .args(["--entry", "main.n2", "--name", "demo_app.sc", "-o"])
+        .args(["--entry", "main.n2", "--name", "demo_app.sc", "--emit-bytecode"])
+        .arg(&bc_path)
+        .arg("-o")
         .arg(&sc_path)
         .status()
         .expect("Failed to execute scc binary");
     assert!(status.success(), "scc CLI failed");
     assert!(sc_path.is_file());
+    assert!(bc_path.is_file());
 
-    let json = fs::read_to_string(&sc_path).unwrap();
-    let info = inspect_sc_summary(&json).expect("scc info parser failed");
+    let bytes = fs::read(&sc_path).unwrap();
+    assert!(bytes.starts_with(SCPK_MAGIC));
+    let info = inspect_sc_summary(&bytes).expect("scc info parser failed");
     assert!(info.contains("demo_app.sc"));
     assert!(info.contains("Target: n2"));
+
+    let bc_bytes = fs::read(&bc_path).unwrap();
+    assert!(bc_bytes.starts_with(SCBC_MAGIC));
+    let image = decode_scbc(&bc_bytes).expect("decode emitted SCBC");
+    assert!(!image.code.is_empty());
+
+    let info_out = Command::new(scc_bin)
+        .arg("info")
+        .arg(&sc_path)
+        .output()
+        .expect("Failed to run scc info");
+    assert!(info_out.status.success());
+    let stdout = String::from_utf8_lossy(&info_out.stdout);
+    assert!(stdout.contains("SCPK v3"));
+    assert!(stdout.contains("Sections (3): manifest@0x0"));
+
+    // Build again with --no-metadata (2 mandatory sections: manifest + program)
+    let stripped_sc_path = tmp.join("build/demo_app_stripped.sc");
+    let stripped_status = Command::new(scc_bin)
+        .arg(tmp.join("src"))
+        .args(["--entry", "main.n2", "--no-metadata", "-o"])
+        .arg(&stripped_sc_path)
+        .status()
+        .expect("Failed to execute scc --no-metadata");
+    assert!(stripped_status.success(), "scc --no-metadata failed");
+    let stripped_bytes = fs::read(&stripped_sc_path).unwrap();
+    let stripped_manifest = ScPackage::parse_manifest(&stripped_bytes).expect("parse stripped manifest");
+    assert_eq!(stripped_manifest.sections.len(), 2);
+    assert_eq!(stripped_manifest.sections[0].id, SECTION_MANIFEST);
+    assert_eq!(stripped_manifest.sections[0].offset, 0);
+    assert_eq!(stripped_manifest.sections[1].id, SECTION_PROGRAM);
+    let stripped_pkg = ScPackage::from_bytes(&stripped_bytes).expect("parse stripped pkg");
+    assert!(!stripped_pkg.include_metadata);
+    assert_eq!(stripped_pkg.bytecode, fs::read(&bc_path).unwrap());
+    assert!(stripped_pkg.required_instructions.contains("OUT"));
+
+    let _ = fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn emits_64bit_scbc_instructions_and_segments() {
+    let tmp = std::env::temp_dir().join("scc_test_64bit_binary");
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+
+    fs::write(tmp.join("blob.bin"), [0xDEu8, 0xAD, 0xBE, 0xEF]).unwrap();
+    fs::write(
+        tmp.join("main.asm"),
+        r#"
+            ORG 256
+            DB 1, 2, "HI"
+            INCBIN "blob.bin"
+        start:
+            NOP
+            MOV A, 123456
+            MOV [100], 42
+            OUTH "Hello", 0
+            FBRECT 10, 20, 30, 40, 0xFF112233
+            HLT
+        "#,
+    )
+    .unwrap();
+
+    let out = compile_path(&tmp.join("main.asm"), &default_opts())
+        .unwrap_or_else(|e| panic!("Failed 64-bit ASM build: {:?}", e));
+    let pkg_bytes = out.package.to_bytes().expect("serialize SCPK v3");
+    let manifest = ScPackage::parse_manifest(&pkg_bytes).expect("parse manifest");
+    assert_eq!(manifest.sections.len(), 3);
+    assert_eq!(manifest.sections[0].id, SECTION_MANIFEST);
+    assert_eq!(manifest.sections[0].offset, 0);
+    assert_eq!(manifest.sections[1].id, SECTION_METADATA);
+    assert_eq!(manifest.sections[2].id, SECTION_PROGRAM);
+
+    let image = decode_scbc(&out.package.bytecode).expect("decode SCBC");
+    assert_eq!(image.code.len(), 6);
+    assert_eq!(out.package.instruction_count(), 6);
+    // 6 instructions * 8 bytes each + headers/segments
+    assert_eq!(image.rodata, vec!["Hello".to_string()]);
+    assert!(!image.ext.is_empty());
+    assert_eq!(image.data_segments.len(), 1);
+    assert_eq!(image.data_segments[0].ram_start, 256);
+    assert_eq!(
+        image.data_segments[0].bytes,
+        vec![1, 2, b'H', b'I', 0xDE, 0xAD, 0xBE, 0xEF]
+    );
+
+    // Reject manifest that does not start with SECTION_MANIFEST
+    let mut bad_first = pkg_bytes.clone();
+    bad_first[12] = 0x03; // overwrite entry 0 id with SECTION_PROGRAM
+    assert!(ScPackage::from_bytes(&bad_first).is_err());
 
     let _ = fs::remove_dir_all(&tmp);
 }

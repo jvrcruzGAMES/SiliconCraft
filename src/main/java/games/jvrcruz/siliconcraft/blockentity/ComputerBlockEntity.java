@@ -266,7 +266,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
                 ItemStack stack = itemHandler.getStackInSlot(slot);
                 if (!stack.is(ModItems.STORAGE.get())) {
                     cpu.attachDrive(index, null, 0);
-                    cpu.setDriveProgram(index, List.of());
+                    cpu.setDriveBinary(index, new byte[0]);
                     continue;
                 }
 
@@ -280,7 +280,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
                 }
                 cpu.attachDrive(index, drive, drive == null ? 0 : (long) kb * 1024);
                 RomData rom = stack.get(ModDataComponents.ROM_DATA.get());
-                cpu.setDriveProgram(index, rom != null ? rom.lines() : List.of());
+                cpu.setDriveBinary(index, rom != null ? rom.bytecode() : new byte[0]);
             }
         }
     }
@@ -685,11 +685,10 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         }
         cpuTag.put("IVT", ivtTag);
 
-        ListTag progTag = new ListTag();
-        for (String line : cpu.getProgram()) {
-            progTag.add(StringTag.valueOf(line));
+        byte[] programBinary = cpu.getBinaryImage();
+        if (programBinary.length > 0) {
+            cpuTag.putByteArray("ProgramBinary", programBinary);
         }
-        cpuTag.put("Program", progTag);
 
         byte[] compressedRam = cpu.getCompressedRam();
         if (compressedRam != null && compressedRam.length > 0) {
@@ -698,7 +697,9 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
     }
 
     private void loadCpuStateFromNbt(CompoundTag cpuTag) {
-        if (cpuTag.contains("Program")) {
+        if (cpuTag.contains("ProgramBinary", Tag.TAG_BYTE_ARRAY)) {
+            cpu.loadBinaryImage(cpuTag.getByteArray("ProgramBinary"));
+        } else if (cpuTag.contains("Program")) {
             List<String> prog = new ArrayList<>();
             ListTag progTag = cpuTag.getList("Program", Tag.TAG_STRING);
             for (int i = 0; i < progTag.size(); i++) {
@@ -783,15 +784,23 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         }
     }
 
+    private static final int MAX_UPDATE_TERMINAL_LINES = 60;
+    private static final int MAX_UPDATE_TERMINAL_CHARS = 32_768;
+    private static final int MAX_UPDATE_ERROR_CHARS = 1024;
+
     private static CompoundTag serializeSocTag(SocData data) {
+        return serializeSocTag(data, true);
+    }
+
+    static CompoundTag serializeSocTag(SocData data, boolean includeBios) {
         CompoundTag socTag = new CompoundTag();
         ListTag instTag = new ListTag();
         for (String s : data.instructions()) instTag.add(StringTag.valueOf(s));
         socTag.put("Instructions", instTag);
         socTag.putInt("RamCapacity", data.ramCapacity());
-        ListTag biosTag = new ListTag();
-        for (String s : data.bios()) biosTag.add(StringTag.valueOf(s));
-        socTag.put("Bios", biosTag);
+        if (includeBios && data.bios().length > 0) {
+            socTag.putByteArray("BiosBinary", data.bios());
+        }
         socTag.putBoolean("HasNvme", data.hasNvme());
         socTag.putInt("StorageCapacity", data.storageCapacity());
         if (data.gpu() != null && data.gpu().isPresent()) {
@@ -808,15 +817,23 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         return socTag;
     }
 
-    private static SocData deserializeSocTag(CompoundTag socTag) {
+    static SocData deserializeSocTag(CompoundTag socTag) {
         List<String> instructions = new ArrayList<>();
         ListTag instTag = socTag.getList("Instructions", Tag.TAG_STRING);
         for (int i = 0; i < instTag.size(); i++) instructions.add(instTag.getString(i));
 
         int ramCap = socTag.getInt("RamCapacity");
-        List<String> bios = new ArrayList<>();
-        ListTag biosTag = socTag.getList("Bios", Tag.TAG_STRING);
-        for (int i = 0; i < biosTag.size(); i++) bios.add(biosTag.getString(i));
+        byte[] bios = new byte[0];
+        if (socTag.contains("BiosBinary", Tag.TAG_BYTE_ARRAY)) {
+            bios = socTag.getByteArray("BiosBinary");
+        } else if (socTag.contains("Bios", Tag.TAG_LIST)) {
+            List<String> biosLines = new ArrayList<>();
+            ListTag biosTag = socTag.getList("Bios", Tag.TAG_STRING);
+            for (int i = 0; i < biosTag.size(); i++) biosLines.add(biosTag.getString(i));
+            if (!biosLines.isEmpty()) {
+                bios = games.jvrcruz.siliconcraft.compiler.Assembler.assemble(biosLines).bytecode();
+            }
+        }
 
         boolean hasNvme = socTag.getBoolean("HasNvme");
         int storageCap = socTag.getInt("StorageCapacity");
@@ -838,6 +855,74 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
             }
         }
         return new SocData(instructions, ramCap, bios, hasNvme, storageCap, gpuData);
+    }
+
+    static CompoundTag serializeLightInventory(ItemStackHandler handler, HolderLookup.Provider registries) {
+        ItemStackHandler light = new ItemStackHandler(handler.getSlots());
+        for (int i = 0; i < handler.getSlots(); i++) {
+            ItemStack stack = handler.getStackInSlot(i);
+            if (!stack.isEmpty()) {
+                ItemStack copy = stack.copy();
+                copy.remove(ModDataComponents.ROM_DATA.get());
+                copy.remove(ModDataComponents.SOC_DATA.get());
+                copy.remove(net.minecraft.core.component.DataComponents.CUSTOM_DATA);
+                light.setStackInSlot(i, copy);
+            }
+        }
+        return light.serializeNBT(registries);
+    }
+
+    static ListTag serializeBoundedTerminalOutput(List<String> output) {
+        List<String> tail = new ArrayList<>();
+        int totalChars = 0;
+        if (output != null && !output.isEmpty()) {
+            for (int i = output.size() - 1; i >= 0 && tail.size() < MAX_UPDATE_TERMINAL_LINES; i--) {
+                String line = output.get(i);
+                if (line == null) line = "";
+                if (line.length() > MAX_UPDATE_TERMINAL_CHARS) {
+                    line = line.substring(0, MAX_UPDATE_TERMINAL_CHARS);
+                }
+                if (totalChars + line.length() > MAX_UPDATE_TERMINAL_CHARS && !tail.isEmpty()) {
+                    break;
+                }
+                tail.add(line);
+                totalChars += line.length();
+            }
+        }
+        ListTag terminalTag = new ListTag();
+        for (int i = tail.size() - 1; i >= 0; i--) {
+            terminalTag.add(StringTag.valueOf(tail.get(i)));
+        }
+        return terminalTag;
+    }
+
+    static String boundString(@Nullable String value, int maxChars) {
+        if (value == null) return "";
+        return value.length() <= maxChars ? value : value.substring(0, maxChars);
+    }
+
+    static CompoundTag buildUpdateTag(
+            CompoundTag lightInventory,
+            int displayMode,
+            int graphicsHandlerOrdinal,
+            int cpuStateOrdinal,
+            @Nullable String errorMessage,
+            @Nullable SocData socData,
+            List<String> terminalOutput
+    ) {
+        CompoundTag tag = new CompoundTag();
+        tag.put("Inventory", lightInventory);
+        tag.putInt("DisplayMode", displayMode);
+        tag.putInt("GraphicsHandler", graphicsHandlerOrdinal);
+        tag.putInt("CpuState", cpuStateOrdinal);
+        tag.putString("ErrorMessage", boundString(errorMessage, MAX_UPDATE_ERROR_CHARS));
+
+        if (socData != null && !socData.instructions().isEmpty()) {
+            tag.put("SocData", serializeSocTag(socData, false));
+        }
+
+        tag.put("TerminalOutput", serializeBoundedTerminalOutput(terminalOutput));
+        return tag;
     }
 
     @Override
@@ -924,8 +1009,8 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
                         cpu.setState(states[stateOrd]);
                     }
                 }
-                if (socData != null && !socData.instructions().isEmpty() && cpu.getProgram().isEmpty()) {
-                    cpu.loadProgramImage(socData.bios());
+                if (socData != null && !socData.instructions().isEmpty() && !cpu.hasProgram()) {
+                    cpu.loadBinaryImage(socData.bios());
                 }
             }
 
@@ -975,24 +1060,15 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
 
     @Override
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
-        CompoundTag tag = new CompoundTag();
-        tag.put("Inventory", itemHandler.serializeNBT(registries));
-        tag.putInt("DisplayMode", cpu.getDisplayMode());
-        tag.putInt("GraphicsHandler", cpu.getGraphicsHandler().ordinal());
-        tag.putInt("CpuState", cpu.getState().ordinal());
-        tag.putString("ErrorMessage", cpu.getErrorMessage() != null ? cpu.getErrorMessage() : "");
-
-        if (socData != null && !socData.instructions().isEmpty()) {
-            tag.put("SocData", serializeSocTag(socData));
-        }
-
-        ListTag terminalTag = new ListTag();
-        for (String line : cpu.getTerminalOutput()) {
-            terminalTag.add(StringTag.valueOf(line));
-        }
-        tag.put("TerminalOutput", terminalTag);
-
-        return tag;
+        return buildUpdateTag(
+                serializeLightInventory(itemHandler, registries),
+                cpu.getDisplayMode(),
+                cpu.getGraphicsHandler().ordinal(),
+                cpu.getState().ordinal(),
+                cpu.getErrorMessage(),
+                socData,
+                cpu.getTerminalOutput()
+        );
     }
 
     @Nullable

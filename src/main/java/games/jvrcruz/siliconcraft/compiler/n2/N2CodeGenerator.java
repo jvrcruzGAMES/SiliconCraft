@@ -1133,7 +1133,7 @@ public class N2CodeGenerator {
                     generateExpression(args.get(0));
                     String passLbl = "_assert_pass_" + (++labelCounter);
                     emit("CMP A, 0", "CMP");
-                    emit("JNE " + passLbl, "JNE");
+                    emit("JNZ " + passLbl, "JNZ");
                     emit("OUT \"Assertion failed at line " + line + "\", 1", "OUT");
                     emit("HLT", "HLT");
                     emitLabel(passLbl);

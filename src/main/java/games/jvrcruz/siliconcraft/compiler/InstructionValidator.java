@@ -1,5 +1,7 @@
 package games.jvrcruz.siliconcraft.compiler;
 
+import games.jvrcruz.siliconcraft.vm.BinaryBytecode;
+
 import java.util.*;
 
 public class InstructionValidator {
@@ -40,6 +42,10 @@ public class InstructionValidator {
             "ORG", "DB", "DW", "DL", "INCBIN"
     );
     public static final Set<String> ALL_DIRECTIVES_SET = new HashSet<>(ASSEMBLER_DIRECTIVES);
+
+    public static Set<String> getRequiredInstructions(byte[] binaryBytecode) {
+        return BinaryBytecode.getRequiredInstructions(binaryBytecode);
+    }
 
     public static Set<String> getRequiredInstructions(List<String> assemblyLines) {
         Set<String> required = new LinkedHashSet<>();

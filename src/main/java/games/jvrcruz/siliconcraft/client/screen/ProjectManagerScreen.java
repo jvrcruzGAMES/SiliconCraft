@@ -2,10 +2,10 @@ package games.jvrcruz.siliconcraft.client.screen;
 
 import games.jvrcruz.siliconcraft.Siliconcraft;
 import games.jvrcruz.siliconcraft.client.ClientProgramManager;
-import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
 import games.jvrcruz.siliconcraft.data.ProgramEntry;
 import games.jvrcruz.siliconcraft.data.ScProjectFile;
 import games.jvrcruz.siliconcraft.menu.ProjectManagerMenu;
+import games.jvrcruz.siliconcraft.vm.BinaryBytecode;
 import games.jvrcruz.siliconcraft.network.ChunkedTransferStore;
 import games.jvrcruz.siliconcraft.network.DeleteProgramPacket;
 import games.jvrcruz.siliconcraft.network.PayloadCompression;
@@ -257,7 +257,7 @@ public class ProjectManagerScreen extends BaseMachineScreen<ProjectManagerMenu> 
                 ));
             }
 
-            setStatus("Added " + parsed.name() + " (" + parsed.bytecode().size() + "L)", 0x226644);
+            setStatus("Added " + parsed.name() + " (" + parsed.getInstructionCount() + "I)", 0x226644);
         } catch (Exception e) {
             String msg = e.getMessage() != null ? e.getMessage() : "Failed to read .sc file";
             setStatus(msg, 0xAA2222);
@@ -433,7 +433,7 @@ public class ProjectManagerScreen extends BaseMachineScreen<ProjectManagerMenu> 
                     int titleColor = isSelected ? 0x00FF88 : 0xEEEEEE;
                     guiGraphics.drawString(this.font, displayName, listLeft + 3, itemY + 3, titleColor, false);
 
-                    String lineBadge = entry.lines().size() + "L";
+                    String lineBadge = entry.getInstructionCount() + "I";
                     int badgeWidth = this.font.width(lineBadge);
                     guiGraphics.drawString(this.font, lineBadge, listRight - badgeWidth - 3, itemY + 3, 0x888888, false);
                 }
@@ -467,6 +467,16 @@ public class ProjectManagerScreen extends BaseMachineScreen<ProjectManagerMenu> 
         renderProgramTooltip(guiGraphics, mouseX, mouseY);
     }
 
+    private static String formatByteSize(int bytes) {
+        if (bytes >= 1024 * 1024) {
+            return String.format(java.util.Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0));
+        }
+        if (bytes >= 1024) {
+            return String.format(java.util.Locale.ROOT, "%.1f KB", bytes / 1024.0);
+        }
+        return bytes + " B";
+    }
+
     private void renderProgramTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         if (isDraggingScrollbar) return;
 
@@ -492,13 +502,14 @@ public class ProjectManagerScreen extends BaseMachineScreen<ProjectManagerMenu> 
                 tooltip.add(Component.literal("Target: ").withStyle(ChatFormatting.GRAY)
                         .append(Component.literal(arch).withStyle(ChatFormatting.AQUA)));
 
-                int lineCount = entry.lines() != null ? entry.lines().size() : 0;
+                int instrCount = entry.getInstructionCount();
+                int byteCount = entry.bytecode().length;
                 tooltip.add(Component.literal("Size: ").withStyle(ChatFormatting.GRAY)
-                        .append(Component.literal(lineCount + " instructions").withStyle(ChatFormatting.YELLOW)));
+                        .append(Component.literal(instrCount + " instructions (" + formatByteSize(byteCount) + ")").withStyle(ChatFormatting.YELLOW)));
 
                 List<String> req = entry.requiredInstructions();
-                if ((req == null || req.isEmpty()) && entry.lines() != null && !entry.lines().isEmpty()) {
-                    req = new ArrayList<>(InstructionValidator.getRequiredInstructions(entry.lines()));
+                if ((req == null || req.isEmpty()) && byteCount > 0) {
+                    req = new ArrayList<>(BinaryBytecode.getRequiredInstructions(entry.bytecode()));
                 }
 
                 if (req != null && !req.isEmpty()) {

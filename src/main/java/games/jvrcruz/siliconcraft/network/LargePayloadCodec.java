@@ -31,6 +31,11 @@ public final class LargePayloadCodec {
 
     public static final StreamCodec<ByteBuf, String> LARGE_STRING = ByteBufCodecs.stringUtf8(MAX_SINGLE_STRING_CHARS);
 
+    public static final StreamCodec<ByteBuf, byte[]> BYTE_ARRAY_STREAM_CODEC = compressedCodec(
+            PayloadCompression::writeByteArray,
+            PayloadCompression::readByteArray
+    );
+
     public static final StreamCodec<ByteBuf, List<String>> STRING_LIST_STREAM_CODEC = compressedCodec(
             PayloadCompression::writeStringList,
             PayloadCompression::readStringList
@@ -74,6 +79,10 @@ public final class LargePayloadCodec {
         };
     }
 
+    public static byte[] compressByteArray(byte[] data) {
+        return PayloadCompression.compressByteArray(data);
+    }
+
     public static byte[] compressStringList(List<String> lines) {
         return PayloadCompression.compressStringList(lines);
     }
@@ -96,7 +105,7 @@ public final class LargePayloadCodec {
             PayloadCompression.writeString(out, entry.id());
             PayloadCompression.writeString(out, entry.name());
             PayloadCompression.writeString(out, entry.archName());
-            PayloadCompression.writeStringList(out, entry.lines());
+            PayloadCompression.writeByteArray(out, entry.bytecode());
             PayloadCompression.writeStringList(out, entry.requiredInstructions());
         }
     }
@@ -108,9 +117,9 @@ public final class LargePayloadCodec {
             String id = PayloadCompression.readString(in, remainingBudget);
             String name = PayloadCompression.readString(in, remainingBudget);
             String archName = PayloadCompression.readString(in, remainingBudget);
-            List<String> lines = PayloadCompression.readStringList(in, remainingBudget);
+            byte[] bytecode = PayloadCompression.readByteArray(in, remainingBudget);
             List<String> req = PayloadCompression.readStringList(in, remainingBudget);
-            programs.add(new ProgramEntry(id, name, archName, lines, req));
+            programs.add(new ProgramEntry(id, name, archName, bytecode, req));
         }
         return programs;
     }

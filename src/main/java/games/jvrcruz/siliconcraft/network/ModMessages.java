@@ -18,7 +18,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 public class ModMessages {
     public static void register(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar(Siliconcraft.MODID).versioned("1.3.0");
+        PayloadRegistrar registrar = event.registrar(Siliconcraft.MODID).versioned("1.4.0");
         CreatePeripherals.registerPayloads(registrar);
 
         registrar.playToServer(ChipForgePacket.TYPE, ChipForgePacket.STREAM_CODEC, ModMessages::handleChipForge);
@@ -201,7 +201,7 @@ public class ModMessages {
             if (player != null && player.level().isLoaded(packet.pos())) {
                 BlockEntity be = player.level().getBlockEntity(packet.pos());
                 if (be instanceof ProgrammerBlockEntity progBe) {
-                    progBe.burnProgram(packet.lines());
+                    progBe.burnProgram(packet.bytecode());
                 }
             }
         });

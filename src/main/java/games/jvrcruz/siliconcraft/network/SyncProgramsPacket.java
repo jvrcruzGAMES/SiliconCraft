@@ -30,14 +30,11 @@ public record SyncProgramsPacket(boolean append, List<ProgramEntry> programs) im
             return List.of(new SyncProgramsPacket(false, List.of()));
         }
 
-        long estimatedChars = 0;
+        long estimatedBytes = 0;
         for (ProgramEntry entry : programs) {
-            estimatedChars += entry.name().length() + entry.archName().length() + 64L;
-            for (String line : entry.lines()) {
-                estimatedChars += line.length() + 4L;
-            }
+            estimatedBytes += entry.name().length() + entry.archName().length() + 64L + entry.bytecode().length;
         }
-        if (estimatedChars <= 200_000L
+        if (estimatedBytes <= 200_000L
                 || LargePayloadCodec.compressProgramList(programs).length <= LargePayloadCodec.SYNC_BATCH_TARGET_BYTES) {
             return List.of(new SyncProgramsPacket(false, List.copyOf(programs)));
         }

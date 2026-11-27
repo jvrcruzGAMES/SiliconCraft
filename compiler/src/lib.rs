@@ -1,6 +1,7 @@
 pub mod aliases;
 pub mod assembler;
 pub mod ast;
+pub mod binary;
 pub mod codegen;
 pub mod error;
 pub mod lexer;
@@ -15,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use assembler::assemble;
+use assembler::{assemble, assemble_with_base};
 use codegen::CodeGenerator;
 use lexer::Lexer;
 use parser::Parser;
@@ -92,6 +93,7 @@ pub fn compile_n2_source(source: &str, file_name: &str, package_name: &str) -> R
         arch: "N2".to_string(),
         required_instructions: req,
         bytecode: asm.bytecode,
+        include_metadata: true,
     };
 
     Ok(BuildOutput { package, assembly })
@@ -148,7 +150,7 @@ pub fn compile_project_map(
         if !errors.is_empty() {
             return Err(errors);
         }
-        let asm = assemble(&assembly);
+        let asm = assemble_with_base(&assembly, &options.include_dirs);
         if !asm.success {
             return Err(asm.errors);
         }
@@ -162,6 +164,7 @@ pub fn compile_project_map(
             arch: "ASM".to_string(),
             required_instructions: asm.required_instructions,
             bytecode: asm.bytecode,
+            include_metadata: true,
         };
         return Ok(BuildOutput { package, assembly });
     }
@@ -179,7 +182,7 @@ pub fn compile_project_map(
         return Err(errors);
     }
 
-    let asm = assemble(&assembly);
+    let asm = assemble_with_base(&assembly, &options.include_dirs);
     if !asm.success {
         return Err(asm.errors);
     }
@@ -198,6 +201,7 @@ pub fn compile_project_map(
         arch: "N2".to_string(),
         required_instructions: req,
         bytecode: asm.bytecode,
+        include_metadata: true,
     };
 
     Ok(BuildOutput { package, assembly })
@@ -221,6 +225,7 @@ pub fn compile_path(input: &Path, options: &BuildOptions) -> Result<BuildOutput,
     if input.is_dir() {
         let files = collect_directory_files(input).map_err(|e| vec![e])?;
         let mut dir_opts = options.clone();
+        dir_opts.include_dirs.insert(0, input.to_path_buf());
         dir_opts.output_name = Some(pkg_name);
         return compile_project_map(files, &dir_opts);
     }
@@ -254,6 +259,7 @@ pub fn compile_path(input: &Path, options: &BuildOptions) -> Result<BuildOutput,
             source.lines().map(|l| l.to_string()).collect(),
         );
         let mut opts = options.clone();
+        opts.include_dirs.insert(0, parent.to_path_buf());
         opts.entrypoint = Some(file_name);
         opts.output_name = Some(pkg_name);
         return compile_project_map(files, &opts);
@@ -276,6 +282,7 @@ pub fn compile_path(input: &Path, options: &BuildOptions) -> Result<BuildOutput,
             source.lines().map(|l| l.to_string()).collect(),
         );
         let mut opts = options.clone();
+        opts.include_dirs.insert(0, parent.to_path_buf());
         opts.entrypoint = Some(file_name);
         opts.output_name = Some(pkg_name);
         return compile_project_map(files, &opts);

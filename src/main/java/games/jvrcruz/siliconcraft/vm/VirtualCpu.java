@@ -1,6 +1,7 @@
 package games.jvrcruz.siliconcraft.vm;
 
 import games.jvrcruz.siliconcraft.vm.network.NetworkPort;
+import games.jvrcruz.siliconcraft.compiler.Assembler;
 import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
 import games.jvrcruz.siliconcraft.data.GpuData;
 
@@ -48,9 +49,13 @@ public class VirtualCpu {
     private final Object executionLock = new Object();
 
     private final Set<String> supportedInstructions = new HashSet<>();
-    private final List<String> program = new ArrayList<>();
-    private final Map<String, Integer> labels = new HashMap<>();
-    private final Map<Integer, List<String>> drivePrograms = new HashMap<>();
+    private byte[] binaryImage = new byte[0];
+    private long[] binaryCode = new long[0];
+    private String[] binaryRodata = new String[0];
+    private BinaryBytecode.ExtOperand[] binaryExt = new BinaryBytecode.ExtOperand[0];
+    private List<BinaryBytecode.DataSegment> staticDataSegments = List.of();
+    private String pendingAssemblyError = null;
+    private final Map<Integer, byte[]> driveBinaries = new HashMap<>();
     private final List<String> terminalOutput = new java.util.concurrent.CopyOnWriteArrayList<>();
     private final StringBuilder lineBuffer = new StringBuilder();
     private final ByteArrayOutputStream utf8ByteBuf = new ByteArrayOutputStream();
@@ -134,7 +139,6 @@ public class VirtualCpu {
 
     // Assembler Directives
     public static final Set<String> DIRECTIVES = InstructionValidator.ASSEMBLER_DIRECTIVES;
-    private final Map<String, Integer> dataLabels = new HashMap<>();
 
     public record CpuContext(int pc, int regA, int regB, int regC, int regD, boolean flagZ, boolean flagS, boolean restoreRegs) {}
     public record InterruptEvent(int vector, int regA, int regB, int regC) {}
@@ -144,120 +148,6 @@ public class VirtualCpu {
     private final Deque<CpuContext> interruptStack = new ArrayDeque<>();
     private boolean interruptsEnabled = true;
     private boolean inInterruptHandler = false;
-
-    // Bytecode opcode constants for O(1) integer switch
-    private static final int OP_UNKNOWN = 0;
-    private static final int OP_NOP = 1;
-    private static final int OP_MOV = 2;
-    private static final int OP_ADD = 3;
-    private static final int OP_SUB = 4;
-    private static final int OP_MUL = 5;
-    private static final int OP_DIV = 6;
-    private static final int OP_MOD = 7;
-    private static final int OP_INC = 8;
-    private static final int OP_DEC = 9;
-    private static final int OP_CMP = 10;
-    private static final int OP_AND = 11;
-    private static final int OP_OR = 12;
-    private static final int OP_XOR = 13;
-    private static final int OP_NOT = 14;
-    private static final int OP_SHL = 15;
-    private static final int OP_SHR = 16;
-    private static final int OP_JMP = 17;
-    private static final int OP_JZ = 18;
-    private static final int OP_JNZ = 19;
-    private static final int OP_JS = 20;
-    private static final int OP_JNS = 21;
-    private static final int OP_JL = 22;
-    private static final int OP_JLE = 23;
-    private static final int OP_JG = 24;
-    private static final int OP_JGE = 25;
-    private static final int OP_CALL = 26;
-    private static final int OP_RET = 27;
-    private static final int OP_PUSH = 28;
-    private static final int OP_POP = 29;
-    private static final int OP_IVEC = 30;
-    private static final int OP_IRET = 31;
-    private static final int OP_CLI = 32;
-    private static final int OP_STI = 33;
-    private static final int OP_INT = 34;
-    private static final int OP_OUT = 35;
-    private static final int OP_OUTH = 36;
-    private static final int OP_OUTC = 37;
-    private static final int OP_CLS = 38;
-    private static final int OP_SLEEP = 39;
-    private static final int OP_TIME = 40;
-    private static final int OP_RAND = 41;
-    private static final int OP_INPAD = 42;
-    private static final int OP_TIMER = 43;
-    private static final int OP_VBLANK = 44;
-    private static final int OP_SSIZE = 45;
-    private static final int OP_SREAD = 46;
-    private static final int OP_SWRITE = 47;
-    private static final int OP_SBLKR = 48;
-    private static final int OP_SBLKW = 49;
-    private static final int OP_SCOUNT = 50;
-    private static final int OP_SSEL = 51;
-    private static final int OP_SDRV = 52;
-    private static final int OP_SEXEC = 53;
-    private static final int OP_FBMODE = 54;
-    private static final int OP_FBSET = 55;
-    private static final int OP_FBGET = 56;
-    private static final int OP_FBCLR = 57;
-    private static final int OP_FBRECT = 58;
-    private static final int OP_FBLINE = 59;
-    private static final int OP_FBLIT = 60;
-    private static final int OP_FBSWAP = 61;
-    private static final int OP_FBWIDTH = 62;
-    private static final int OP_FBHEIGHT = 63;
-    private static final int OP_APUSH = 64;
-    private static final int OP_ABUFW = 65;
-    private static final int OP_ACLR = 66;
-    private static final int OP_ASTAT = 67;
-    private static final int OP_ATONE = 68;
-    private static final int OP_APLAY = 69;
-    private static final int OP_HLT = 70;
-    private static final int OP_DIRECTIVE = 71;
-    private static final int OP_PINFO = 72;
-    private static final int OP_PWRAP = 73;
-    private static final int OP_PCALL = 74;
-    private static final int OP_PSTATUS = 75;
-    private static final int OP_PRESULT = 76;
-    private static final int OP_PCALLS = 77;
-    private static final int OP_PSCAN = 78;
-    private static final int OP_NOPEN = 79;
-    private static final int OP_NSEND = 80;
-    private static final int OP_NRECV = 81;
-    private static final int OP_NCLOSE = 82;
-    private static final int OP_NHTTP = 83;
-    private static final int OP_NSTATUS = 84;
-    private static final int OP_NLEN = 85;
-    private static final int OP_NRESULT = 86;
-    private static final int OP_GALLOC = 87;
-    private static final int OP_NWSOPEN = 88;
-    private static final int OP_NWSTEXT = 89;
-    private static final int OP_NTLS = 90;
-    private static final int OP_NHTTP3 = 91;
-    private static final int OP_NRESPOND = 95;
-    private static final int OP_NACCEPT = 94;
-    private static final int OP_NLISTEN = 93;
-    private static final int OP_NREADY = 96;
-    private static final int OP_NUTF8 = 97;
-    private static final int OP_NRESPONDT = 98;
-    private static final int OP_INAXIS = 101;
-    private static final int OP_GFXSEL = 102;
-    private static final int OP_GFXSTAT = 103;
-    private static final int OP_GPUCLR = 104;
-    private static final int OP_GPURECT = 105;
-    private static final int OP_GPULINE = 106;
-    private static final int OP_GPUCIRC = 107;
-    private static final int OP_GPUTRI = 108;
-    private static final int OP_GPUVRAM = 109;
-    private static final int OP_GPUBLIT = 110;
-    private static final int OP_GPUSWAP = 111;
-    private static final int OP_GPUSYNC = 112;
-    private static final int OP_PLEN = 99;
-    private static final int OP_PRESULTS = 100;
 
     private final NetworkPort networkPort = new NetworkPort();
 
@@ -271,317 +161,53 @@ public class VirtualCpu {
         return peripheralBus;
     }
 
-    private static final Map<String, Integer> OPCODE_MAP = new HashMap<>();
-    static {
-        OPCODE_MAP.put("NOP", OP_NOP);
-        OPCODE_MAP.put("MOV", OP_MOV);
-        OPCODE_MAP.put("ADD", OP_ADD);
-        OPCODE_MAP.put("SUB", OP_SUB);
-        OPCODE_MAP.put("MUL", OP_MUL);
-        OPCODE_MAP.put("DIV", OP_DIV);
-        OPCODE_MAP.put("MOD", OP_MOD);
-        OPCODE_MAP.put("INC", OP_INC);
-        OPCODE_MAP.put("DEC", OP_DEC);
-        OPCODE_MAP.put("CMP", OP_CMP);
-        OPCODE_MAP.put("AND", OP_AND);
-        OPCODE_MAP.put("OR", OP_OR);
-        OPCODE_MAP.put("XOR", OP_XOR);
-        OPCODE_MAP.put("NOT", OP_NOT);
-        OPCODE_MAP.put("SHL", OP_SHL);
-        OPCODE_MAP.put("SHR", OP_SHR);
-        OPCODE_MAP.put("JMP", OP_JMP);
-        OPCODE_MAP.put("JZ", OP_JZ);
-        OPCODE_MAP.put("JNZ", OP_JNZ);
-        OPCODE_MAP.put("JS", OP_JS);
-        OPCODE_MAP.put("JNS", OP_JNS);
-        OPCODE_MAP.put("JL", OP_JL);
-        OPCODE_MAP.put("JLE", OP_JLE);
-        OPCODE_MAP.put("JG", OP_JG);
-        OPCODE_MAP.put("JGE", OP_JGE);
-        OPCODE_MAP.put("CALL", OP_CALL);
-        OPCODE_MAP.put("RET", OP_RET);
-        OPCODE_MAP.put("PUSH", OP_PUSH);
-        OPCODE_MAP.put("POP", OP_POP);
-        OPCODE_MAP.put("IVEC", OP_IVEC);
-        OPCODE_MAP.put("IRET", OP_IRET);
-        OPCODE_MAP.put("CLI", OP_CLI);
-        OPCODE_MAP.put("STI", OP_STI);
-        OPCODE_MAP.put("INT", OP_INT);
-        OPCODE_MAP.put("OUT", OP_OUT);
-        OPCODE_MAP.put("OUTH", OP_OUTH);
-        OPCODE_MAP.put("OUTC", OP_OUTC);
-        OPCODE_MAP.put("CLS", OP_CLS);
-        OPCODE_MAP.put("SLEEP", OP_SLEEP);
-        OPCODE_MAP.put("TIME", OP_TIME);
-        OPCODE_MAP.put("RAND", OP_RAND);
-        OPCODE_MAP.put("INPAD", OP_INPAD);
-        OPCODE_MAP.put("INAXIS", OP_INAXIS);
-        OPCODE_MAP.put("TIMER", OP_TIMER);
-        OPCODE_MAP.put("SETTIMER", OP_TIMER);
-        OPCODE_MAP.put("VBLANK", OP_VBLANK);
-        OPCODE_MAP.put("SSIZE", OP_SSIZE);
-        OPCODE_MAP.put("SREAD", OP_SREAD);
-        OPCODE_MAP.put("SWRITE", OP_SWRITE);
-        OPCODE_MAP.put("SBLKR", OP_SBLKR);
-        OPCODE_MAP.put("SBLKW", OP_SBLKW);
-        OPCODE_MAP.put("SCOUNT", OP_SCOUNT);
-        OPCODE_MAP.put("SSEL", OP_SSEL);
-        OPCODE_MAP.put("SDRV", OP_SDRV);
-        OPCODE_MAP.put("SEXEC", OP_SEXEC);
-        OPCODE_MAP.put("SBOOT", OP_SEXEC);
-        OPCODE_MAP.put("FBMODE", OP_FBMODE);
-        OPCODE_MAP.put("FBSET", OP_FBSET);
-        OPCODE_MAP.put("FBGET", OP_FBGET);
-        OPCODE_MAP.put("FBCLR", OP_FBCLR);
-        OPCODE_MAP.put("FBRECT", OP_FBRECT);
-        OPCODE_MAP.put("FBLINE", OP_FBLINE);
-        OPCODE_MAP.put("FBLIT", OP_FBLIT);
-        OPCODE_MAP.put("FBSWAP", OP_FBSWAP);
-        OPCODE_MAP.put("FBWIDTH", OP_FBWIDTH);
-        OPCODE_MAP.put("FBHEIGHT", OP_FBHEIGHT);
-        OPCODE_MAP.put("GFXSEL", OP_GFXSEL);
-        OPCODE_MAP.put("GFXSTAT", OP_GFXSTAT);
-        OPCODE_MAP.put("GPUCLR", OP_GPUCLR);
-        OPCODE_MAP.put("GPURECT", OP_GPURECT);
-        OPCODE_MAP.put("GPULINE", OP_GPULINE);
-        OPCODE_MAP.put("GPUCIRC", OP_GPUCIRC);
-        OPCODE_MAP.put("GPUTRI", OP_GPUTRI);
-        OPCODE_MAP.put("GPUVRAM", OP_GPUVRAM);
-        OPCODE_MAP.put("GPUBLIT", OP_GPUBLIT);
-        OPCODE_MAP.put("GPUSWAP", OP_GPUSWAP);
-        OPCODE_MAP.put("GPUSYNC", OP_GPUSYNC);
-        OPCODE_MAP.put("APUSH", OP_APUSH);
-        OPCODE_MAP.put("ABUFW", OP_ABUFW);
-        OPCODE_MAP.put("ACLR", OP_ACLR);
-        OPCODE_MAP.put("ASTAT", OP_ASTAT);
-        OPCODE_MAP.put("ATONE", OP_ATONE);
-        OPCODE_MAP.put("APLAY", OP_APLAY);
-        OPCODE_MAP.put("PINFO", OP_PINFO);
-        OPCODE_MAP.put("PWRAP", OP_PWRAP);
-        OPCODE_MAP.put("PCALL", OP_PCALL);
-        OPCODE_MAP.put("PCALLS", OP_PCALLS);
-        OPCODE_MAP.put("PSTATUS", OP_PSTATUS);
-        OPCODE_MAP.put("PRESULT", OP_PRESULT);
-        OPCODE_MAP.put("PSCAN", OP_PSCAN);
-        OPCODE_MAP.put("NOPEN", OP_NOPEN);
-        OPCODE_MAP.put("NSEND", OP_NSEND);
-        OPCODE_MAP.put("NRECV", OP_NRECV);
-        OPCODE_MAP.put("NCLOSE", OP_NCLOSE);
-        OPCODE_MAP.put("NHTTP", OP_NHTTP);
-        OPCODE_MAP.put("NSTATUS", OP_NSTATUS);
-        OPCODE_MAP.put("NLEN", OP_NLEN);
-        OPCODE_MAP.put("NRESULT", OP_NRESULT);
-        OPCODE_MAP.put("GALLOC", OP_GALLOC);
-        OPCODE_MAP.put("NWSOPEN", OP_NWSOPEN);
-        OPCODE_MAP.put("NWSTEXT", OP_NWSTEXT);
-        OPCODE_MAP.put("NTLS", OP_NTLS);
-        OPCODE_MAP.put("NHTTP3", OP_NHTTP3);
-        OPCODE_MAP.put("NRESPOND", OP_NRESPOND);
-        OPCODE_MAP.put("NACCEPT", OP_NACCEPT);
-        OPCODE_MAP.put("NLISTEN", OP_NLISTEN);
-        OPCODE_MAP.put("NREADY", OP_NREADY);
-        OPCODE_MAP.put("NUTF8", OP_NUTF8);
-        OPCODE_MAP.put("NRESPONDT", OP_NRESPONDT);
-        OPCODE_MAP.put("PLEN", OP_PLEN);
-        OPCODE_MAP.put("PRESULTS", OP_PRESULTS);
-        OPCODE_MAP.put("HLT", OP_HLT);
-    }
-
-    private static final int TYPE_NONE = 0;
-    private static final int TYPE_REG = 1;
-    private static final int TYPE_IMM = 2;
-    private static final int TYPE_RAM_IMM = 3;
-    private static final int TYPE_RAM_REG = 4;
-    private static final int TYPE_DYNAMIC = 5;
-
-    private static final class CompiledInstruction {
-        final int opCode;
-        final boolean isSupported;
-        final String rawLine;
-        final String rawArgs;
-        final int destType;
-        final int destReg;
-        final int destImm;
-        final int srcType;
-        final int srcReg;
-        final int srcImm;
-        final int targetPc;
-
-        CompiledInstruction(int opCode, boolean isSupported, String rawLine, String rawArgs,
-                            int destType, int destReg, int destImm,
-                            int srcType, int srcReg, int srcImm,
-                            int targetPc) {
-            this.opCode = opCode;
-            this.isSupported = isSupported;
-            this.rawLine = rawLine;
-            this.rawArgs = rawArgs;
-            this.destType = destType;
-            this.destReg = destReg;
-            this.destImm = destImm;
-            this.srcType = srcType;
-            this.srcReg = srcReg;
-            this.srcImm = srcImm;
-            this.targetPc = targetPc;
-        }
-    }
-
-    private CompiledInstruction[] compiledProgram = new CompiledInstruction[0];
-
     private int getReg(int reg) {
         return switch (reg) {
-            case 0 -> regA;
-            case 1 -> regB;
-            case 2 -> regC;
-            case 3 -> regD;
+            case BinaryBytecode.REG_A -> regA;
+            case BinaryBytecode.REG_B -> regB;
+            case BinaryBytecode.REG_C -> regC;
+            case BinaryBytecode.REG_D -> regD;
+            case BinaryBytecode.REG_PC -> pc;
+            case BinaryBytecode.REG_FLAGS -> (flagZ ? 1 : 0) | (flagS ? 2 : 0);
             default -> 0;
         };
     }
 
     private void setReg(int reg, int val) {
         switch (reg) {
-            case 0 -> regA = val;
-            case 1 -> regB = val;
-            case 2 -> regC = val;
-            case 3 -> regD = val;
+            case BinaryBytecode.REG_A -> regA = val;
+            case BinaryBytecode.REG_B -> regB = val;
+            case BinaryBytecode.REG_C -> regC = val;
+            case BinaryBytecode.REG_D -> regD = val;
+            case BinaryBytecode.REG_PC -> pc = val;
+            default -> throw new IllegalArgumentException("Cannot write to register " + reg);
         }
-    }
-
-    private static int parseRegister(String s) {
-        if (s == null) return -1;
-        String u = s.trim().toUpperCase(Locale.ROOT);
-        return switch (u) {
-            case "A" -> 0;
-            case "B" -> 1;
-            case "C" -> 2;
-            case "D" -> 3;
-            default -> -1;
-        };
-    }
-
-    private int[] parseOperand(String token) {
-        token = token.trim();
-        int reg = parseRegister(token);
-        if (reg != -1) {
-            return new int[]{TYPE_REG, reg, 0};
-        }
-        if (token.startsWith("[") && token.endsWith("]")) {
-            String inner = token.substring(1, token.length() - 1).trim();
-            int innerReg = parseRegister(inner);
-            if (innerReg != -1) {
-                return new int[]{TYPE_RAM_REG, innerReg, 0};
-            }
-            try {
-                int imm = parseLiteral(inner);
-                return new int[]{TYPE_RAM_IMM, -1, imm};
-            } catch (Exception e) {
-                return new int[]{TYPE_DYNAMIC, -1, 0};
-            }
-        }
-        try {
-            int imm = parseLiteral(token);
-            return new int[]{TYPE_IMM, -1, imm};
-        } catch (Exception e) {
-            return new int[]{TYPE_DYNAMIC, -1, 0};
-        }
-    }
-
-    private int parseLiteral(String s) {
-        s = s.trim();
-        if (labels.containsKey(s.toLowerCase(Locale.ROOT))) {
-            return labels.get(s.toLowerCase(Locale.ROOT));
-        }
-        if (s.startsWith("0x") || s.startsWith("0X")) {
-            return (int) Long.parseLong(s.substring(2), 16);
-        }
-        if (s.startsWith("-0x") || s.startsWith("-0X")) {
-            return (int) -Long.parseLong(s.substring(3), 16);
-        }
-        if (s.startsWith("$")) {
-            return (int) Long.parseLong(s.substring(1), 16);
-        }
-        if (s.startsWith("-$")) {
-            return (int) -Long.parseLong(s.substring(2), 16);
-        }
-        return Integer.parseInt(s);
-    }
-
-    public void compileBytecode() {
-        compiledProgram = new CompiledInstruction[program.size()];
-        for (int i = 0; i < program.size(); i++) {
-            compiledProgram[i] = compileLine(i, program.get(i));
-        }
-    }
-
-    private static int findLabelColon(String line) {
-        int colon = line.indexOf(':');
-        if (colon == -1) return -1;
-        int space = line.indexOf(' ');
-        if (space != -1 && colon > space) return -1;
-        int q1 = line.indexOf('\"');
-        if (q1 != -1 && colon > q1) return -1;
-        int q2 = line.indexOf('\'');
-        if (q2 != -1 && colon > q2) return -1;
-        return colon;
-    }
-
-    private CompiledInstruction compileLine(int lineNum, String rawLine) {
-        int commentIndex = rawLine.indexOf(';');
-        if (commentIndex == -1) commentIndex = rawLine.indexOf("//");
-        if (commentIndex == -1) commentIndex = rawLine.indexOf('#');
-        String line = (commentIndex != -1 ? rawLine.substring(0, commentIndex) : rawLine).trim();
-        if (line.isEmpty() || line.endsWith(":")) {
-            return new CompiledInstruction(OP_NOP, true, rawLine, "", TYPE_NONE, -1, 0, TYPE_NONE, -1, 0, -1);
-        }
-        int colon = findLabelColon(line);
-        String rest = line;
-        if (colon != -1) {
-            rest = line.substring(colon + 1).trim();
-            if (rest.isEmpty()) {
-                return new CompiledInstruction(OP_NOP, true, rawLine, "", TYPE_NONE, -1, 0, TYPE_NONE, -1, 0, -1);
-            }
-        }
-        int spaceIndex = rest.indexOf(' ');
-        String opcode = (spaceIndex != -1 ? rest.substring(0, spaceIndex) : rest).toUpperCase(Locale.ROOT).trim();
-        String args = spaceIndex != -1 ? rest.substring(spaceIndex + 1).trim() : "";
-
-        if (DIRECTIVES.contains(opcode)) {
-            return new CompiledInstruction(OP_DIRECTIVE, true, rawLine, args, TYPE_NONE, -1, 0, TYPE_NONE, -1, 0, -1);
-        }
-
-        int opId = OPCODE_MAP.getOrDefault(opcode, OP_UNKNOWN);
-        boolean supported = supportedInstructions.contains(opcode);
-
-        int destType = TYPE_NONE, destReg = -1, destImm = 0;
-        int srcType = TYPE_NONE, srcReg = -1, srcImm = 0;
-        int targetPc = -1;
-
-        if (opId >= OP_JMP && opId <= OP_CALL && !args.isEmpty()) {
-            try {
-                targetPc = parseLiteral(args);
-            } catch (Exception ignored) {}
-        } else if (!args.isEmpty()) {
-            String[] parts = splitArgs(args, 2);
-            if (parts.length >= 1) {
-                int[] d = parseOperand(parts[0]);
-                destType = d[0]; destReg = d[1]; destImm = d[2];
-            }
-            if (parts.length >= 2) {
-                int[] s = parseOperand(parts[1]);
-                srcType = s[0]; srcReg = s[1]; srcImm = s[2];
-            }
-        }
-
-        return new CompiledInstruction(opId, supported, rawLine, args, destType, destReg, destImm, srcType, srcReg, srcImm, targetPc);
     }
 
     public VirtualCpu() {
         Arrays.fill(framebuffer, 0xFF051009);
     }
 
-    public void configure(Set<String> instructions, int ramSize, List<String> code, boolean hasNvme, int storageSize) {
+    public void configure(Set<String> instructions, int ramSize, List<String> assemblyLines, boolean hasNvme, int storageSize) {
+        if (assemblyLines == null || assemblyLines.isEmpty()) {
+            configure(instructions, ramSize, new byte[0], hasNvme, storageSize);
+            return;
+        }
+        var assembled = games.jvrcruz.siliconcraft.compiler.Assembler.assemble(assemblyLines);
+        if (!assembled.success()) {
+            configure(instructions, ramSize, new byte[0], hasNvme, storageSize);
+            this.pendingAssemblyError = String.join("; ", assembled.errors());
+            return;
+        }
+        configure(instructions, ramSize, assembled.bytecode(), hasNvme, storageSize);
+    }
+
+    public void configure(Set<String> instructions, int ramSize, byte[] bytecode, boolean hasNvme, int storageSize) {
         this.supportedInstructions.clear();
-        for (String instr : instructions) {
-            this.supportedInstructions.add(instr.toUpperCase(Locale.ROOT).trim());
+        if (instructions != null) {
+            for (String instr : instructions) {
+                this.supportedInstructions.add(instr.toUpperCase(Locale.ROOT).trim());
+            }
         }
         this.hasNvme = hasNvme;
         this.storageSize = storageSize;
@@ -589,13 +215,36 @@ public class VirtualCpu {
         this.driveCapacities[0] = Math.min(1L << 31, targetStorageBytes);
         int effectiveRam = Math.max(0, Math.min(ramSize, 64 * 1024 * 1024));
         this.ram = new int[effectiveRam];
-        this.program.clear();
-        this.program.addAll(code);
-        this.labels.clear();
         this.ivt.clear();
-        preprocessLabels();
-        compileBytecode();
+        applyBinaryImage(bytecode);
         reset();
+    }
+
+    private void applyBinaryImage(byte[] bytecode) {
+        this.pendingAssemblyError = null;
+        if (bytecode == null || bytecode.length == 0) {
+            this.binaryImage = new byte[0];
+            this.binaryCode = new long[0];
+            this.binaryRodata = new String[0];
+            this.binaryExt = new BinaryBytecode.ExtOperand[0];
+            this.staticDataSegments = List.of();
+            return;
+        }
+        try {
+            BinaryBytecode.ProgramImage decoded = BinaryBytecode.decodeScbc(bytecode);
+            this.binaryImage = Arrays.copyOf(bytecode, bytecode.length);
+            this.binaryCode = decoded.code();
+            this.binaryRodata = decoded.rodata();
+            this.binaryExt = decoded.ext();
+            this.staticDataSegments = decoded.dataSegments();
+        } catch (RuntimeException e) {
+            this.binaryImage = new byte[0];
+            this.binaryCode = new long[0];
+            this.binaryRodata = new String[0];
+            this.binaryExt = new BinaryBytecode.ExtOperand[0];
+            this.staticDataSegments = List.of();
+            this.pendingAssemblyError = e.getMessage();
+        }
     }
 
     public void updateHardware(int totalRam, boolean hasNvme, int storageSize) {
@@ -613,75 +262,22 @@ public class VirtualCpu {
         }
     }
 
-    private void preprocessLabels() {
-        labels.clear();
-        dataLabels.clear();
-        for (int i = 0; i < program.size(); i++) {
-            String raw = program.get(i);
-            int commentIndex = raw.indexOf(';');
-            if (commentIndex == -1) commentIndex = raw.indexOf("//");
-            if (commentIndex == -1) commentIndex = raw.indexOf('#');
-            String line = (commentIndex != -1 ? raw.substring(0, commentIndex) : raw).trim();
-            if (line.isEmpty()) continue;
-
-            int colon = findLabelColon(line);
-            if (colon != -1) {
-                String labelName = line.substring(0, colon).trim().toLowerCase(Locale.ROOT);
-                if (!labelName.isEmpty()) {
-                    labels.put(labelName, i);
-                }
-            }
-        }
-        loadStaticData();
-    }
-
     private void loadStaticData() {
-        int currentDataAddr = 0;
-        String pendingLabel = null;
-
-        for (int lineIdx = 0; lineIdx < program.size(); lineIdx++) {
-            String rawLine = program.get(lineIdx);
-            int commentIndex = rawLine.indexOf(';');
-            if (commentIndex == -1) commentIndex = rawLine.indexOf("//");
-            if (commentIndex == -1) commentIndex = rawLine.indexOf('#');
-            String line = (commentIndex != -1 ? rawLine.substring(0, commentIndex) : rawLine).trim();
-            if (line.isEmpty()) continue;
-
-            int colon = findLabelColon(line);
-            String rest = line;
-            if (colon != -1) {
-                pendingLabel = line.substring(0, colon).trim().toLowerCase(Locale.ROOT);
-                rest = line.substring(colon + 1).trim();
-                if (rest.isEmpty()) continue;
+        if (staticDataSegments == null || staticDataSegments.isEmpty()) {
+            return;
+        }
+        for (BinaryBytecode.DataSegment segment : staticDataSegments) {
+            int addr = segment.ramStart();
+            byte[] bytes = segment.bytes();
+            if (bytes.length == 0 || addr < 0) {
+                continue;
             }
-
-            int spaceIndex = rest.indexOf(' ');
-            String opcode = (spaceIndex != -1 ? rest.substring(0, spaceIndex) : rest).toUpperCase(Locale.ROOT).trim();
-            String args = spaceIndex != -1 ? rest.substring(spaceIndex + 1).trim() : "";
-
-            if (opcode.equals("ORG")) {
-                currentDataAddr = resolveValue(args);
-                if (pendingLabel != null) {
-                    labels.put(pendingLabel, currentDataAddr);
-                    dataLabels.put(pendingLabel, currentDataAddr);
-                    pendingLabel = null;
+            ensureRamCapacity(Math.min(65535, addr + bytes.length - 1));
+            for (int i = 0; i < bytes.length; i++) {
+                int target = addr + i;
+                if (target >= 0 && target < ram.length) {
+                    ram[target] = Byte.toUnsignedInt(bytes[i]);
                 }
-            } else if (opcode.equals("DB") || opcode.equals("DW") || opcode.equals("DL")) {
-                if (pendingLabel != null) {
-                    labels.put(pendingLabel, currentDataAddr);
-                    dataLabels.put(pendingLabel, currentDataAddr);
-                    pendingLabel = null;
-                }
-                currentDataAddr = parseAndStoreData(opcode, args, currentDataAddr);
-            } else if (opcode.equals("INCBIN")) {
-                if (pendingLabel != null) {
-                    labels.put(pendingLabel, currentDataAddr);
-                    dataLabels.put(pendingLabel, currentDataAddr);
-                    pendingLabel = null;
-                }
-                currentDataAddr = loadIncbin(args, currentDataAddr);
-            } else {
-                pendingLabel = null;
             }
         }
     }
@@ -693,111 +289,6 @@ public class VirtualCpu {
             System.arraycopy(ram, 0, newRam, 0, ram.length);
             ram = newRam;
         }
-    }
-
-    private List<String> splitDataTokens(String s) {
-        List<String> tokens = new ArrayList<>();
-        if (s == null || s.trim().isEmpty()) return tokens;
-        StringBuilder sb = new StringBuilder();
-        boolean inQuotes = false;
-        char quoteChar = 0;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if ((c == '\"' || c == '\'') && (i == 0 || s.charAt(i - 1) != '\\')) {
-                if (inQuotes && c == quoteChar) {
-                    inQuotes = false;
-                } else if (!inQuotes) {
-                    inQuotes = true;
-                    quoteChar = c;
-                }
-            }
-            if (!inQuotes && c == ',') {
-                tokens.add(sb.toString().trim());
-                sb.setLength(0);
-            } else {
-                sb.append(c);
-            }
-        }
-        if (sb.length() > 0) {
-            tokens.add(sb.toString().trim());
-        }
-        return tokens;
-    }
-
-    private int parseAndStoreData(String opcode, String args, int currentAddr) {
-        List<String> tokens = splitDataTokens(args);
-        for (String token : tokens) {
-            if (token.isEmpty()) continue;
-
-            if (opcode.equals("DB") && token.startsWith("\"") && token.endsWith("\"") && token.length() >= 2) {
-                String str = stripQuotes(token);
-                byte[] bytes = str.getBytes(StandardCharsets.UTF_8);
-                for (byte b : bytes) {
-                    ensureRamCapacity(currentAddr);
-                    if (currentAddr < ram.length) {
-                        ram[currentAddr++] = (b & 0xFF);
-                    }
-                }
-                continue;
-            }
-
-            int val = resolveValue(token);
-
-            if (opcode.equals("DB")) {
-                ensureRamCapacity(currentAddr);
-                if (currentAddr < ram.length) {
-                    ram[currentAddr++] = (val & 0xFF);
-                }
-            } else if (opcode.equals("DW")) {
-                ensureRamCapacity(currentAddr + 1);
-                if (currentAddr < ram.length) ram[currentAddr++] = (val & 0xFF);
-                if (currentAddr < ram.length) ram[currentAddr++] = ((val >> 8) & 0xFF);
-            } else if (opcode.equals("DL")) {
-                ensureRamCapacity(currentAddr + 2);
-                if (currentAddr < ram.length) ram[currentAddr++] = (val & 0xFF);
-                if (currentAddr < ram.length) ram[currentAddr++] = ((val >> 8) & 0xFF);
-                if (currentAddr < ram.length) ram[currentAddr++] = ((val >> 16) & 0xFF);
-            }
-        }
-        return currentAddr;
-    }
-
-    private int loadIncbin(String args, int currentAddr) {
-        List<String> tokens = splitDataTokens(args);
-        if (tokens.isEmpty()) return currentAddr;
-        String pathToken = tokens.get(0);
-        if (pathToken.startsWith("\"") && pathToken.endsWith("\"") && pathToken.length() >= 2) {
-            pathToken = pathToken.substring(1, pathToken.length() - 1);
-        }
-        int offset = 0;
-        int length = -1;
-        if (tokens.size() > 1) {
-            offset = resolveValue(tokens.get(1));
-        }
-        if (tokens.size() > 2) {
-            length = resolveValue(tokens.get(2));
-        }
-
-        try {
-            java.nio.file.Path p = java.nio.file.Path.of(pathToken);
-            if (!java.nio.file.Files.exists(p)) {
-                p = java.nio.file.Path.of("").toAbsolutePath().resolve(pathToken);
-            }
-            if (java.nio.file.Files.exists(p)) {
-                byte[] allBytes = java.nio.file.Files.readAllBytes(p);
-                int start = Math.max(0, Math.min(offset, allBytes.length));
-                int count = (length >= 0) ? Math.min(length, allBytes.length - start) : (allBytes.length - start);
-                for (int i = 0; i < count; i++) {
-                    ensureRamCapacity(currentAddr);
-                    if (currentAddr < ram.length) {
-                        ram[currentAddr++] = (allBytes[start + i] & 0xFF);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            terminalOutput.add("[ASSEMBLER ERROR] INCBIN failed: " + e.getMessage());
-        }
-        return currentAddr;
     }
 
     public void setTimeSupplier(LongSupplier supplier) {
@@ -991,286 +482,322 @@ public class VirtualCpu {
         }
     }
 
+    private int opCount(long word) {
+        int fmt = BinaryBytecode.extractFormat(word);
+        return switch (fmt) {
+            case BinaryBytecode.FMT_0, BinaryBytecode.FMT_3 -> BinaryBytecode.extractFlags(word);
+            case BinaryBytecode.FMT_1 -> 2;
+            case BinaryBytecode.FMT_2 -> 1;
+            default -> 0;
+        };
+    }
+
+    private int opMode(long word, int idx) {
+        int fmt = BinaryBytecode.extractFormat(word);
+        return switch (fmt) {
+            case BinaryBytecode.FMT_0 -> idx == 0 ? BinaryBytecode.extractFmt0Op0Mode(word)
+                    : (idx == 1 ? BinaryBytecode.extractFmt0Op1Mode(word) : BinaryBytecode.MODE_NONE);
+            case BinaryBytecode.FMT_1 -> idx == 0 ? BinaryBytecode.extractFmt1Mode0(word)
+                    : (idx == 1 ? BinaryBytecode.extractFmt1Mode1(word) : BinaryBytecode.MODE_NONE);
+            case BinaryBytecode.FMT_3 -> {
+                int extOffset = BinaryBytecode.extractImm32(word);
+                int pos = extOffset + idx;
+                yield (pos >= 0 && pos < binaryExt.length) ? binaryExt[pos].mode() : BinaryBytecode.MODE_NONE;
+            }
+            default -> BinaryBytecode.MODE_NONE;
+        };
+    }
+
+    private int opReg(long word, int idx) {
+        int fmt = BinaryBytecode.extractFormat(word);
+        return switch (fmt) {
+            case BinaryBytecode.FMT_0 -> idx == 0 ? BinaryBytecode.extractFmt0Op0Reg(word)
+                    : (idx == 1 ? BinaryBytecode.extractFmt0Op1Reg(word) : 0);
+            case BinaryBytecode.FMT_1 -> {
+                int mode = idx == 0 ? BinaryBytecode.extractFmt1Mode0(word) : BinaryBytecode.extractFmt1Mode1(word);
+                if (mode == BinaryBytecode.MODE_REG || mode == BinaryBytecode.MODE_RAM_REG) {
+                    yield idx == 0 ? BinaryBytecode.extractFmt1Val0(word) : BinaryBytecode.extractFmt1Val1(word);
+                }
+                yield 0;
+            }
+            case BinaryBytecode.FMT_3 -> {
+                int extOffset = BinaryBytecode.extractImm32(word);
+                int pos = extOffset + idx;
+                yield (pos >= 0 && pos < binaryExt.length) ? binaryExt[pos].reg() : 0;
+            }
+            default -> 0;
+        };
+    }
+
+    private int opImm(long word, int idx) {
+        int fmt = BinaryBytecode.extractFormat(word);
+        return switch (fmt) {
+            case BinaryBytecode.FMT_0 -> BinaryBytecode.extractImm32(word);
+            case BinaryBytecode.FMT_1 -> idx == 0 ? BinaryBytecode.extractFmt1Val0(word) : BinaryBytecode.extractFmt1Val1(word);
+            case BinaryBytecode.FMT_3 -> {
+                int extOffset = BinaryBytecode.extractImm32(word);
+                int pos = extOffset + idx;
+                yield (pos >= 0 && pos < binaryExt.length) ? binaryExt[pos].imm() : 0;
+            }
+            default -> 0;
+        };
+    }
+
+    private int readRam(int addr) {
+        if (addr >= 0 && addr < ram.length) {
+            return ram[addr];
+        }
+        throw new IndexOutOfBoundsException("RAM address " + addr + " out of bounds");
+    }
+
+    private void writeRam(int addr, int val) {
+        if (addr >= 0 && addr < ram.length) {
+            ram[addr] = val;
+            return;
+        }
+        throw new IndexOutOfBoundsException("RAM write to address " + addr + " out of bounds");
+    }
+
+    private int readOperand(long word, int idx) {
+        if (idx >= opCount(word)) {
+            throw new IllegalArgumentException("Missing operand " + idx);
+        }
+        int mode = opMode(word, idx);
+        int reg = opReg(word, idx);
+        int imm = opImm(word, idx);
+        return switch (mode) {
+            case BinaryBytecode.MODE_REG -> getReg(reg);
+            case BinaryBytecode.MODE_IMM -> imm;
+            case BinaryBytecode.MODE_RAM_IMM -> readRam(imm);
+            case BinaryBytecode.MODE_RAM_REG -> readRam(getReg(reg));
+            case BinaryBytecode.MODE_RAM_REG_OFF -> readRam(getReg(reg) + imm);
+            default -> throw new IllegalArgumentException("Invalid source operand mode: " + mode);
+        };
+    }
+
+    private void writeOperand(long word, int idx, int value) {
+        if (idx >= opCount(word)) {
+            throw new IllegalArgumentException("Missing destination operand " + idx);
+        }
+        int mode = opMode(word, idx);
+        int reg = opReg(word, idx);
+        int imm = opImm(word, idx);
+        switch (mode) {
+            case BinaryBytecode.MODE_REG -> setReg(reg, value);
+            case BinaryBytecode.MODE_RAM_IMM -> writeRam(imm, value);
+            case BinaryBytecode.MODE_RAM_REG -> writeRam(getReg(reg), value);
+            case BinaryBytecode.MODE_RAM_REG_OFF -> writeRam(getReg(reg) + imm, value);
+            default -> throw new IllegalArgumentException("Cannot write to destination");
+        }
+    }
+
+    private void requireOperands(long word, int expected, String message) {
+        if (opCount(word) != expected) {
+            throw new IllegalArgumentException(message);
+        }
+    }
+
     private void executeNextInstruction() {
         checkAndDispatchInterrupt();
 
-        if (pc < 0 || pc >= program.size()) {
+        if (pendingAssemblyError != null) {
+            String err = pendingAssemblyError;
+            pendingAssemblyError = null;
+            haltWithException(err, 0, "");
+            return;
+        }
+
+        if (binaryCode == null || pc < 0 || pc >= binaryCode.length) {
             state = State.HALTED;
             flushLineBuffer();
             terminalOutput.add("[PROGRAM TERMINATED: END OF FILE]");
             return;
         }
 
-        if (compiledProgram == null || compiledProgram.length != program.size()) {
-            compileBytecode();
-        }
-
-        int currentLineNum = pc;
-        CompiledInstruction ci = compiledProgram[pc++];
+        int currentPc = pc;
+        long word = binaryCode[pc++];
         cycles++;
 
-        if (ci.opCode == OP_NOP || ci.opCode == OP_DIRECTIVE) {
+        int opcodeId = BinaryBytecode.extractOpcode(word);
+        if (opcodeId == BinaryBytecode.OP_NOP) {
             return;
         }
 
-        if (!ci.isSupported) {
-            triggerException(VEC_ILLEGAL_OPCODE, "Illegal instruction: " + ci.rawLine, currentLineNum, ci.rawLine);
+        String opcodeName = BinaryBytecode.getOpcodeName(opcodeId);
+        if (opcodeName == null || !supportedInstructions.contains(opcodeName)) {
+            String summary = BinaryBytecode.formatInstructionSummary(word);
+            triggerException(VEC_ILLEGAL_OPCODE, "Illegal instruction: " + summary, currentPc, summary);
             return;
         }
 
         try {
-            switch (ci.opCode) {
-                case OP_MOV -> {
-                    if (ci.destType == TYPE_REG) {
-                        if (ci.srcType == TYPE_REG) {
-                            setReg(ci.destReg, getReg(ci.srcReg));
-                        } else if (ci.srcType == TYPE_IMM) {
-                            setReg(ci.destReg, ci.srcImm);
-                        } else if (ci.srcType == TYPE_RAM_IMM) {
-                            int addr = ci.srcImm;
-                            if (addr >= 0 && addr < ram.length) {
-                                setReg(ci.destReg, ram[addr]);
-                            } else {
-                                throw new IndexOutOfBoundsException("RAM address " + addr + " out of bounds");
-                            }
-                        } else if (ci.srcType == TYPE_RAM_REG) {
-                            int addr = getReg(ci.srcReg);
-                            if (addr >= 0 && addr < ram.length) {
-                                setReg(ci.destReg, ram[addr]);
-                            } else {
-                                throw new IndexOutOfBoundsException("RAM address " + addr + " out of bounds");
-                            }
-                        } else {
-                            execMov(ci.rawArgs);
-                        }
-                    } else if (ci.destType == TYPE_RAM_IMM) {
-                        int addr = ci.destImm;
-                        if (addr < 0 || addr >= ram.length) {
-                            throw new IndexOutOfBoundsException("RAM address " + addr + " out of bounds");
-                        }
-                        if (ci.srcType == TYPE_REG) {
-                            ram[addr] = getReg(ci.srcReg);
-                        } else if (ci.srcType == TYPE_IMM) {
-                            ram[addr] = ci.srcImm;
-                        } else {
-                            execMov(ci.rawArgs);
-                        }
-                    } else if (ci.destType == TYPE_RAM_REG) {
-                        int addr = getReg(ci.destReg);
-                        if (addr < 0 || addr >= ram.length) {
-                            throw new IndexOutOfBoundsException("RAM address " + addr + " out of bounds");
-                        }
-                        if (ci.srcType == TYPE_REG) {
-                            ram[addr] = getReg(ci.srcReg);
-                        } else if (ci.srcType == TYPE_IMM) {
-                            ram[addr] = ci.srcImm;
-                        } else {
-                            execMov(ci.rawArgs);
-                        }
-                    } else {
-                        execMov(ci.rawArgs);
-                    }
+            switch (opcodeId) {
+                case BinaryBytecode.OP_MOV -> {
+                    requireOperands(word, 2, "MOV requires dest, src");
+                    writeOperand(word, 0, readOperand(word, 1));
                 }
-                case OP_ADD -> {
-                    if (ci.destType == TYPE_REG) {
-                        int val;
-                        if (ci.srcType == TYPE_REG) val = getReg(ci.srcReg);
-                        else if (ci.srcType == TYPE_IMM) val = ci.srcImm;
-                        else if (ci.srcType == TYPE_RAM_IMM && ci.srcImm >= 0 && ci.srcImm < ram.length) val = ram[ci.srcImm];
-                        else if (ci.srcType == TYPE_RAM_REG) {
-                            int a = getReg(ci.srcReg);
-                            if (a >= 0 && a < ram.length) val = ram[a];
-                            else throw new IndexOutOfBoundsException("RAM address " + a + " out of bounds");
-                        } else {
-                            execAdd(ci.rawArgs);
-                            break;
-                        }
-                        int res = getReg(ci.destReg) + val;
-                        setReg(ci.destReg, res);
-                        updateFlags(res);
-                    } else {
-                        execAdd(ci.rawArgs);
-                    }
+                case BinaryBytecode.OP_ADD -> {
+                    requireOperands(word, 2, "ADD requires dest, src");
+                    int res = readOperand(word, 0) + readOperand(word, 1);
+                    writeOperand(word, 0, res);
+                    updateFlags(res);
                 }
-                case OP_SUB -> {
-                    if (ci.destType == TYPE_REG) {
-                        int val;
-                        if (ci.srcType == TYPE_REG) val = getReg(ci.srcReg);
-                        else if (ci.srcType == TYPE_IMM) val = ci.srcImm;
-                        else if (ci.srcType == TYPE_RAM_IMM && ci.srcImm >= 0 && ci.srcImm < ram.length) val = ram[ci.srcImm];
-                        else if (ci.srcType == TYPE_RAM_REG) {
-                            int a = getReg(ci.srcReg);
-                            if (a >= 0 && a < ram.length) val = ram[a];
-                            else throw new IndexOutOfBoundsException("RAM address " + a + " out of bounds");
-                        } else {
-                            execSub(ci.rawArgs);
-                            break;
-                        }
-                        int res = getReg(ci.destReg) - val;
-                        setReg(ci.destReg, res);
-                        updateFlags(res);
-                    } else {
-                        execSub(ci.rawArgs);
-                    }
+                case BinaryBytecode.OP_SUB -> {
+                    requireOperands(word, 2, "SUB requires dest, src");
+                    int res = readOperand(word, 0) - readOperand(word, 1);
+                    writeOperand(word, 0, res);
+                    updateFlags(res);
                 }
-                case OP_INC -> {
-                    if (ci.destType == TYPE_REG) {
-                        int res = getReg(ci.destReg) + 1;
-                        setReg(ci.destReg, res);
-                        updateFlags(res);
-                    } else {
-                        execInc(ci.rawArgs);
-                    }
+                case BinaryBytecode.OP_MUL -> {
+                    requireOperands(word, 2, "MUL requires dest, src");
+                    int res = readOperand(word, 0) * readOperand(word, 1);
+                    writeOperand(word, 0, res);
+                    updateFlags(res);
                 }
-                case OP_DEC -> {
-                    if (ci.destType == TYPE_REG) {
-                        int res = getReg(ci.destReg) - 1;
-                        setReg(ci.destReg, res);
-                        updateFlags(res);
-                    } else {
-                        execDec(ci.rawArgs);
-                    }
+                case BinaryBytecode.OP_DIV -> {
+                    requireOperands(word, 2, "DIV requires dest, src");
+                    int divisor = readOperand(word, 1);
+                    if (divisor == 0) throw new ArithmeticException("Division by zero");
+                    int res = readOperand(word, 0) / divisor;
+                    writeOperand(word, 0, res);
+                    updateFlags(res);
                 }
-                case OP_CMP -> {
-                    if (ci.destType == TYPE_REG) {
-                        int val;
-                        if (ci.srcType == TYPE_REG) val = getReg(ci.srcReg);
-                        else if (ci.srcType == TYPE_IMM) val = ci.srcImm;
-                        else if (ci.srcType == TYPE_RAM_IMM && ci.srcImm >= 0 && ci.srcImm < ram.length) val = ram[ci.srcImm];
-                        else if (ci.srcType == TYPE_RAM_REG) {
-                            int a = getReg(ci.srcReg);
-                            if (a >= 0 && a < ram.length) val = ram[a];
-                            else throw new IndexOutOfBoundsException("RAM address " + a + " out of bounds");
-                        } else {
-                            execCmp(ci.rawArgs);
-                            break;
-                        }
-                        int res = getReg(ci.destReg) - val;
-                        updateFlags(res);
-                    } else {
-                        execCmp(ci.rawArgs);
-                    }
+                case BinaryBytecode.OP_MOD -> {
+                    requireOperands(word, 2, "MOD requires dest, src");
+                    int divisor = readOperand(word, 1);
+                    if (divisor == 0) throw new ArithmeticException("Modulo by zero");
+                    int res = readOperand(word, 0) % divisor;
+                    writeOperand(word, 0, res);
+                    updateFlags(res);
                 }
-                case OP_JMP -> {
-                    if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
-                    else execJmp(ci.rawArgs, true);
+                case BinaryBytecode.OP_INC -> {
+                    requireOperands(word, 1, "INC requires dest");
+                    int res = readOperand(word, 0) + 1;
+                    writeOperand(word, 0, res);
+                    updateFlags(res);
                 }
-                case OP_JZ -> {
-                    if (flagZ) {
-                        if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
-                        else execJmp(ci.rawArgs, true);
-                    }
+                case BinaryBytecode.OP_DEC -> {
+                    requireOperands(word, 1, "DEC requires dest");
+                    int res = readOperand(word, 0) - 1;
+                    writeOperand(word, 0, res);
+                    updateFlags(res);
                 }
-                case OP_JNZ -> {
-                    if (!flagZ) {
-                        if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
-                        else execJmp(ci.rawArgs, true);
-                    }
+                case BinaryBytecode.OP_CMP -> {
+                    requireOperands(word, 2, "CMP requires reg, val");
+                    updateFlags(readOperand(word, 0) - readOperand(word, 1));
                 }
-                case OP_JS -> {
-                    if (flagS) {
-                        if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
-                        else execJmp(ci.rawArgs, true);
-                    }
+                case BinaryBytecode.OP_AND -> {
+                    requireOperands(word, 2, "AND requires dest, src");
+                    int res = readOperand(word, 0) & readOperand(word, 1);
+                    writeOperand(word, 0, res);
+                    updateFlags(res);
                 }
-                case OP_JNS -> {
-                    if (!flagS) {
-                        if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
-                        else execJmp(ci.rawArgs, true);
-                    }
+                case BinaryBytecode.OP_OR -> {
+                    requireOperands(word, 2, "OR requires dest, src");
+                    int res = readOperand(word, 0) | readOperand(word, 1);
+                    writeOperand(word, 0, res);
+                    updateFlags(res);
                 }
-                case OP_JL -> {
-                    if (flagS && !flagZ) {
-                        if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
-                        else execJmp(ci.rawArgs, true);
-                    }
+                case BinaryBytecode.OP_XOR -> {
+                    requireOperands(word, 2, "XOR requires dest, src");
+                    int res = readOperand(word, 0) ^ readOperand(word, 1);
+                    writeOperand(word, 0, res);
+                    updateFlags(res);
                 }
-                case OP_JLE -> {
-                    if (flagS || flagZ) {
-                        if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
-                        else execJmp(ci.rawArgs, true);
-                    }
+                case BinaryBytecode.OP_NOT -> {
+                    requireOperands(word, 1, "NOT requires dest");
+                    int res = ~readOperand(word, 0);
+                    writeOperand(word, 0, res);
+                    updateFlags(res);
                 }
-                case OP_JG -> {
-                    if (!flagS && !flagZ) {
-                        if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
-                        else execJmp(ci.rawArgs, true);
-                    }
+                case BinaryBytecode.OP_SHL -> {
+                    requireOperands(word, 2, "SHL requires dest, count");
+                    int res = readOperand(word, 0) << readOperand(word, 1);
+                    writeOperand(word, 0, res);
+                    updateFlags(res);
                 }
-                case OP_JGE -> {
-                    if (!flagS) {
-                        if (ci.targetPc != -1) pc = Math.max(0, Math.min(ci.targetPc, program.size()));
-                        else execJmp(ci.rawArgs, true);
-                    }
+                case BinaryBytecode.OP_SHR -> {
+                    requireOperands(word, 2, "SHR requires dest, count");
+                    int res = readOperand(word, 0) >> readOperand(word, 1);
+                    writeOperand(word, 0, res);
+                    updateFlags(res);
                 }
-                case OP_CALL -> {
-                    if (ci.targetPc != -1) {
-                        callStack.push(pc);
-                        pc = Math.max(0, Math.min(ci.targetPc, program.size()));
-                    } else {
-                        execCall(ci.rawArgs);
-                    }
+                case BinaryBytecode.OP_JMP -> jumpIf(word, true);
+                case BinaryBytecode.OP_JZ -> jumpIf(word, flagZ);
+                case BinaryBytecode.OP_JNZ -> jumpIf(word, !flagZ);
+                case BinaryBytecode.OP_JS -> jumpIf(word, flagS);
+                case BinaryBytecode.OP_JNS -> jumpIf(word, !flagS);
+                case BinaryBytecode.OP_JL -> jumpIf(word, flagS && !flagZ);
+                case BinaryBytecode.OP_JLE -> jumpIf(word, flagS || flagZ);
+                case BinaryBytecode.OP_JG -> jumpIf(word, !flagS && !flagZ);
+                case BinaryBytecode.OP_JGE -> jumpIf(word, !flagS);
+                case BinaryBytecode.OP_CALL -> {
+                    requireOperands(word, 1, "CALL requires target");
+                    int destPc = readOperand(word, 0);
+                    callStack.push(pc);
+                    pc = Math.max(0, Math.min(destPc, binaryCode.length));
                 }
-                case OP_RET -> execRet();
-                case OP_PUSH -> {
-                    if (ci.destType == TYPE_REG) {
-                        dataStack.push(getReg(ci.destReg));
-                    } else if (ci.destType == TYPE_IMM) {
-                        dataStack.push(ci.destImm);
-                    } else {
-                        execPush(ci.rawArgs);
-                    }
+                case BinaryBytecode.OP_RET -> execRet();
+                case BinaryBytecode.OP_PUSH -> {
+                    requireOperands(word, 1, "PUSH requires value");
+                    dataStack.push(readOperand(word, 0));
                 }
-                case OP_POP -> {
-                    if (ci.destType == TYPE_REG) {
-                        if (dataStack.isEmpty()) throw new IllegalStateException("Stack underflow");
-                        setReg(ci.destReg, dataStack.pop());
-                    } else {
-                        execPop(ci.rawArgs);
-                    }
+                case BinaryBytecode.OP_POP -> {
+                    requireOperands(word, 1, "POP requires dest");
+                    if (dataStack.isEmpty()) throw new IllegalStateException("POP on empty stack: Data stack underflow");
+                    writeOperand(word, 0, dataStack.pop());
                 }
-                case OP_MUL -> execMul(ci.rawArgs);
-                case OP_DIV -> execDiv(ci.rawArgs);
-                case OP_MOD -> execMod(ci.rawArgs);
-                case OP_AND -> execAnd(ci.rawArgs);
-                case OP_OR -> execOr(ci.rawArgs);
-                case OP_XOR -> execXor(ci.rawArgs);
-                case OP_NOT -> execNot(ci.rawArgs);
-                case OP_SHL -> execShl(ci.rawArgs);
-                case OP_SHR -> execShr(ci.rawArgs);
-                case OP_IVEC -> execIvec(ci.rawArgs);
-                case OP_IRET -> execIret();
-                case OP_CLI -> interruptsEnabled = false;
-                case OP_STI -> interruptsEnabled = true;
-                case OP_INT -> execInt(ci.rawArgs);
-                case OP_OUT -> execOut(ci.rawArgs);
-                case OP_OUTH -> execOuth(ci.rawArgs);
-                case OP_OUTC -> execOutc(ci.rawArgs);
-                case OP_CLS -> execCls();
-                case OP_SLEEP -> execSleep(ci.rawArgs);
-                case OP_TIME -> execTime(ci.rawArgs);
-                case OP_RAND -> execRand(ci.rawArgs);
-                case OP_INPAD -> execInpad(ci.rawArgs);
-                case OP_INAXIS -> execInaxis(ci.rawArgs);
-                case OP_TIMER -> execTimer(ci.rawArgs);
-                case OP_VBLANK -> execVblank(ci.rawArgs);
-                case OP_SSIZE -> execSSize(ci.rawArgs);
-                case OP_SREAD -> execSRead(ci.rawArgs);
-                case OP_SWRITE -> execSWrite(ci.rawArgs);
-                case OP_SBLKR -> execSBlkr(ci.rawArgs);
-                case OP_SBLKW -> execSBlkw(ci.rawArgs);
-                case OP_SCOUNT -> execSCount(ci.rawArgs);
-                case OP_SSEL -> execSSel(ci.rawArgs);
-                case OP_SDRV -> execSDrv(ci.rawArgs);
-                case OP_SEXEC -> execSExec(ci.rawArgs);
-                case OP_FBMODE -> execFbMode(ci.rawArgs);
-                case OP_FBSET -> execFbSet(ci.rawArgs);
-                case OP_FBGET -> execFbGet(ci.rawArgs);
-                case OP_FBCLR -> execFbClr(ci.rawArgs);
-                case OP_FBRECT -> execFbRect(ci.rawArgs);
-                case OP_FBLINE -> execFbLine(ci.rawArgs);
-                case OP_FBLIT -> execFbLit(ci.rawArgs);
-                case OP_FBSWAP -> {
+                case BinaryBytecode.OP_IVEC -> {
+                    requireOperands(word, 2, "IVEC requires vector, handler");
+                    ivt.put(readOperand(word, 0), readOperand(word, 1));
+                }
+                case BinaryBytecode.OP_IRET -> execIret();
+                case BinaryBytecode.OP_CLI -> interruptsEnabled = false;
+                case BinaryBytecode.OP_STI -> interruptsEnabled = true;
+                case BinaryBytecode.OP_INT -> execInt(word, currentPc);
+                case BinaryBytecode.OP_OUT -> execOut(word);
+                case BinaryBytecode.OP_OUTH -> execOuth(word);
+                case BinaryBytecode.OP_OUTC -> execOutc(word);
+                case BinaryBytecode.OP_CLS -> execCls();
+                case BinaryBytecode.OP_SLEEP -> {
+                    requireOperands(word, 1, "SLEEP requires ticks");
+                    int ticks = readOperand(word, 0);
+                    if (ticks > 0) this.sleepTicksRemaining = ticks;
+                }
+                case BinaryBytecode.OP_TIME -> {
+                    requireOperands(word, 1, "TIME requires dest");
+                    long t = timeSupplier != null ? timeSupplier.getAsLong() : 0L;
+                    writeOperand(word, 0, (int) (t & 0x7FFFFFFF));
+                }
+                case BinaryBytecode.OP_RAND -> {
+                    requireOperands(word, 2, "RAND requires dest, max");
+                    int max = readOperand(word, 1);
+                    writeOperand(word, 0, max > 0 ? random.nextInt(max) : 0);
+                }
+                case BinaryBytecode.OP_INPAD -> execInpad(word);
+                case BinaryBytecode.OP_INAXIS -> execInaxis(word);
+                case BinaryBytecode.OP_TIMER -> {
+                    requireOperands(word, 1, "TIMER requires hz");
+                    setTimerHz(readOperand(word, 0));
+                }
+                case BinaryBytecode.OP_VBLANK -> execVblank(word);
+                case BinaryBytecode.OP_SSIZE -> execSSize(word);
+                case BinaryBytecode.OP_SREAD -> execSRead(word);
+                case BinaryBytecode.OP_SWRITE -> execSWrite(word);
+                case BinaryBytecode.OP_SBLKR -> execSBlkr(word);
+                case BinaryBytecode.OP_SBLKW -> execSBlkw(word);
+                case BinaryBytecode.OP_SCOUNT -> execSCount(word);
+                case BinaryBytecode.OP_SSEL -> execSSel(word);
+                case BinaryBytecode.OP_SDRV -> execSDrv(word);
+                case BinaryBytecode.OP_SEXEC -> execSExec(word, currentPc);
+                case BinaryBytecode.OP_FBMODE -> execFbMode(word);
+                case BinaryBytecode.OP_FBSET -> execFbSet(word);
+                case BinaryBytecode.OP_FBGET -> execFbGet(word);
+                case BinaryBytecode.OP_FBCLR -> execFbClr(word);
+                case BinaryBytecode.OP_FBRECT -> execFbRect(word);
+                case BinaryBytecode.OP_FBLINE -> execFbLine(word);
+                case BinaryBytecode.OP_FBLIT -> execFbLit(word);
+                case BinaryBytecode.OP_FBSWAP -> {
                     displayMode = 1;
                     gpu.setDisplayMode(1);
                     if (isUsingGpu()) {
@@ -1278,58 +805,87 @@ public class VirtualCpu {
                     }
                     fbDirty = true;
                 }
-                case OP_FBWIDTH -> setDestination(ci.rawArgs.trim(), FB_WIDTH);
-                case OP_FBHEIGHT -> setDestination(ci.rawArgs.trim(), FB_HEIGHT);
-                case OP_GFXSEL -> execGfxSel(ci.rawArgs);
-                case OP_GFXSTAT -> execGfxStat(ci.rawArgs);
-                case OP_GPUCLR -> execGpuClr(ci.rawArgs);
-                case OP_GPURECT -> execGpuRect(ci.rawArgs);
-                case OP_GPULINE -> execGpuLine(ci.rawArgs);
-                case OP_GPUCIRC -> execGpuCirc(ci.rawArgs);
-                case OP_GPUTRI -> execGpuTri(ci.rawArgs);
-                case OP_GPUVRAM -> execGpuVram(ci.rawArgs);
-                case OP_GPUBLIT -> execGpuBlit(ci.rawArgs);
-                case OP_GPUSWAP -> execGpuSwap();
-                case OP_GPUSYNC -> execGpuSync();
-                case OP_APUSH -> execAPush(ci.rawArgs);
-                case OP_ABUFW -> execABufw(ci.rawArgs);
-                case OP_ACLR -> execAClr();
-                case OP_ASTAT -> setDestination(ci.rawArgs.trim(), audioCount);
-                case OP_ATONE -> execATone(ci.rawArgs);
-                case OP_APLAY -> audioTriggered = true;
-                case OP_PINFO -> submitPeripheralRequest(ci.rawArgs, PeripheralBus.Operation.INFO);
-                case OP_PWRAP -> submitPeripheralRequest(ci.rawArgs, PeripheralBus.Operation.WRAP);
-                case OP_PCALL -> submitPeripheralRequest(ci.rawArgs, PeripheralBus.Operation.CALL);
-                case OP_PCALLS -> submitPeripheralRequest(ci.rawArgs, PeripheralBus.Operation.CALL_STRING);
-                case OP_PSTATUS -> setDestination(ci.rawArgs.trim(), peripheralBus.status());
-                case OP_PSCAN -> submitPeripheralRequest(ci.rawArgs, PeripheralBus.Operation.SCAN);
-                case OP_PRESULT -> setDestination(ci.rawArgs.trim(), peripheralBus.consumeResult());
-                case OP_PLEN -> setDestination(ci.rawArgs, peripheralBus.textLength());
-                case OP_PRESULTS -> readPeripheralText(ci.rawArgs);
-                case OP_NOPEN -> submitNetwork(ci.rawArgs, NetworkPort.Operation.OPEN);
-                case OP_NSEND -> submitNetwork(ci.rawArgs, NetworkPort.Operation.SEND);
-                case OP_NRECV -> submitNetwork(ci.rawArgs, NetworkPort.Operation.RECEIVE);
-                case OP_NCLOSE -> submitNetwork(ci.rawArgs, NetworkPort.Operation.CLOSE);
-                case OP_NHTTP -> submitNetwork(ci.rawArgs, NetworkPort.Operation.HTTP);
-                case OP_NWSOPEN -> submitNetwork(ci.rawArgs, NetworkPort.Operation.WEBSOCKET);
-                case OP_NWSTEXT -> submitNetwork(ci.rawArgs, NetworkPort.Operation.SEND_TEXT);
-                case OP_NTLS -> submitNetwork(ci.rawArgs, NetworkPort.Operation.TLS);
-                case OP_NHTTP3 -> submitNetwork(ci.rawArgs, NetworkPort.Operation.HTTP3);
-                case OP_NRESPOND -> submitNetwork(ci.rawArgs, NetworkPort.Operation.RESPOND);
-                case OP_NRESPONDT -> submitNetwork(ci.rawArgs, NetworkPort.Operation.RESPOND_TEXT);
-                case OP_NACCEPT -> submitNetwork(ci.rawArgs, NetworkPort.Operation.ACCEPT);
-                case OP_NLISTEN -> submitNetwork(ci.rawArgs, NetworkPort.Operation.LISTEN);
-                case OP_NSTATUS -> setDestination(ci.rawArgs, networkPort.status());
-                case OP_NLEN -> setDestination(ci.rawArgs, networkPort.resultLength());
-                case OP_NRESULT -> readNetworkResult(ci.rawArgs);
-                case OP_NREADY -> setDestination(ci.rawArgs, networkPort.ready() ? 1 : 0);
-                case OP_NUTF8 -> transcodeNetworkText(ci.rawArgs);
-                case OP_GALLOC -> {
-                    if (ci.srcType != TYPE_IMM || (ci.destType != TYPE_REG && ci.destType != TYPE_IMM)) {
+                case BinaryBytecode.OP_FBWIDTH -> {
+                    requireOperands(word, 1, "FBWIDTH requires dest");
+                    writeOperand(word, 0, FB_WIDTH);
+                }
+                case BinaryBytecode.OP_FBHEIGHT -> {
+                    requireOperands(word, 1, "FBHEIGHT requires dest");
+                    writeOperand(word, 0, FB_HEIGHT);
+                }
+                case BinaryBytecode.OP_GFXSEL -> execGfxSel(word);
+                case BinaryBytecode.OP_GFXSTAT -> execGfxStat(word);
+                case BinaryBytecode.OP_GPUCLR -> execGpuClr(word);
+                case BinaryBytecode.OP_GPURECT -> execGpuRect(word);
+                case BinaryBytecode.OP_GPULINE -> execGpuLine(word);
+                case BinaryBytecode.OP_GPUCIRC -> execGpuCirc(word);
+                case BinaryBytecode.OP_GPUTRI -> execGpuTri(word);
+                case BinaryBytecode.OP_GPUVRAM -> execGpuVram(word);
+                case BinaryBytecode.OP_GPUBLIT -> execGpuBlit(word);
+                case BinaryBytecode.OP_GPUSWAP -> execGpuSwap();
+                case BinaryBytecode.OP_GPUSYNC -> execGpuSync();
+                case BinaryBytecode.OP_APUSH -> execAPush(word);
+                case BinaryBytecode.OP_ABUFW -> execABufw(word);
+                case BinaryBytecode.OP_ACLR -> execAClr();
+                case BinaryBytecode.OP_ASTAT -> {
+                    requireOperands(word, 1, "ASTAT requires dest");
+                    writeOperand(word, 0, audioCount);
+                }
+                case BinaryBytecode.OP_ATONE -> execATone(word);
+                case BinaryBytecode.OP_APLAY -> audioTriggered = true;
+                case BinaryBytecode.OP_PINFO -> submitPeripheralRequest(word, PeripheralBus.Operation.INFO);
+                case BinaryBytecode.OP_PWRAP -> submitPeripheralRequest(word, PeripheralBus.Operation.WRAP);
+                case BinaryBytecode.OP_PCALL -> submitPeripheralRequest(word, PeripheralBus.Operation.CALL);
+                case BinaryBytecode.OP_PCALLS -> submitPeripheralRequest(word, PeripheralBus.Operation.CALL_STRING);
+                case BinaryBytecode.OP_PSTATUS -> {
+                    requireOperands(word, 1, "PSTATUS requires dest");
+                    writeOperand(word, 0, peripheralBus.status());
+                }
+                case BinaryBytecode.OP_PSCAN -> submitPeripheralRequest(word, PeripheralBus.Operation.SCAN);
+                case BinaryBytecode.OP_PRESULT -> {
+                    requireOperands(word, 1, "PRESULT requires dest");
+                    writeOperand(word, 0, peripheralBus.consumeResult());
+                }
+                case BinaryBytecode.OP_PLEN -> {
+                    requireOperands(word, 1, "PLEN requires dest");
+                    writeOperand(word, 0, peripheralBus.textLength());
+                }
+                case BinaryBytecode.OP_PRESULTS -> readPeripheralText(word);
+                case BinaryBytecode.OP_NOPEN -> submitNetwork(word, NetworkPort.Operation.OPEN);
+                case BinaryBytecode.OP_NSEND -> submitNetwork(word, NetworkPort.Operation.SEND);
+                case BinaryBytecode.OP_NRECV -> submitNetwork(word, NetworkPort.Operation.RECEIVE);
+                case BinaryBytecode.OP_NCLOSE -> submitNetwork(word, NetworkPort.Operation.CLOSE);
+                case BinaryBytecode.OP_NHTTP -> submitNetwork(word, NetworkPort.Operation.HTTP);
+                case BinaryBytecode.OP_NWSOPEN -> submitNetwork(word, NetworkPort.Operation.WEBSOCKET);
+                case BinaryBytecode.OP_NWSTEXT -> submitNetwork(word, NetworkPort.Operation.SEND_TEXT);
+                case BinaryBytecode.OP_NTLS -> submitNetwork(word, NetworkPort.Operation.TLS);
+                case BinaryBytecode.OP_NHTTP3 -> submitNetwork(word, NetworkPort.Operation.HTTP3);
+                case BinaryBytecode.OP_NRESPOND -> submitNetwork(word, NetworkPort.Operation.RESPOND);
+                case BinaryBytecode.OP_NRESPONDT -> submitNetwork(word, NetworkPort.Operation.RESPOND_TEXT);
+                case BinaryBytecode.OP_NACCEPT -> submitNetwork(word, NetworkPort.Operation.ACCEPT);
+                case BinaryBytecode.OP_NLISTEN -> submitNetwork(word, NetworkPort.Operation.LISTEN);
+                case BinaryBytecode.OP_NSTATUS -> {
+                    requireOperands(word, 1, "NSTATUS requires dest");
+                    writeOperand(word, 0, networkPort.status());
+                }
+                case BinaryBytecode.OP_NLEN -> {
+                    requireOperands(word, 1, "NLEN requires dest");
+                    writeOperand(word, 0, networkPort.resultLength());
+                }
+                case BinaryBytecode.OP_NRESULT -> readNetworkResult(word);
+                case BinaryBytecode.OP_NREADY -> {
+                    requireOperands(word, 1, "NREADY requires dest");
+                    writeOperand(word, 0, networkPort.ready() ? 1 : 0);
+                }
+                case BinaryBytecode.OP_NUTF8 -> transcodeNetworkText(word);
+                case BinaryBytecode.OP_GALLOC -> {
+                    if (opCount(word) != 2
+                            || (opMode(word, 0) != BinaryBytecode.MODE_REG && opMode(word, 0) != BinaryBytecode.MODE_IMM)
+                            || opMode(word, 1) != BinaryBytecode.MODE_IMM) {
                         throw new IllegalArgumentException("GALLOC requires a size and an immediate heap base");
                     }
-                    int size = ci.destType == TYPE_REG ? getReg(ci.destReg) : ci.destImm;
-                    int base = ci.srcImm;
+                    int size = readOperand(word, 0);
+                    int base = opImm(word, 1);
                     try {
                         if (size == 0) {
                             GuestHeap.initialize(ram, base);
@@ -1337,20 +893,23 @@ public class VirtualCpu {
                         } else {
                             int address = GuestHeap.allocate(ram, base, size,
                                     regA, regB, regC, regD, dataStack, interruptStack);
-                            if (address == 0) pc = currentLineNum; // Retry after an interrupted collection.
+                            if (address == 0) pc = currentPc; // Retry after an interrupted collection.
                             else regA = address;
                         }
                     } catch (IndexOutOfBoundsException e) {
                         // The generated program cannot resume with a missing allocation.
-                        haltWithException(e.getMessage(), currentLineNum, ci.rawLine);
+                        haltWithException(e.getMessage(), currentPc, BinaryBytecode.formatInstructionSummary(word));
                     }
                 }
-                case OP_HLT -> {
+                case BinaryBytecode.OP_HLT -> {
                     state = State.HALTED;
                     flushLineBuffer();
                     terminalOutput.add("[EXECUTION HALTED]");
                 }
-                default -> triggerException(VEC_ILLEGAL_OPCODE, "Unknown opcode: " + ci.rawLine, currentLineNum, ci.rawLine);
+                default -> {
+                    String summary = BinaryBytecode.formatInstructionSummary(word);
+                    triggerException(VEC_ILLEGAL_OPCODE, "Unknown opcode: " + summary, currentPc, summary);
+                }
             }
         } catch (Exception e) {
             int vec = VEC_GENERAL_EXCEPTION;
@@ -1362,7 +921,7 @@ public class VirtualCpu {
             } else if (e instanceof IllegalStateException && desc.toLowerCase(Locale.ROOT).contains("stack")) {
                 vec = VEC_STACK_FAULT;
             }
-            triggerException(vec, desc, currentLineNum, ci.rawLine);
+            triggerException(vec, desc, currentPc, BinaryBytecode.formatInstructionSummary(word));
         }
 
         if (terminalOutput.size() > 60) {
@@ -1370,38 +929,43 @@ public class VirtualCpu {
         }
     }
 
-    private void submitPeripheralRequest(String args, PeripheralBus.Operation operation) {
-        String[] operands = splitArgs(args, 0);
+    private void jumpIf(long word, boolean condition) {
+        if (!condition) return;
+        requireOperands(word, 1, "Jump requires target");
+        int destPc = readOperand(word, 0);
+        pc = Math.max(0, Math.min(destPc, binaryCode.length));
+    }
+
+    private void submitPeripheralRequest(long word, PeripheralBus.Operation operation) {
         boolean stringCall = operation == PeripheralBus.Operation.CALL_STRING;
         boolean call = stringCall || operation == PeripheralBus.Operation.CALL;
-        if (operands.length != (call ? 5 : 2)) {
+        if (opCount(word) != (call ? 5 : 2)) {
             throw new IllegalArgumentException(operation + " requires a destination and side" +
                     (call ? ", method, and two arguments" : ""));
         }
-        int side = resolveValue(operands[1]);
-        int method = call ? resolveValue(operands[2]) : 0;
-        int arg0 = call ? resolveValue(operands[3]) : 0;
-        int arg1 = call ? resolveValue(operands[4]) : 0;
+        int side = readOperand(word, 1);
+        int method = call ? readOperand(word, 2) : 0;
+        int arg0 = call ? readOperand(word, 3) : 0;
+        int arg1 = call ? readOperand(word, 4) : 0;
         if (peripheralBus.status() != PeripheralBus.IDLE) {
-            setDestination(operands[0], 0);
+            writeOperand(word, 0, 0);
             return;
         }
         String text = stringCall ? readGuestString(arg0, 256) : null;
         boolean accepted = peripheralBus.submit(operation, side, method, arg0, arg1, text);
-        setDestination(operands[0], accepted ? 1 : 0);
+        writeOperand(word, 0, accepted ? 1 : 0);
     }
 
-    private void readPeripheralText(String args) {
-        String[] operands = splitArgs(args, 0);
-        if (operands.length != 3) throw new IllegalArgumentException("PRESULTS requires dst, address, capacity");
-        int address = resolveValue(operands[1]);
-        int capacity = resolveValue(operands[2]);
+    private void readPeripheralText(long word) {
+        requireOperands(word, 3, "PRESULTS requires dst, address, capacity");
+        int address = readOperand(word, 1);
+        int capacity = readOperand(word, 2);
         verifyRamBuffer(address, capacity);
         String text = peripheralBus.consumeText();
         int count = Math.min(text.length(), Math.max(0, capacity - 1));
         for (int i = 0; i < count; i++) ram[address + i] = text.charAt(i);
         if (capacity > 0) ram[address + count] = 0;
-        setDestination(operands[0], count);
+        writeOperand(word, 0, count);
     }
 
     private String readGuestString(int address, int limit) {
@@ -1420,8 +984,8 @@ public class VirtualCpu {
         throw new IllegalArgumentException("Guest string exceeds " + limit + " characters");
     }
 
-    private void submitNetwork(String args, NetworkPort.Operation operation) {
-        String[] parts = splitArgs(args, 0);
+    private void submitNetwork(long word, NetworkPort.Operation operation) {
+        int count = opCount(word);
         int expected = switch (operation) {
             case OPEN, SEND, SEND_TEXT -> 4;
             case RECEIVE, LISTEN -> 3;
@@ -1429,39 +993,39 @@ public class VirtualCpu {
             case HTTP, HTTP3, RESPOND, RESPOND_TEXT -> 5;
         };
         boolean withTextFlag = (operation == NetworkPort.Operation.HTTP || operation == NetworkPort.Operation.HTTP3)
-                && parts.length == expected + 1;
-        if (parts.length != expected && !withTextFlag) {
+                && count == expected + 1;
+        if (count != expected && !withTextFlag) {
             throw new IllegalArgumentException(operation + " has an invalid operand count");
         }
         if (networkPort.status() != NetworkPort.IDLE) {
-            setDestination(parts[0], 0);
+            writeOperand(word, 0, 0);
             return;
         }
 
-        int arg0 = operation == NetworkPort.Operation.WEBSOCKET ? 0 : resolveValue(parts[1]);
+        int arg0 = operation == NetworkPort.Operation.WEBSOCKET ? 0 : readOperand(word, 1);
         int arg1 = 0;
         String text = null;
         byte[] data = null;
         switch (operation) {
             case OPEN -> {
-                text = readGuestString(resolveValue(parts[2]), NetworkPort.MAX_TEXT);
-                arg1 = resolveValue(parts[3]);
+                text = readGuestString(readOperand(word, 2), NetworkPort.MAX_TEXT);
+                arg1 = readOperand(word, 3);
             }
             case HTTP, HTTP3 -> {
-                text = readGuestString(resolveValue(parts[2]), NetworkPort.MAX_TEXT);
-                if (withTextFlag) arg1 = resolveValue(parts[5]);
-                data = copyNetworkBytes(resolveValue(parts[3]), resolveValue(parts[4]));
+                text = readGuestString(readOperand(word, 2), NetworkPort.MAX_TEXT);
+                if (withTextFlag) arg1 = readOperand(word, 5);
+                data = copyNetworkBytes(readOperand(word, 3), readOperand(word, 4));
             }
-            case WEBSOCKET -> text = readGuestString(resolveValue(parts[1]), NetworkPort.MAX_TEXT);
-            case SEND, SEND_TEXT -> data = copyNetworkBytes(resolveValue(parts[2]), resolveValue(parts[3]));
+            case WEBSOCKET -> text = readGuestString(readOperand(word, 1), NetworkPort.MAX_TEXT);
+            case SEND, SEND_TEXT -> data = copyNetworkBytes(readOperand(word, 2), readOperand(word, 3));
             case RESPOND, RESPOND_TEXT -> {
-                arg1 = resolveValue(parts[2]);
-                data = copyNetworkBytes(resolveValue(parts[3]), resolveValue(parts[4]));
+                arg1 = readOperand(word, 2);
+                data = copyNetworkBytes(readOperand(word, 3), readOperand(word, 4));
             }
-            case RECEIVE, LISTEN -> arg1 = resolveValue(parts[2]);
+            case RECEIVE, LISTEN -> arg1 = readOperand(word, 2);
             case CLOSE, TLS, ACCEPT -> {}
         }
-        setDestination(parts[0], networkPort.submit(new NetworkPort.Request(operation, arg0, arg1, text, data)) ? 1 : 0);
+        writeOperand(word, 0, networkPort.submit(new NetworkPort.Request(operation, arg0, arg1, text, data)) ? 1 : 0);
     }
 
     private byte[] copyNetworkBytes(int address, int length) {
@@ -1472,27 +1036,25 @@ public class VirtualCpu {
         return bytes;
     }
 
-    private void readNetworkResult(String args) {
-        String[] parts = splitArgs(args, 0);
-        if (parts.length != 3) throw new IllegalArgumentException("NRESULT requires dest, ram_dest, length");
-        int address = resolveValue(parts[1]);
-        int length = resolveValue(parts[2]);
+    private void readNetworkResult(long word) {
+        requireOperands(word, 3, "NRESULT requires dest, ram_dest, length");
+        int address = readOperand(word, 1);
+        int length = readOperand(word, 2);
         verifyRamBuffer(address, length);
         NetworkPort.Result result = networkPort.takeResult();
         if (result != null) {
             int count = Math.min(length, result.data().length);
             for (int i = 0; i < count; i++) ram[address + i] = Byte.toUnsignedInt(result.data()[i]);
         }
-        setDestination(parts[0], result == null ? 0 : result.value());
+        writeOperand(word, 0, result == null ? 0 : result.value());
     }
 
-    private void transcodeNetworkText(String args) {
-        String[] parts = splitArgs(args, 0);
-        if (parts.length != 5) throw new IllegalArgumentException("NUTF8 requires dst, source, count, target, capacity");
-        int source = resolveValue(parts[1]);
-        int count = resolveValue(parts[2]);
-        int target = resolveValue(parts[3]);
-        int capacity = resolveValue(parts[4]);
+    private void transcodeNetworkText(long word) {
+        requireOperands(word, 5, "NUTF8 requires dst, source, count, target, capacity");
+        int source = readOperand(word, 1);
+        int count = readOperand(word, 2);
+        int target = readOperand(word, 3);
+        int capacity = readOperand(word, 4);
         verifyRamBuffer(target, capacity);
         int limit = networkPort.transferLimit();
         if (count == -1) {
@@ -1500,32 +1062,32 @@ public class VirtualCpu {
             try {
                 bytes = readGuestString(source, limit).getBytes(StandardCharsets.UTF_8);
             } catch (IllegalArgumentException invalid) {
-                setDestination(parts[0], NetworkPort.LIMIT);
+                writeOperand(word, 0, NetworkPort.LIMIT);
                 return;
             }
             if (bytes.length > limit || (capacity != 0 && bytes.length > capacity)) {
-                setDestination(parts[0], NetworkPort.LIMIT);
+                writeOperand(word, 0, NetworkPort.LIMIT);
                 return;
             }
             if (capacity != 0) {
                 for (int i = 0; i < bytes.length; i++) ram[target + i] = Byte.toUnsignedInt(bytes[i]);
             }
-            setDestination(parts[0], bytes.length);
+            writeOperand(word, 0, bytes.length);
         } else {
             if (count < 0 || count > limit) {
-                setDestination(parts[0], NetworkPort.LIMIT);
+                writeOperand(word, 0, NetworkPort.LIMIT);
                 return;
             }
             String text = new String(copyNetworkBytes(source, count), StandardCharsets.UTF_8);
             if (capacity != 0 && text.length() >= capacity) {
-                setDestination(parts[0], NetworkPort.LIMIT);
+                writeOperand(word, 0, NetworkPort.LIMIT);
                 return;
             }
             if (capacity != 0) {
                 for (int i = 0; i < text.length(); i++) ram[target + i] = text.charAt(i);
                 ram[target + text.length()] = 0;
             }
-            setDestination(parts[0], text.length());
+            writeOperand(word, 0, text.length());
         }
     }
 
@@ -1533,172 +1095,6 @@ public class VirtualCpu {
         if (address < 0 || length < 0 || (long) address + length > ram.length) {
             throw new IndexOutOfBoundsException("Buffer extends outside RAM");
         }
-    }
-
-    private void execMov(String args) {
-        String[] parts = splitArgs(args, 2);
-        if (parts.length != 2) throw new IllegalArgumentException("MOV requires dest, src");
-        String dest = parts[0].trim();
-        String src = parts[1].trim();
-        int val = resolveValue(src);
-        setDestination(dest, val);
-    }
-
-    private void execAdd(String args) {
-        String[] parts = splitArgs(args, 2);
-        if (parts.length != 2) throw new IllegalArgumentException("ADD requires dest, src");
-        String dest = parts[0].trim();
-        int current = resolveValue(dest);
-        int addend = resolveValue(parts[1].trim());
-        int result = current + addend;
-        setDestination(dest, result);
-        updateFlags(result);
-    }
-
-    private void execSub(String args) {
-        String[] parts = splitArgs(args, 2);
-        if (parts.length != 2) throw new IllegalArgumentException("SUB requires dest, src");
-        String dest = parts[0].trim();
-        int current = resolveValue(dest);
-        int subtrahend = resolveValue(parts[1].trim());
-        int result = current - subtrahend;
-        setDestination(dest, result);
-        updateFlags(result);
-    }
-
-    private void execMul(String args) {
-        String[] parts = splitArgs(args, 2);
-        if (parts.length != 2) throw new IllegalArgumentException("MUL requires dest, src");
-        String dest = parts[0].trim();
-        int current = resolveValue(dest);
-        int factor = resolveValue(parts[1].trim());
-        int result = current * factor;
-        setDestination(dest, result);
-        updateFlags(result);
-    }
-
-    private void execDiv(String args) {
-        String[] parts = splitArgs(args, 2);
-        if (parts.length != 2) throw new IllegalArgumentException("DIV requires dest, src");
-        String dest = parts[0].trim();
-        int current = resolveValue(dest);
-        int divisor = resolveValue(parts[1].trim());
-        if (divisor == 0) throw new ArithmeticException("Division by zero");
-        int result = current / divisor;
-        setDestination(dest, result);
-        updateFlags(result);
-    }
-
-    private void execMod(String args) {
-        String[] parts = splitArgs(args, 2);
-        if (parts.length != 2) throw new IllegalArgumentException("MOD requires dest, src");
-        String dest = parts[0].trim();
-        int current = resolveValue(dest);
-        int divisor = resolveValue(parts[1].trim());
-        if (divisor == 0) throw new ArithmeticException("Modulo by zero");
-        int result = current % divisor;
-        setDestination(dest, result);
-        updateFlags(result);
-    }
-
-    private void execAnd(String args) {
-        String[] parts = splitArgs(args, 2);
-        if (parts.length != 2) throw new IllegalArgumentException("AND requires dest, src");
-        String dest = parts[0].trim();
-        int current = resolveValue(dest);
-        int val = resolveValue(parts[1].trim());
-        int result = current & val;
-        setDestination(dest, result);
-        updateFlags(result);
-    }
-
-    private void execOr(String args) {
-        String[] parts = splitArgs(args, 2);
-        if (parts.length != 2) throw new IllegalArgumentException("OR requires dest, src");
-        String dest = parts[0].trim();
-        int current = resolveValue(dest);
-        int val = resolveValue(parts[1].trim());
-        int result = current | val;
-        setDestination(dest, result);
-        updateFlags(result);
-    }
-
-    private void execXor(String args) {
-        String[] parts = splitArgs(args, 2);
-        if (parts.length != 2) throw new IllegalArgumentException("XOR requires dest, src");
-        String dest = parts[0].trim();
-        int current = resolveValue(dest);
-        int val = resolveValue(parts[1].trim());
-        int result = current ^ val;
-        setDestination(dest, result);
-        updateFlags(result);
-    }
-
-    private void execNot(String arg) {
-        String dest = arg.trim();
-        int current = resolveValue(dest);
-        int result = ~current;
-        setDestination(dest, result);
-        updateFlags(result);
-    }
-
-    private void execShl(String args) {
-        String[] parts = splitArgs(args, 2);
-        if (parts.length != 2) throw new IllegalArgumentException("SHL requires dest, count");
-        String dest = parts[0].trim();
-        int current = resolveValue(dest);
-        int count = resolveValue(parts[1].trim());
-        int result = current << count;
-        setDestination(dest, result);
-        updateFlags(result);
-    }
-
-    private void execShr(String args) {
-        String[] parts = splitArgs(args, 2);
-        if (parts.length != 2) throw new IllegalArgumentException("SHR requires dest, count");
-        String dest = parts[0].trim();
-        int current = resolveValue(dest);
-        int count = resolveValue(parts[1].trim());
-        int result = current >> count;
-        setDestination(dest, result);
-        updateFlags(result);
-    }
-
-    private void execInc(String arg) {
-        String reg = arg.trim();
-        int current = resolveValue(reg);
-        int result = current + 1;
-        setDestination(reg, result);
-        updateFlags(result);
-    }
-
-    private void execDec(String arg) {
-        String reg = arg.trim();
-        int current = resolveValue(reg);
-        int result = current - 1;
-        setDestination(reg, result);
-        updateFlags(result);
-    }
-
-    private void execCmp(String args) {
-        String[] parts = splitArgs(args, 2);
-        if (parts.length != 2) throw new IllegalArgumentException("CMP requires reg, val");
-        int left = resolveValue(parts[0].trim());
-        int right = resolveValue(parts[1].trim());
-        int diff = left - right;
-        updateFlags(diff);
-    }
-
-    private void execJmp(String target, boolean condition) {
-        if (!condition) return;
-        int dest = resolveTarget(target);
-        pc = Math.max(0, Math.min(dest, program.size()));
-    }
-
-    private void execCall(String target) {
-        int destPc = resolveTarget(target);
-        callStack.push(pc);
-        pc = Math.max(0, Math.min(destPc, program.size()));
     }
 
     private void execRet() {
@@ -1710,40 +1106,6 @@ public class VirtualCpu {
             interruptStack.pop();
             inInterruptHandler = !interruptStack.isEmpty();
         }
-    }
-
-    private void execPush(String arg) {
-        int val = resolveValue(arg.trim());
-        dataStack.push(val);
-    }
-
-    private void execPop(String dest) {
-        if (dataStack.isEmpty()) {
-            throw new IllegalStateException("POP on empty stack: Data stack underflow");
-        }
-        int val = dataStack.pop();
-        setDestination(dest.trim(), val);
-    }
-
-    private int resolveTarget(String target) {
-        target = target.trim();
-        String lower = target.toLowerCase(Locale.ROOT);
-        if (labels.containsKey(lower)) {
-            return labels.get(lower);
-        }
-        try {
-            return resolveValue(target);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Label or jump target not found: " + target);
-        }
-    }
-
-    private void execIvec(String args) {
-        String[] parts = args.split(",", 2);
-        if (parts.length != 2) throw new IllegalArgumentException("IVEC requires vector, handler");
-        int vec = parseVector(parts[0].trim());
-        int targetPc = resolveTarget(parts[1].trim());
-        ivt.put(vec, targetPc);
     }
 
     private void execIret() {
@@ -1763,15 +1125,16 @@ public class VirtualCpu {
         this.inInterruptHandler = !interruptStack.isEmpty();
     }
 
-    private void execInt(String args) {
-        int vec = parseVector(args.trim());
+    private void execInt(long word, int currentPc) {
+        requireOperands(word, 1, "INT requires vector");
+        int vec = readOperand(word, 0);
         if (ivt.containsKey(vec)) {
             interruptStack.push(new CpuContext(pc, regA, regB, regC, regD, flagZ, flagS, false));
             inInterruptHandler = true;
             regA = vec;
             pc = ivt.get(vec);
         } else {
-            triggerException(vec, "Software interrupt " + vec, pc - 1, "INT " + args);
+            triggerException(vec, "Software interrupt " + vec, currentPc, BinaryBytecode.formatInstructionSummary(word));
         }
     }
 
@@ -1793,24 +1156,6 @@ public class VirtualCpu {
         errorMessage = "Exception not handled: " + description + (lineNum >= 0 ? " at line " + lineNum + ": '" + lineCode + "'" : "");
         flushLineBuffer();
         terminalOutput.add("[CPU EXCEPTION] " + errorMessage);
-    }
-
-    private int parseVector(String token) {
-        token = token.trim();
-        String u = token.toUpperCase(Locale.ROOT);
-        return switch (u) {
-            case "DIV_ZERO", "DIV0", "ZERO" -> VEC_DIV_ZERO;
-            case "ILLEGAL_OPCODE", "OPCODE", "ILL" -> VEC_ILLEGAL_OPCODE;
-            case "OUT_OF_BOUNDS", "BOUNDS", "MEM_FAULT" -> VEC_OUT_OF_BOUNDS;
-            case "STACK_FAULT", "STACK" -> VEC_STACK_FAULT;
-            case "GENERAL_EXCEPTION", "EXCEPTION", "ERROR" -> VEC_GENERAL_EXCEPTION;
-            case "KEYBOARD", "KEY", "CHAR" -> VEC_KEYBOARD;
-            case "MOUSE_MOVE", "MOUSE_POS" -> VEC_MOUSE_MOVE;
-            case "MOUSE_CLICK", "CLICK" -> VEC_MOUSE_CLICK;
-            case "TIMER", "VBLANK", "VBL", "NMI", "FRAME" -> VEC_TIMER;
-            case "RESET", "RST" -> VEC_RESET;
-            default -> resolveValue(token);
-        };
     }
 
     public void queueResetInterrupt() {
@@ -1896,36 +1241,14 @@ public class VirtualCpu {
         utf8ByteBuf.reset();
     }
 
-    private void execSleep(String arg) {
-        int ticks = resolveValue(arg.trim());
-        if (ticks > 0) {
-            this.sleepTicksRemaining = ticks;
+    private void execInpad(long word) {
+        int count = opCount(word);
+        if (count < 1 || count > 2) {
+            throw new IllegalArgumentException("INPAD requires dest [, pad]");
         }
-    }
-
-    private void execTime(String dest) {
-        long t = timeSupplier != null ? timeSupplier.getAsLong() : 0L;
-        setDestination(dest.trim(), (int) (t & 0x7FFFFFFF));
-    }
-
-    private void execRand(String args) {
-        String[] parts = args.split(",", 2);
-        if (parts.length != 2) throw new IllegalArgumentException("RAND requires dest, max");
-        String dest = parts[0].trim();
-        int max = resolveValue(parts[1].trim());
-        int val = (max > 0) ? random.nextInt(max) : 0;
-        setDestination(dest, val);
-    }
-
-    private void execInpad(String args) {
-        String[] parts = args.split(",", 2);
-        String dest = parts[0].trim();
-        int padId = 0;
-        if (parts.length > 1) {
-            padId = resolveValue(parts[1].trim());
-        }
+        int padId = count == 2 ? readOperand(word, 1) : 0;
         int padMask = getPadState(padId);
-        setDestination(dest, padMask);
+        writeOperand(word, 0, padMask);
     }
 
     public void setPadState(int padId, int bitmask) {
@@ -1948,12 +1271,11 @@ public class VirtualCpu {
         return input == null ? 0 : input.axis(axis);
     }
 
-    private void execInaxis(String args) {
-        String[] parts = splitArgs(args, 3);
-        if (parts.length != 3) throw new IllegalArgumentException("INAXIS requires destination, pad, axis");
-        int pad = resolveValue(parts[1].trim());
-        int axis = resolveValue(parts[2].trim());
-        setDestination(parts[0].trim(), getPadAxis(pad, axis));
+    private void execInaxis(long word) {
+        requireOperands(word, 3, "INAXIS requires destination, pad, axis");
+        int pad = readOperand(word, 1);
+        int axis = readOperand(word, 2);
+        writeOperand(word, 0, getPadAxis(pad, axis));
     }
 
     public int getPadState(int padId) {
@@ -1972,21 +1294,13 @@ public class VirtualCpu {
         return 0;
     }
 
-    private void execTimer(String arg) {
-        int hz = resolveValue(arg.trim());
-        setTimerHz(hz);
-    }
-
-    private void execVblank(String arg) {
-        String trimmed = arg.trim();
-        if (trimmed.isEmpty() || trimmed.equals("1") || trimmed.equalsIgnoreCase("true") || trimmed.equalsIgnoreCase("ON")) {
+    private void execVblank(long word) {
+        if (opCount(word) == 0) {
             setTimerHz(60);
-        } else if (trimmed.equals("0") || trimmed.equalsIgnoreCase("false") || trimmed.equalsIgnoreCase("OFF")) {
-            setTimerHz(0);
-        } else {
-            int val = resolveValue(trimmed);
-            setTimerHz(val > 0 ? 60 : 0);
+            return;
         }
+        int val = readOperand(word, 0);
+        setTimerHz(val > 0 ? 60 : 0);
     }
 
     public void setTimerHz(int hz) {
@@ -2000,38 +1314,27 @@ public class VirtualCpu {
         return timerHz;
     }
 
-    public Map<String, Integer> getDataLabels() {
-        return Collections.unmodifiableMap(dataLabels);
-    }
-
-    private void execSSize(String args) {
-        String[] parts = args.split(",", 2);
-        int d = selectedDrive;
-        String dest;
-        if (parts.length == 2) {
-            dest = parts[0].trim();
-            d = resolveValue(parts[1].trim());
-        } else {
-            dest = parts[0].trim();
+    private void execSSize(long word) {
+        int count = opCount(word);
+        if (count < 1 || count > 2) {
+            throw new IllegalArgumentException("SSIZE requires dest [, drive]");
         }
+        int d = count == 2 ? readOperand(word, 1) : selectedDrive;
         long sz = getDriveCapacity(d);
-        setDestination(dest, (int) sz);
+        writeOperand(word, 0, (int) sz);
         flagZ = (sz == 0);
         flagS = false;
     }
 
-    private void execSRead(String args) {
-        String[] parts = args.split(",");
-        String dest;
+    private void execSRead(long word) {
+        int count = opCount(word);
         int d = selectedDrive;
         int addr;
-        if (parts.length == 3) {
-            dest = parts[0].trim();
-            d = resolveValue(parts[1].trim());
-            addr = resolveValue(parts[2].trim());
-        } else if (parts.length == 2) {
-            dest = parts[0].trim();
-            addr = resolveValue(parts[1].trim());
+        if (count == 3) {
+            d = readOperand(word, 1);
+            addr = readOperand(word, 2);
+        } else if (count == 2) {
+            addr = readOperand(word, 1);
         } else {
             throw new IllegalArgumentException("SREAD requires dest, [drive,] addr");
         }
@@ -2040,28 +1343,28 @@ public class VirtualCpu {
             DriveStorage drive = storageDrives[d];
             if (drive != null) drive.read(addr, storageBuffer, 1);
             int val = drive == null ? 0 : Byte.toUnsignedInt(storageBuffer[0]);
-            setDestination(dest, val);
+            writeOperand(word, 0, val);
             flagZ = (val == 0);
             flagS = false;
         } else {
-            setDestination(dest, 0);
+            writeOperand(word, 0, 0);
             flagZ = true;
             flagS = true;
         }
     }
 
-    private void execSWrite(String args) {
-        String[] parts = args.split(",");
+    private void execSWrite(long word) {
+        int count = opCount(word);
         int d = selectedDrive;
         int addr;
         int val;
-        if (parts.length == 3) {
-            d = resolveValue(parts[0].trim());
-            addr = resolveValue(parts[1].trim());
-            val = resolveValue(parts[2].trim());
-        } else if (parts.length == 2) {
-            addr = resolveValue(parts[0].trim());
-            val = resolveValue(parts[1].trim());
+        if (count == 3) {
+            d = readOperand(word, 0);
+            addr = readOperand(word, 1);
+            val = readOperand(word, 2);
+        } else if (count == 2) {
+            addr = readOperand(word, 0);
+            val = readOperand(word, 1);
         } else {
             throw new IllegalArgumentException("SWRITE requires [drive,] addr, val");
         }
@@ -2078,46 +1381,46 @@ public class VirtualCpu {
         }
     }
 
-    private void execSBlkr(String args) {
-        String[] parts = args.split(",");
+    private void execSBlkr(long word) {
+        int count = opCount(word);
         int rAddr;
         int d = selectedDrive;
         int sAddr;
-        int count;
-        if (parts.length == 4) {
-            rAddr = resolveValue(parts[0].trim());
-            d = resolveValue(parts[1].trim());
-            sAddr = resolveValue(parts[2].trim());
-            count = resolveValue(parts[3].trim());
-        } else if (parts.length == 3) {
-            rAddr = resolveValue(parts[0].trim());
-            sAddr = resolveValue(parts[1].trim());
-            count = resolveValue(parts[2].trim());
+        int len;
+        if (count == 4) {
+            rAddr = readOperand(word, 0);
+            d = readOperand(word, 1);
+            sAddr = readOperand(word, 2);
+            len = readOperand(word, 3);
+        } else if (count == 3) {
+            rAddr = readOperand(word, 0);
+            sAddr = readOperand(word, 1);
+            len = readOperand(word, 2);
         } else {
             throw new IllegalArgumentException("SBLKR requires ram_dest, [drive,] storage_addr, count");
         }
-        transferStorage(d, sAddr, rAddr, count, false);
+        transferStorage(d, sAddr, rAddr, len, false);
     }
 
-    private void execSBlkw(String args) {
-        String[] parts = args.split(",");
+    private void execSBlkw(long word) {
+        int count = opCount(word);
         int d = selectedDrive;
         int sAddr;
         int rAddr;
-        int count;
-        if (parts.length == 4) {
-            d = resolveValue(parts[0].trim());
-            sAddr = resolveValue(parts[1].trim());
-            rAddr = resolveValue(parts[2].trim());
-            count = resolveValue(parts[3].trim());
-        } else if (parts.length == 3) {
-            sAddr = resolveValue(parts[0].trim());
-            rAddr = resolveValue(parts[1].trim());
-            count = resolveValue(parts[2].trim());
+        int len;
+        if (count == 4) {
+            d = readOperand(word, 0);
+            sAddr = readOperand(word, 1);
+            rAddr = readOperand(word, 2);
+            len = readOperand(word, 3);
+        } else if (count == 3) {
+            sAddr = readOperand(word, 0);
+            rAddr = readOperand(word, 1);
+            len = readOperand(word, 2);
         } else {
             throw new IllegalArgumentException("SBLKW requires [drive,] storage_addr, ram_src, count");
         }
-        transferStorage(d, sAddr, rAddr, count, true);
+        transferStorage(d, sAddr, rAddr, len, true);
     }
 
     private void transferStorage(int drive, int storageAddress, int ramAddress, int count, boolean write) {
@@ -2155,15 +1458,17 @@ public class VirtualCpu {
         if (driveWriteListener != null) driveWriteListener.accept(drive, getStorageDrive(drive));
     }
 
-    private void execSCount(String dest) {
+    private void execSCount(long word) {
+        requireOperands(word, 1, "SCOUNT requires dest");
         int count = getStorageDriveCount();
-        setDestination(dest.trim(), count);
+        writeOperand(word, 0, count);
         flagZ = (count == 0);
         flagS = false;
     }
 
-    private void execSSel(String args) {
-        int d = resolveValue(args.trim());
+    private void execSSel(long word) {
+        requireOperands(word, 1, "SSEL requires drive");
+        int d = readOperand(word, 0);
         if (d >= 0 && d < MAX_DRIVES) {
             selectedDrive = d;
             long cap = getDriveCapacity(d);
@@ -2175,24 +1480,28 @@ public class VirtualCpu {
         }
     }
 
-    private void execSDrv(String dest) {
-        setDestination(dest.trim(), selectedDrive);
+    private void execSDrv(long word) {
+        requireOperands(word, 1, "SDRV requires dest");
+        writeOperand(word, 0, selectedDrive);
         flagZ = (selectedDrive == 0);
         flagS = false;
     }
 
-    private void execSExec(String args) {
-        int drive = resolveValue(args.trim());
+    private void execSExec(long word, int currentPc) {
+        requireOperands(word, 1, "SEXEC requires drive");
+        int drive = readOperand(word, 0);
+        String summary = BinaryBytecode.formatInstructionSummary(word);
         if (drive < 0 || drive >= MAX_DRIVES) {
-            triggerException(VEC_OUT_OF_BOUNDS, "Drive index " + drive + " out of bounds", pc - 1, "SEXEC " + args);
+            triggerException(VEC_OUT_OF_BOUNDS, "Drive index " + drive + " out of bounds", currentPc, summary);
             return;
         }
 
-        List<String> targetProgram = drivePrograms.get(drive);
-        if (targetProgram == null || targetProgram.isEmpty()) {
-            // Check if binary storage on drive contains plain UTF-8 text lines
-            byte[] bytes = readDrivePrefix(drive, 4 * 1024 * 1024);
-            if (bytes != null && bytes.length > 0) {
+        byte[] targetBinary = driveBinaries.get(drive);
+        if (targetBinary == null || targetBinary.length == 0) {
+            byte[] bytes = readDrivePrefix(drive, 16 * 1024 * 1024);
+            if (BinaryBytecode.isScbc(bytes)) {
+                targetBinary = bytes;
+            } else if (bytes != null && bytes.length > 0) {
                 int len = 0;
                 while (len < bytes.length && bytes[len] != 0) {
                     len++;
@@ -2200,36 +1509,33 @@ public class VirtualCpu {
                 if (len > 0) {
                     String src = new String(bytes, 0, len, StandardCharsets.UTF_8).trim();
                     if (!src.isEmpty()) {
-                        String[] lines = src.split("\\r?\\n");
-                        targetProgram = new ArrayList<>();
-                        for (String l : lines) {
-                            targetProgram.add(l);
+                        Assembler.AssemblerResult assembled = Assembler.assemble(Arrays.asList(src.split("\\r?\\n")));
+                        if (!assembled.success()) {
+                            triggerException(VEC_GENERAL_EXCEPTION, "Drive assembly failed: " + String.join("; ", assembled.errors()), currentPc, summary);
+                            return;
                         }
+                        targetBinary = assembled.bytecode();
                     }
                 }
             }
         }
 
-        if (targetProgram == null || targetProgram.isEmpty()) {
-            triggerException(VEC_GENERAL_EXCEPTION, "No executable program on storage drive " + drive, pc - 1, "SEXEC " + args);
+        if (targetBinary == null || targetBinary.length == 0) {
+            triggerException(VEC_GENERAL_EXCEPTION, "No executable program on storage drive " + drive, currentPc, summary);
             return;
         }
 
-        // Validate that all instructions in target program are supported by this CPU
-        Set<String> req = InstructionValidator.getRequiredInstructions(targetProgram);
+        Set<String> req = BinaryBytecode.getRequiredInstructions(targetBinary);
         List<String> missing = InstructionValidator.getMissingInstructions(req, new ArrayList<>(supportedInstructions));
         if (!missing.isEmpty()) {
-            triggerException(VEC_ILLEGAL_OPCODE, "Target drive program uses unsupported instructions: " + missing, pc - 1, "SEXEC " + args);
+            triggerException(VEC_ILLEGAL_OPCODE, "Target drive program uses unsupported instructions: " + missing, currentPc, summary);
             return;
         }
 
-        // Load new program image
         networkPort.reset();
         peripheralBus.reset();
-        this.program.clear();
-        this.program.addAll(targetProgram);
-        preprocessLabels();
-        compileBytecode();
+        applyBinaryImage(targetBinary);
+        loadStaticData();
         this.callStack.clear();
         this.pc = 0;
         this.selectedDrive = drive;
@@ -2239,19 +1545,19 @@ public class VirtualCpu {
     }
 
     // --- Framebuffer Instructions ---
-    private void execFbMode(String args) {
-        int mode = resolveValue(args.trim());
+    private void execFbMode(long word) {
+        requireOperands(word, 1, "FBMODE requires mode");
+        int mode = readOperand(word, 0);
         displayMode = mode;
         gpu.setDisplayMode(mode);
         fbDirty = true;
     }
 
-    private void execFbSet(String args) {
-        String[] parts = args.split(",", 3);
-        if (parts.length != 3) throw new IllegalArgumentException("FBSET requires x, y, color");
-        int x = resolveValue(parts[0].trim());
-        int y = resolveValue(parts[1].trim());
-        int color = resolveValue(parts[2].trim());
+    private void execFbSet(long word) {
+        requireOperands(word, 3, "FBSET requires x, y, color");
+        int x = readOperand(word, 0);
+        int y = readOperand(word, 1);
+        int color = readOperand(word, 2);
         if (isUsingGpu()) {
             gpu.submitSetPixel(x, y, color);
             return;
@@ -2263,23 +1569,22 @@ public class VirtualCpu {
         }
     }
 
-    private void execFbGet(String args) {
-        String[] parts = args.split(",", 3);
-        if (parts.length != 3) throw new IllegalArgumentException("FBGET requires dest, x, y");
-        String dest = parts[0].trim();
-        int x = resolveValue(parts[1].trim());
-        int y = resolveValue(parts[2].trim());
+    private void execFbGet(long word) {
+        requireOperands(word, 3, "FBGET requires dest, x, y");
+        int x = readOperand(word, 1);
+        int y = readOperand(word, 2);
         int color = 0;
         if (isUsingGpu()) {
             color = gpu.getBackPixel(x, y);
         } else if (x >= 0 && x < FB_WIDTH && y >= 0 && y < FB_HEIGHT) {
             color = framebuffer[y * FB_WIDTH + x];
         }
-        setDestination(dest, color);
+        writeOperand(word, 0, color);
     }
 
-    private void execFbClr(String args) {
-        int color = resolveValue(args.trim());
+    private void execFbClr(long word) {
+        requireOperands(word, 1, "FBCLR requires color");
+        int color = readOperand(word, 0);
         if (isUsingGpu()) {
             gpu.submitClear(color);
             return;
@@ -2289,14 +1594,13 @@ public class VirtualCpu {
         fbDirty = true;
     }
 
-    private void execFbRect(String args) {
-        String[] parts = args.split(",", 5);
-        if (parts.length != 5) throw new IllegalArgumentException("FBRECT requires x, y, w, h, color");
-        int rx = resolveValue(parts[0].trim());
-        int ry = resolveValue(parts[1].trim());
-        int rw = resolveValue(parts[2].trim());
-        int rh = resolveValue(parts[3].trim());
-        int color = resolveValue(parts[4].trim());
+    private void execFbRect(long word) {
+        requireOperands(word, 5, "FBRECT requires x, y, w, h, color");
+        int rx = readOperand(word, 0);
+        int ry = readOperand(word, 1);
+        int rw = readOperand(word, 2);
+        int rh = readOperand(word, 3);
+        int color = readOperand(word, 4);
         if (isUsingGpu()) {
             gpu.submitFillRect(rx, ry, rw, rh, color);
             return;
@@ -2317,14 +1621,13 @@ public class VirtualCpu {
         }
     }
 
-    private void execFbLine(String args) {
-        String[] parts = args.split(",", 5);
-        if (parts.length != 5) throw new IllegalArgumentException("FBLINE requires x1, y1, x2, y2, color");
-        int x0 = resolveValue(parts[0].trim());
-        int y0 = resolveValue(parts[1].trim());
-        int x1 = resolveValue(parts[2].trim());
-        int y1 = resolveValue(parts[3].trim());
-        int color = resolveValue(parts[4].trim());
+    private void execFbLine(long word) {
+        requireOperands(word, 5, "FBLINE requires x1, y1, x2, y2, color");
+        int x0 = readOperand(word, 0);
+        int y0 = readOperand(word, 1);
+        int x1 = readOperand(word, 2);
+        int y1 = readOperand(word, 3);
+        int color = readOperand(word, 4);
         if (isUsingGpu()) {
             gpu.submitDrawLine(x0, y0, x1, y1, color);
             return;
@@ -2342,11 +1645,9 @@ public class VirtualCpu {
         int minorDirection = (xMajor ? y0 <= y1 : x0 <= x1) ? 1 : -1;
         int majorLimit = (xMajor ? FB_WIDTH : FB_HEIGHT) - 1;
 
-        // Skip steps outside the visible major axis while preserving Bresenham's tie-breaking.
         long firstStep = Math.max(0, majorDirection > 0 ? -majorStart : majorStart - majorLimit);
         long lastStep = Math.min(majorLength, majorDirection > 0 ? majorLimit - majorStart : majorStart);
         for (long step = firstStep; step <= lastStep; step++) {
-            // The numerator fits in an unsigned long even for opposite int extremes.
             long minorStep = majorLength == 0 ? 0
                     : Long.divideUnsigned(step * minorLength + (majorLength - 1) / 2, majorLength);
             long major = majorStart + step * majorDirection;
@@ -2360,14 +1661,13 @@ public class VirtualCpu {
         fbDirty = true;
     }
 
-    private void execFbLit(String args) {
-        String[] parts = args.split(",", 5);
-        if (parts.length != 5) throw new IllegalArgumentException("FBLIT requires x, y, ram_src, w, h");
-        int dx = resolveValue(parts[0].trim());
-        int dy = resolveValue(parts[1].trim());
-        int ramSrc = resolveValue(parts[2].trim());
-        int bw = resolveValue(parts[3].trim());
-        int bh = resolveValue(parts[4].trim());
+    private void execFbLit(long word) {
+        requireOperands(word, 5, "FBLIT requires x, y, ram_src, w, h");
+        int dx = readOperand(word, 0);
+        int dy = readOperand(word, 1);
+        int ramSrc = readOperand(word, 2);
+        int bw = readOperand(word, 3);
+        int bh = readOperand(word, 4);
         if (isUsingGpu()) {
             gpu.submitBlitFromRam(dx, dy, ram, ramSrc, bw, bh, false);
             return;
@@ -2404,8 +1704,9 @@ public class VirtualCpu {
         }
     }
 
-    private void execGfxSel(String args) {
-        int mode = resolveValue(args.trim());
+    private void execGfxSel(long word) {
+        requireOperands(word, 1, "GFXSEL requires mode");
+        int mode = readOperand(word, 0);
         GraphicsHandler target = switch (mode) {
             case 1 -> GraphicsHandler.CPU;
             case 2 -> GraphicsHandler.GPU;
@@ -2416,12 +1717,12 @@ public class VirtualCpu {
         flagS = false;
     }
 
-    private void execGfxStat(String args) {
-        String[] parts = splitArgs(args, 0);
-        if (parts.length < 1 || parts.length > 2) {
+    private void execGfxStat(long word) {
+        int count = opCount(word);
+        if (count < 1 || count > 2) {
             throw new IllegalArgumentException("GFXSTAT requires dest [, query]");
         }
-        int query = parts.length == 2 ? resolveValue(parts[1].trim()) : 0;
+        int query = count == 2 ? readOperand(word, 1) : 0;
         int result = switch (query) {
             case 0 -> gpu.isInstalled() ? 1 : 0;
             case 1 -> isUsingGpu() ? 1 : 0;
@@ -2434,60 +1735,60 @@ public class VirtualCpu {
             case 8 -> gpu.getFramesPresented();
             default -> 0;
         };
-        setDestination(parts[0].trim(), result);
+        writeOperand(word, 0, result);
         flagZ = (result == 0);
         flagS = (result < 0);
     }
 
-    private void execGpuClr(String args) {
+    private void execGpuClr(long word) {
         requireGpuFeature("GPUCLR");
-        int color = resolveValue(args.trim());
+        requireOperands(word, 1, "GPUCLR requires color");
+        int color = readOperand(word, 0);
         gpu.submitClear(color);
     }
 
-    private void execGpuRect(String args) {
+    private void execGpuRect(long word) {
         requireGpuFeature("GPURECT");
-        String[] parts = splitArgs(args, 5);
-        if (parts.length != 5) throw new IllegalArgumentException("GPURECT requires x, y, w, h, color");
+        requireOperands(word, 5, "GPURECT requires x, y, w, h, color");
         gpu.submitFillRect(
-                resolveValue(parts[0].trim()),
-                resolveValue(parts[1].trim()),
-                resolveValue(parts[2].trim()),
-                resolveValue(parts[3].trim()),
-                resolveValue(parts[4].trim())
+                readOperand(word, 0),
+                readOperand(word, 1),
+                readOperand(word, 2),
+                readOperand(word, 3),
+                readOperand(word, 4)
         );
     }
 
-    private void execGpuLine(String args) {
+    private void execGpuLine(long word) {
         requireGpuFeature("GPULINE");
-        String[] parts = splitArgs(args, 5);
-        if (parts.length != 5) throw new IllegalArgumentException("GPULINE requires x1, y1, x2, y2, color");
+        requireOperands(word, 5, "GPULINE requires x1, y1, x2, y2, color");
         gpu.submitDrawLine(
-                resolveValue(parts[0].trim()),
-                resolveValue(parts[1].trim()),
-                resolveValue(parts[2].trim()),
-                resolveValue(parts[3].trim()),
-                resolveValue(parts[4].trim())
+                readOperand(word, 0),
+                readOperand(word, 1),
+                readOperand(word, 2),
+                readOperand(word, 3),
+                readOperand(word, 4)
         );
     }
 
-    private void execGpuCirc(String args) {
+    private void execGpuCirc(long word) {
         requireGpuFeature("GPUCIRC");
-        String[] parts = splitArgs(args, 0);
-        if (parts.length < 4 || parts.length > 5) {
+        int count = opCount(word);
+        if (count < 4 || count > 5) {
             throw new IllegalArgumentException("GPUCIRC requires cx, cy, r, color [, filled]");
         }
-        int cx = resolveValue(parts[0].trim());
-        int cy = resolveValue(parts[1].trim());
-        int r = resolveValue(parts[2].trim());
-        int color = resolveValue(parts[3].trim());
-        boolean filled = parts.length < 5 || resolveValue(parts[4].trim()) != 0;
+        int cx = readOperand(word, 0);
+        int cy = readOperand(word, 1);
+        int r = readOperand(word, 2);
+        int color = readOperand(word, 3);
+        boolean filled = count < 5 || readOperand(word, 4) != 0;
         gpu.submitDrawCircle(cx, cy, r, color, filled);
     }
 
-    private void execGpuTri(String args) {
+    private void execGpuTri(long word) {
         requireGpuFeature("GPUTRI");
-        int addr = resolveValue(args.trim());
+        requireOperands(word, 1, "GPUTRI requires addr");
+        int addr = readOperand(word, 0);
         verifyRamBuffer(addr, 7);
         gpu.submitFillTriangle(
                 ram[addr],
@@ -2500,26 +1801,24 @@ public class VirtualCpu {
         );
     }
 
-    private void execGpuVram(String args) {
+    private void execGpuVram(long word) {
         requireGpuFeature("GPUVRAM");
-        String[] parts = splitArgs(args, 3);
-        if (parts.length != 3) throw new IllegalArgumentException("GPUVRAM requires vram_offset, ram_src, count");
-        int vramOffset = resolveValue(parts[0].trim());
-        int ramSrc = resolveValue(parts[1].trim());
-        int count = resolveValue(parts[2].trim());
+        requireOperands(word, 3, "GPUVRAM requires vram_offset, ram_src, count");
+        int vramOffset = readOperand(word, 0);
+        int ramSrc = readOperand(word, 1);
+        int count = readOperand(word, 2);
         gpu.uploadVram(vramOffset, ram, ramSrc, count);
     }
 
-    private void execGpuBlit(String args) {
+    private void execGpuBlit(long word) {
         requireGpuFeature("GPUBLIT");
-        String[] parts = splitArgs(args, 5);
-        if (parts.length != 5) throw new IllegalArgumentException("GPUBLIT requires x, y, vram_offset, w, h");
+        requireOperands(word, 5, "GPUBLIT requires x, y, vram_offset, w, h");
         gpu.submitBlitFromVram(
-                resolveValue(parts[0].trim()),
-                resolveValue(parts[1].trim()),
-                resolveValue(parts[2].trim()),
-                resolveValue(parts[3].trim()),
-                resolveValue(parts[4].trim()),
+                readOperand(word, 0),
+                readOperand(word, 1),
+                readOperand(word, 2),
+                readOperand(word, 3),
+                readOperand(word, 4),
                 true
         );
     }
@@ -2551,19 +1850,19 @@ public class VirtualCpu {
         }
     }
 
-    private synchronized void execAPush(String args) {
-        int sample = resolveValue(args.trim()) & 0xFF;
+    private synchronized void execAPush(long word) {
+        requireOperands(word, 1, "APUSH requires sample");
+        int sample = readOperand(word, 0) & 0xFF;
         ensureAudioQueueCapacity(audioCount + 1);
         audioQueue[audioTail] = (byte) sample;
         audioTail = (audioTail + 1) % audioQueue.length;
         audioCount++;
     }
 
-    private synchronized void execABufw(String args) {
-        String[] parts = args.split(",", 2);
-        if (parts.length != 2) throw new IllegalArgumentException("ABUFW requires ram_src, count");
-        int ramSrc = resolveValue(parts[0].trim());
-        int count = resolveValue(parts[1].trim());
+    private synchronized void execABufw(long word) {
+        requireOperands(word, 2, "ABUFW requires ram_src, count");
+        int ramSrc = readOperand(word, 0);
+        int count = readOperand(word, 1);
         ensureAudioQueueCapacity(audioCount + count);
         for (int i = 0; i < count; i++) {
             int rAddr = ramSrc + i;
@@ -2582,16 +1881,14 @@ public class VirtualCpu {
         audioTriggered = false;
     }
 
-    private synchronized void execATone(String args) {
-        String[] parts = args.split(",", 2);
-        if (parts.length != 2) throw new IllegalArgumentException("ATONE requires freq, duration_ms");
-        int freq = resolveValue(parts[0].trim());
-        int ms = resolveValue(parts[1].trim());
+    private synchronized void execATone(long word) {
+        requireOperands(word, 2, "ATONE requires freq, duration_ms");
+        int freq = readOperand(word, 0);
+        int ms = readOperand(word, 1);
         if (ms > 0) {
             int numSamples = (int) ((8000L * ms) / 1000L);
             ensureAudioQueueCapacity(audioCount + numSamples);
             if (freq <= 0) {
-                // Pause / silence: 128 is center (silence) in 8-bit unsigned PCM
                 for (int i = 0; i < numSamples; i++) {
                     audioQueue[audioTail] = (byte) 128;
                     audioTail = (audioTail + 1) % audioQueue.length;
@@ -2713,97 +2010,58 @@ public class VirtualCpu {
         gpu.setFbDirty(false);
     }
 
-    private void execOut(String args) {
-        args = args.trim();
-        boolean newline = true;
-        String valPart = args;
+    private boolean isNewlineFlag(long word) {
+        int fmt = BinaryBytecode.extractFormat(word);
+        return switch (fmt) {
+            case BinaryBytecode.FMT_2 -> (BinaryBytecode.extractFlags(word) & 1) != 0;
+            case BinaryBytecode.FMT_0 -> (BinaryBytecode.extractFmt0Aux(word) & 1) != 0;
+            case BinaryBytecode.FMT_3 -> (BinaryBytecode.extractFmt3Aux(word) & 1) != 0;
+            default -> false;
+        };
+    }
 
-        int lastComma = args.lastIndexOf(',');
-        if (lastComma != -1) {
-            boolean insideQuotes = false;
-            char quoteChar = 0;
-            int commaOutside = -1;
-            for (int i = 0; i < args.length(); i++) {
-                char c = args.charAt(i);
-                if ((c == '\"' || c == '\'') && (i == 0 || args.charAt(i - 1) != '\\')) {
-                    if (insideQuotes && c == quoteChar) insideQuotes = false;
-                    else if (!insideQuotes) { insideQuotes = true; quoteChar = c; }
-                } else if (c == ',' && !insideQuotes) {
-                    commaOutside = i;
-                }
-            }
-            if (commaOutside != -1) {
-                valPart = args.substring(0, commaOutside).trim();
-                String flag = args.substring(commaOutside + 1).trim().toLowerCase(Locale.ROOT);
-                if (flag.equals("0") || flag.equals("cont") || flag.equals("no_nl") || flag.equals("false")) {
-                    newline = false;
-                }
-            }
+    private String readRodata(int idx) {
+        if (idx < 0 || idx >= binaryRodata.length) {
+            throw new IllegalArgumentException("Invalid .rodata index: " + idx);
         }
+        return binaryRodata[idx];
+    }
 
-        if ((valPart.startsWith("\"") && valPart.endsWith("\"")) || (valPart.startsWith("'") && valPart.endsWith("'"))) {
-            lineBuffer.append(stripQuotes(valPart));
-        } else {
-            int val = resolveValue(valPart);
-            lineBuffer.append(val);
+    private void execOut(long word) {
+        boolean newline = isNewlineFlag(word);
+        if (BinaryBytecode.extractFormat(word) == BinaryBytecode.FMT_2) {
+            lineBuffer.append(readRodata(BinaryBytecode.extractImm32(word)));
+        } else if (opCount(word) > 0) {
+            lineBuffer.append(readOperand(word, 0));
         }
-
         if (newline) {
             flushLineBuffer();
         }
     }
 
-    private void execOuth(String args) {
-        args = args.trim();
-        boolean newline = true;
-        String valPart = args;
-
-        int lastComma = args.lastIndexOf(',');
-        if (lastComma != -1) {
-            boolean insideQuotes = false;
-            char quoteChar = 0;
-            int commaOutside = -1;
-            for (int i = 0; i < args.length(); i++) {
-                char c = args.charAt(i);
-                if ((c == '\"' || c == '\'') && (i == 0 || args.charAt(i - 1) != '\\')) {
-                    if (insideQuotes && c == quoteChar) insideQuotes = false;
-                    else if (!insideQuotes) { insideQuotes = true; quoteChar = c; }
-                } else if (c == ',' && !insideQuotes) {
-                    commaOutside = i;
-                }
-            }
-            if (commaOutside != -1) {
-                valPart = args.substring(0, commaOutside).trim();
-                String flag = args.substring(commaOutside + 1).trim().toLowerCase(Locale.ROOT);
-                if (flag.equals("0") || flag.equals("cont") || flag.equals("no_nl") || flag.equals("false")) {
-                    newline = false;
-                }
-            }
-        }
-
-        if ((valPart.startsWith("\"") && valPart.endsWith("\"")) || (valPart.startsWith("'") && valPart.endsWith("'"))) {
-            lineBuffer.append(stripQuotes(valPart));
-        } else {
-            int val = resolveValue(valPart);
+    private void execOuth(long word) {
+        boolean newline = isNewlineFlag(word);
+        if (BinaryBytecode.extractFormat(word) == BinaryBytecode.FMT_2) {
+            lineBuffer.append(readRodata(BinaryBytecode.extractImm32(word)));
+        } else if (opCount(word) > 0) {
+            int val = readOperand(word, 0);
             lineBuffer.append("0x").append(Integer.toHexString(val).toUpperCase(Locale.ROOT));
         }
-
         if (newline) {
             flushLineBuffer();
         }
     }
 
-    private void execOutc(String arg) {
-        arg = arg.trim();
-        if ((arg.startsWith("\"") && arg.endsWith("\"")) || (arg.startsWith("'") && arg.endsWith("'"))) {
-            String s = stripQuotes(arg);
+    private void execOutc(long word) {
+        if (BinaryBytecode.extractFormat(word) == BinaryBytecode.FMT_2) {
+            String s = readRodata(BinaryBytecode.extractImm32(word));
             for (byte b : s.getBytes(StandardCharsets.UTF_8)) {
                 emitCharByte(b & 0xFF);
             }
             return;
         }
-        int val = resolveValue(arg);
-        emitCharByte(val);
+        requireOperands(word, 1, "OUTC requires character");
+        emitCharByte(readOperand(word, 0));
     }
 
     private void emitCharByte(int val) {
@@ -2896,14 +2154,6 @@ public class VirtualCpu {
         }
     }
 
-    private String stripQuotes(String s) {
-        if (s.length() >= 2 && ((s.startsWith("\"") && s.endsWith("\"")) || (s.startsWith("'") && s.endsWith("'")))) {
-            s = s.substring(1, s.length() - 1);
-            s = s.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r").replace("\\\"", "\"").replace("\\\'", "\'");
-        }
-        return s;
-    }
-
     public static int parseCharLiteral(String s) {
         if (s == null || s.isEmpty()) return 0;
         if (s.startsWith("\\") && s.length() >= 2) {
@@ -2952,65 +2202,6 @@ public class VirtualCpu {
         return depth == 1;
     }
 
-    private int findTopLevelBinaryOp(String expr, String... ops) {
-        int parenDepth = 0;
-        int bracketDepth = 0;
-        boolean inQuotes = false;
-        char quoteChar = 0;
-        for (int i = expr.length() - 1; i >= 0; i--) {
-            char c = expr.charAt(i);
-            if ((c == '\"' || c == '\'') && (i == 0 || expr.charAt(i - 1) != '\\')) {
-                if (inQuotes && c == quoteChar) inQuotes = false;
-                else if (!inQuotes) { inQuotes = true; quoteChar = c; }
-            }
-            if (inQuotes) continue;
-            if (c == ')') parenDepth++;
-            else if (c == '(') parenDepth--;
-            else if (c == ']') bracketDepth++;
-            else if (c == '[') bracketDepth--;
-            else if (parenDepth == 0 && bracketDepth == 0) {
-                for (String op : ops) {
-                    if (i + op.length() <= expr.length() && expr.startsWith(op, i)) {
-                        if (isValidBinaryOpPosition(expr, i, op)) {
-                            return i;
-                        }
-                    }
-                }
-            }
-        }
-        return -1;
-    }
-
-    private boolean isValidBinaryOpPosition(String expr, int i, String op) {
-        if (i <= 0) return false;
-        int opLen = op.length();
-        if (i + opLen >= expr.length()) return false;
-
-        String leftPrefix = expr.substring(0, i).trim();
-        if (leftPrefix.isEmpty()) return false;
-        char lastLeft = leftPrefix.charAt(leftPrefix.length() - 1);
-        if (lastLeft == '+' || lastLeft == '-' || lastLeft == '*' || lastLeft == '/' || lastLeft == '%'
-                || lastLeft == '&' || lastLeft == '|' || lastLeft == '^' || lastLeft == '<' || lastLeft == '>'
-                || lastLeft == '=' || lastLeft == '(' || lastLeft == '[') {
-            return false;
-        }
-
-        if (op.equals("|")) {
-            if (i > 0 && expr.charAt(i - 1) == '|') return false;
-            if (i + 1 < expr.length() && expr.charAt(i + 1) == '|') return false;
-        } else if (op.equals("&")) {
-            if (i > 0 && expr.charAt(i - 1) == '&') return false;
-            if (i + 1 < expr.length() && expr.charAt(i + 1) == '&') return false;
-        } else if (op.equals("<")) {
-            if (i > 0 && expr.charAt(i - 1) == '<') return false;
-            if (i + 1 < expr.length() && expr.charAt(i + 1) == '<') return false;
-        } else if (op.equals(">")) {
-            if (i > 0 && expr.charAt(i - 1) == '>') return false;
-            if (i + 1 < expr.length() && expr.charAt(i + 1) == '>') return false;
-        }
-        return true;
-    }
-
     public static String[] splitArgs(String args, int limit) {
         if (args == null) return new String[0];
         List<String> list = new ArrayList<>();
@@ -3040,124 +2231,6 @@ public class VirtualCpu {
         }
         list.add(args.substring(start));
         return list.toArray(new String[0]);
-    }
-
-    private int resolveValue(String token) {
-        token = token.trim();
-        while (token.startsWith("(") && token.endsWith(")") && isMatchingOuterParentheses(token)) {
-            token = token.substring(1, token.length() - 1).trim();
-        }
-
-        if (token.equalsIgnoreCase("A")) return regA;
-        if (token.equalsIgnoreCase("B")) return regB;
-        if (token.equalsIgnoreCase("C")) return regC;
-        if (token.equalsIgnoreCase("D")) return regD;
-        if (token.equalsIgnoreCase("PC")) return pc;
-        if (token.equalsIgnoreCase("FLAGS")) return (flagZ ? 1 : 0) | (flagS ? 2 : 0);
-
-        if (token.startsWith("[") && token.endsWith("]")) {
-            String inner = token.substring(1, token.length() - 1).trim();
-            int addr = resolveValue(inner);
-            if (addr >= 0 && addr < ram.length) {
-                return ram[addr];
-            }
-            throw new IndexOutOfBoundsException("RAM address " + addr + " out of bounds");
-        }
-
-        // Char literal: 'x'
-        if (token.startsWith("'") && token.endsWith("'") && token.length() >= 2) {
-            String inner = token.substring(1, token.length() - 1);
-            return parseCharLiteral(inner);
-        }
-
-        // Binary operations in precedence order (lowest to highest)
-        int orIdx = findTopLevelBinaryOp(token, "|");
-        if (orIdx > 0) {
-            return resolveValue(token.substring(0, orIdx)) | resolveValue(token.substring(orIdx + 1));
-        }
-
-        int xorIdx = findTopLevelBinaryOp(token, "^");
-        if (xorIdx > 0) {
-            return resolveValue(token.substring(0, xorIdx)) ^ resolveValue(token.substring(xorIdx + 1));
-        }
-
-        int andIdx = findTopLevelBinaryOp(token, "&");
-        if (andIdx > 0) {
-            return resolveValue(token.substring(0, andIdx)) & resolveValue(token.substring(andIdx + 1));
-        }
-
-        int shiftIdx = findTopLevelBinaryOp(token, "<<", ">>");
-        if (shiftIdx > 0) {
-            if (token.startsWith("<<", shiftIdx)) {
-                return resolveValue(token.substring(0, shiftIdx)) << resolveValue(token.substring(shiftIdx + 2));
-            } else {
-                return resolveValue(token.substring(0, shiftIdx)) >> resolveValue(token.substring(shiftIdx + 2));
-            }
-        }
-
-        int addSubIdx = findTopLevelBinaryOp(token, "+", "-");
-        if (addSubIdx > 0) {
-            char op = token.charAt(addSubIdx);
-            int left = resolveValue(token.substring(0, addSubIdx));
-            int right = resolveValue(token.substring(addSubIdx + 1));
-            return (op == '+') ? (left + right) : (left - right);
-        }
-
-        int mulDivIdx = findTopLevelBinaryOp(token, "*", "/", "%");
-        if (mulDivIdx > 0) {
-            char op = token.charAt(mulDivIdx);
-            int left = resolveValue(token.substring(0, mulDivIdx));
-            int right = resolveValue(token.substring(mulDivIdx + 1));
-            if (op == '*') return left * right;
-            if (op == '/') {
-                if (right == 0) throw new ArithmeticException("Division by zero in expression: " + token);
-                return left / right;
-            }
-            if (right == 0) throw new ArithmeticException("Modulo by zero in expression: " + token);
-            return left % right;
-        }
-
-        // Label reference: returns line number (code label) or RAM address (data label)
-        String lower = token.toLowerCase(Locale.ROOT);
-        if (labels.containsKey(lower)) {
-            return labels.get(lower);
-        }
-
-        try {
-            if (token.startsWith("0x") || token.startsWith("0X")) {
-                return (int) Long.parseLong(token.substring(2), 16);
-            }
-            if (token.startsWith("-0x") || token.startsWith("-0X")) {
-                return (int) -Long.parseLong(token.substring(3), 16);
-            }
-            return (int) Long.parseLong(token);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Invalid value or register: " + token);
-        }
-    }
-
-    private void setDestination(String dest, int val) {
-        dest = dest.trim();
-        while (dest.startsWith("(") && dest.endsWith(")") && isMatchingOuterParentheses(dest)) {
-            dest = dest.substring(1, dest.length() - 1).trim();
-        }
-        if (dest.equalsIgnoreCase("A")) { regA = val; return; }
-        if (dest.equalsIgnoreCase("B")) { regB = val; return; }
-        if (dest.equalsIgnoreCase("C")) { regC = val; return; }
-        if (dest.equalsIgnoreCase("D")) { regD = val; return; }
-        if (dest.equalsIgnoreCase("PC")) { pc = val; return; }
-
-        if (dest.startsWith("[") && dest.endsWith("]")) {
-            String inner = dest.substring(1, dest.length() - 1).trim();
-            int addr = resolveValue(inner);
-            if (addr >= 0 && addr < ram.length) {
-                ram[addr] = val;
-                return;
-            }
-            throw new IndexOutOfBoundsException("RAM write to address " + addr + " out of bounds");
-        }
-
-        throw new IllegalArgumentException("Cannot write to destination: " + dest);
     }
 
     private void updateFlags(int val) {
@@ -3226,15 +2299,24 @@ public class VirtualCpu {
         }
     }
 
-    public void loadProgramImage(List<String> lines) {
+    public void loadBinaryImage(byte[] scbcBytes) {
         networkPort.reset();
         peripheralBus.reset();
-        this.program.clear();
-        if (lines != null) {
-            this.program.addAll(lines);
+        applyBinaryImage(scbcBytes);
+    }
+
+    public void loadProgramImage(List<String> lines) {
+        if (lines == null || lines.isEmpty()) {
+            loadBinaryImage(new byte[0]);
+            return;
         }
-        preprocessLabels();
-        compileBytecode();
+        var assembled = games.jvrcruz.siliconcraft.compiler.Assembler.assemble(lines);
+        if (!assembled.success()) {
+            loadBinaryImage(new byte[0]);
+            this.pendingAssemblyError = String.join("; ", assembled.errors());
+            return;
+        }
+        loadBinaryImage(assembled.bytecode());
     }
 
     private static final int SPARSE_RAM_MAGIC = -1; // 0xFFFFFFFF distinguishes sparse format from legacy positive length
@@ -3405,7 +2487,9 @@ public class VirtualCpu {
     }
 
     public Set<String> getSupportedInstructions() { return supportedInstructions; }
-    public List<String> getProgram() { return program; }
+    public byte[] getBinaryImage() { return binaryImage; }
+    public int getProgramInstructionCount() { return binaryCode.length; }
+    public boolean hasProgram() { return binaryImage.length > 0; }
     public int[] getRam() { return ram; }
     public boolean hasNvme() { return hasNvme; }
     public int getStorageSize() { return storageSize; }
@@ -3485,15 +2569,28 @@ public class VirtualCpu {
         this.driveWriteListener = listener;
     }
 
-    public void setDriveProgram(int drive, List<String> lines) {
-        if (lines != null && !lines.isEmpty()) {
-            this.drivePrograms.put(drive, new ArrayList<>(lines));
+    public void setDriveBinary(int drive, byte[] bytecode) {
+        if (bytecode != null && bytecode.length > 0) {
+            this.driveBinaries.put(drive, Arrays.copyOf(bytecode, bytecode.length));
         } else {
-            this.drivePrograms.remove(drive);
+            this.driveBinaries.remove(drive);
         }
     }
 
-    public List<String> getDriveProgram(int drive) {
-        return this.drivePrograms.getOrDefault(drive, Collections.emptyList());
+    public byte[] getDriveBinary(int drive) {
+        return this.driveBinaries.getOrDefault(drive, new byte[0]);
+    }
+
+    public void setDriveProgram(int drive, List<String> lines) {
+        if (lines != null && !lines.isEmpty()) {
+            var assembled = games.jvrcruz.siliconcraft.compiler.Assembler.assemble(lines);
+            if (assembled.success() && assembled.bytecode().length > 0) {
+                this.driveBinaries.put(drive, assembled.bytecode());
+            } else {
+                this.driveBinaries.remove(drive);
+            }
+        } else {
+            this.driveBinaries.remove(drive);
+        }
     }
 }

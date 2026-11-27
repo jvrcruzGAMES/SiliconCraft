@@ -117,11 +117,17 @@ public abstract class BaseMachineBlockEntity extends BlockEntity implements Menu
         maxBurnTime = tag.getInt("MaxBurnTime");
     }
 
+    static CompoundTag buildUpdateTag(net.minecraft.nbt.Tag energyTag, int burnTime, int maxBurnTime) {
+        CompoundTag tag = new CompoundTag();
+        tag.put("Energy", energyTag);
+        tag.putInt("BurnTime", burnTime);
+        tag.putInt("MaxBurnTime", maxBurnTime);
+        return tag;
+    }
+
     @Override
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
-        CompoundTag tag = new CompoundTag();
-        saveAdditional(tag, registries);
-        return tag;
+        return buildUpdateTag(energyStorage.serializeNBT(registries), burnTime, maxBurnTime);
     }
 
     @Nullable

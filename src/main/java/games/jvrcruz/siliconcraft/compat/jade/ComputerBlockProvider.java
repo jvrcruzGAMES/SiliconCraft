@@ -29,7 +29,7 @@ public class ComputerBlockProvider implements IBlockComponentProvider, IServerDa
             data.putBoolean("HasSoc", hasSoc);
             if (hasSoc) {
                 data.putInt("InstructionCount", computer.getSocData().instructions().size());
-                data.putInt("BiosLines", computer.getSocData().bios().size());
+                data.putInt("BiosInstructions", computer.getSocData().getBiosInstructionCount());
             }
             data.putInt("CpuState", computer.getCpu().getState().ordinal());
             data.putInt("Cycles", computer.getCpu().getCycles());
@@ -78,10 +78,10 @@ public class ComputerBlockProvider implements IBlockComponentProvider, IServerDa
 
         if (data.getBoolean("HasSoc")) {
             int ops = data.getInt("InstructionCount");
-            int bios = data.getInt("BiosLines");
+            int bios = data.getInt("BiosInstructions");
             tooltip.add(Component.literal("SoC Synthesized: ").withStyle(ChatFormatting.GRAY)
                     .append(Component.literal(ops + " opcodes").withStyle(ChatFormatting.AQUA))
-                    .append(Component.literal(bios > 0 ? ", " + bios + " lines ROM" : "").withStyle(ChatFormatting.DARK_AQUA)));
+                    .append(Component.literal(bios > 0 ? ", " + bios + " instructions ROM" : "").withStyle(ChatFormatting.DARK_AQUA)));
         } else {
             tooltip.add(Component.literal("No SoC Installed (Right-click with SoC)").withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
         }

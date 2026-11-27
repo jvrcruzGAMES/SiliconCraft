@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class N2CompilerTest {
 
-    private VirtualCpu runCpu(List<String> bytecode, int maxSteps) {
+    private VirtualCpu runCpu(byte[] bytecode, int maxSteps) {
         VirtualCpu cpu = new VirtualCpu();
         cpu.configure(InstructionValidator.ALL_INSTRUCTIONS_SET, 65536, bytecode, false, 0);
         cpu.powerOn();

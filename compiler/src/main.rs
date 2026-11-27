@@ -30,7 +30,8 @@ OPTIONS:
     -n, --name <NAME>       Override program display name embedded in the .sc package
     -t, --target <TARGET>   Force target mode: auto (default), n2, or asm
         --emit-asm <FILE>   Write intermediate un-assembled N2 assembly to <FILE>
-        --emit-bytecode <F> Write resolved bytecode lines to <FILE>
+        --emit-bytecode <F> Write raw 64-bit SCBC binary bytecode (.o) to <F>
+        --no-metadata       Omit the optional binary metadata section from .sc
         --check             Compile and validate without writing .sc output
     -q, --quiet             Suppress status output on success
     -h, --help              Print help information
@@ -139,7 +140,7 @@ fn run_info(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let path = Path::new(&args[0]);
-    let content = fs::read_to_string(path)
+    let content = fs::read(path)
         .map_err(|e| format!("Failed to read '{}': {}", path.display(), e))?;
     let summary = inspect_sc_summary(&content)?;
     println!("{}", summary);
@@ -156,6 +157,7 @@ fn run_build(args: &[String], forced_target: Option<&str>) -> Result<(), i32> {
     let mut emit_asm: Option<PathBuf> = None;
     let mut emit_bytecode: Option<PathBuf> = None;
     let mut check_only = false;
+    let mut no_metadata = false;
     let mut quiet = false;
 
     let mut i = 0;
@@ -227,6 +229,9 @@ fn run_build(args: &[String], forced_target: Option<&str>) -> Result<(), i32> {
                 }
                 emit_bytecode = Some(PathBuf::from(&args[i]));
             }
+            "--no-metadata" | "--strip-metadata" => {
+                no_metadata = true;
+            }
             "--check" => {
                 check_only = true;
             }
@@ -265,7 +270,7 @@ fn run_build(args: &[String], forced_target: Option<&str>) -> Result<(), i32> {
         target,
     };
 
-    let result = match compile_path(&input_path, &options) {
+    let mut result = match compile_path(&input_path, &options) {
         Ok(res) => res,
         Err(errs) => {
             for err in errs {
@@ -274,6 +279,9 @@ fn run_build(args: &[String], forced_target: Option<&str>) -> Result<(), i32> {
             return Err(1);
         }
     };
+    if no_metadata {
+        result.package.include_metadata = false;
+    }
 
     if let Some(asm_path) = emit_asm {
         if let Some(parent) = asm_path.parent().filter(|p| !p.as_os_str().is_empty()) {
@@ -289,7 +297,7 @@ fn run_build(args: &[String], forced_target: Option<&str>) -> Result<(), i32> {
         if let Some(parent) = bc_path.parent().filter(|p| !p.as_os_str().is_empty()) {
             let _ = fs::create_dir_all(parent);
         }
-        if let Err(e) = fs::write(&bc_path, result.package.bytecode.join("\n") + "\n") {
+        if let Err(e) = fs::write(&bc_path, &result.package.bytecode) {
             eprintln!("error: failed to write '{}': {}", bc_path.display(), e);
             return Err(1);
         }
@@ -298,8 +306,9 @@ fn run_build(args: &[String], forced_target: Option<&str>) -> Result<(), i32> {
     if check_only {
         if !quiet {
             println!(
-                "Check passed: {} ({} instructions, required opcodes: {})",
+                "Check passed: {} ({} instructions, {} bytes, required opcodes: {})",
                 result.package.name,
+                result.package.instruction_count(),
                 result.package.bytecode.len(),
                 result
                     .package
@@ -332,18 +341,26 @@ fn run_build(args: &[String], forced_target: Option<&str>) -> Result<(), i32> {
         }
     }
 
-    let json = result.package.to_json();
-    if let Err(e) = fs::write(&output_path, json) {
+    let bytes = match result.package.to_bytes() {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("error: failed to serialize .sc package: {}", e);
+            return Err(1);
+        }
+    };
+    let byte_len = bytes.len();
+    if let Err(e) = fs::write(&output_path, &bytes) {
         eprintln!("error: failed to write '{}': {}", output_path.display(), e);
         return Err(1);
     }
 
     if !quiet {
         println!(
-            "Built {} -> {} ({} instructions, arch={})",
+            "Built {} -> {} ({} instructions, {} bytes, arch={})",
             result.package.name,
             output_path.display(),
-            result.package.bytecode.len(),
+            result.package.instruction_count(),
+            byte_len,
             result.package.arch
         );
     }

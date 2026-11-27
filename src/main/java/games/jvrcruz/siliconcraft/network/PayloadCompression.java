@@ -56,6 +56,14 @@ public final class PayloadCompression {
         }
     }
 
+    public static byte[] compressByteArray(byte[] data) {
+        return compress(out -> writeByteArray(out, data));
+    }
+
+    public static byte[] decompressByteArray(byte[] compressed) {
+        return decompress(compressed, PayloadCompression::readByteArray);
+    }
+
     public static byte[] compressStringList(List<String> lines) {
         return compress(out -> writeStringList(out, lines));
     }
@@ -70,6 +78,28 @@ public final class PayloadCompression {
 
     public static Map<String, List<String>> decompressProjectFiles(byte[] compressed) {
         return decompress(compressed, PayloadCompression::readProjectFiles);
+    }
+
+    public static void writeByteArray(DataOutputStream out, byte[] value) throws IOException {
+        if (value == null) {
+            out.writeInt(0);
+            return;
+        }
+        out.writeInt(value.length);
+        out.write(value);
+    }
+
+    public static byte[] readByteArray(DataInputStream in, int[] remainingBudget) throws IOException {
+        int len = in.readInt();
+        if (len < 0 || len > remainingBudget[0]) {
+            throw new IllegalArgumentException("Decoded byte array length out of bounds: " + len);
+        }
+        remainingBudget[0] -= len;
+        byte[] bytes = in.readNBytes(len);
+        if (bytes.length != len) {
+            throw new IllegalArgumentException("Unexpected EOF while reading byte array of length " + len);
+        }
+        return bytes;
     }
 
     public static void writeString(DataOutputStream out, String value) throws IOException {

@@ -158,4 +158,11 @@ class GameControllerInputsTest {
         cpu.powerOn();
         return cpu;
     }
+
+    private static VirtualCpu cpu(byte[] program, int ram) {
+        VirtualCpu cpu = new VirtualCpu();
+        cpu.configure(InstructionValidator.ALL_INSTRUCTIONS_SET, ram, program, false, 0);
+        cpu.powerOn();
+        return cpu;
+    }
 }

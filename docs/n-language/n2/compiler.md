@@ -88,7 +88,8 @@ scc info build/my_game.sc
 | `-n, --name <NAME>` | Program display name embedded in the `.sc` package |
 | `-t, --target <MODE>` | `auto` (default), `n2`, or `asm` |
 | `--emit-asm <FILE>` | Write intermediate generated assembly before assembling |
-| `--emit-bytecode <FILE>` | Write final resolved bytecode lines to a text file |
+| `--emit-bytecode <FILE>` | Write raw 64-bit `SCBC` binary bytecode (`.o`) to a file |
+| `--no-metadata` | Omit the optional binary `metadata` section from `.sc` (emits `manifest` + `program` only) |
 | `--check` | Validate syntax, imports, libraries, and opcodes without writing `.sc` |
 | `-q, --quiet` | Suppress status message on success |
 
@@ -180,14 +181,18 @@ You can also add extra include flags (`-I`, `${CMAKE_CURRENT_SOURCE_DIR}/libs`) 
 
 ---
 
-## 5. `.sc` Package Format & Importing into Minecraft
+## 5. `.sc` Binary Package Format & Importing into Minecraft
 
-`scc` outputs a UTF-8 JSON package (`.sc`) containing:
-- `format`: `"siliconcraft-sc"` and `version`: `1`
-- `name`: program display name (normalized to `.sc`)
-- `target` (`"n2"` / `"asm"`) and `arch` (`"N2"` / `"ASM"`)
-- `requiredInstructions`: deduplicated CPU opcodes needed to execute the program (checked against your SoC chip)
-- `bytecode`: assembled virtual CPU instructions
+`scc` outputs a little-endian sectioned binary **`SCPK` v3** `.sc` package with three possible binary sections (two mandatory, one optional):
+
+1. **`manifest` (`0x0001`, mandatory, must be the first section at offset `0`)**:
+   - 12-byte header (`"SCPK"`, format version `3` (`u16`), `flags` (`u16`, `0x0001` when `metadata` is present), `section_count` (`u16`: `2` or `3`), `reserved` (`u16`)) followed by `section_count` × 12-byte binary directory entries `(id: u16, flags: u16, offset: u32, size: u32)` recording the exact byte offset and size of each section.
+2. **`metadata` (`0x0002`, optional — omit with `--no-metadata`)**:
+   - Binary metadata record (`meta_version = 1` (`u16`), `meta_flags` (`u16`), `instr_count` (`u32`)), length-prefixed UTF-8 `name`, `target` (`"n2"` / `"asm"`), and `arch` (`"N2"` / `"ASM"`), plus deduplicated `requiredInstructions` canonical opcode IDs (`u16[]`) checked against your SoC chip. When omitted, required opcodes are derived automatically from the `program` section.
+3. **`program` (`0x0003`, mandatory)**:
+   - Executable 64-bit **`SCBC` v1** binary image (8 bytes per instruction word + `.rodata`, `.ext`, and `.data` static RAM segments).
+
+You can inspect any `.sc` package and its section table with `scc info my_game.sc` or export raw `SCBC` binary object code with `--emit-bytecode out.o`.
 
 ### Loading into Your World
 1. Craft and place a **Project Manager** block (see [Getting Started](../../getting-started/README.md)).

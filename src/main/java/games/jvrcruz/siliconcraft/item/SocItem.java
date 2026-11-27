@@ -25,7 +25,7 @@ public class SocItem extends Item {
             tooltip.add(Component.literal("  " + String.join(", ", data.instructions())).withStyle(ChatFormatting.DARK_AQUA));
             String ramStr = (data.ramCapacity() >= 1024) ? (data.ramCapacity() / 1024) + " KB" : data.ramCapacity() + " Bytes";
             tooltip.add(Component.translatable("tooltip.siliconcraft.soc.ram", ramStr).withStyle(ChatFormatting.GREEN));
-            tooltip.add(Component.translatable("tooltip.siliconcraft.soc.bios", data.bios().size()).withStyle(ChatFormatting.LIGHT_PURPLE));
+            tooltip.add(Component.translatable("tooltip.siliconcraft.soc.bios", data.getBiosInstructionCount()).withStyle(ChatFormatting.LIGHT_PURPLE));
             if (data.hasNvme()) {
                 String capStr = (data.storageCapacity() >= 1024) ? (data.storageCapacity() / 1024) + " MB" : data.storageCapacity() + " KB";
                 tooltip.add(Component.translatable("tooltip.siliconcraft.soc.nvme", capStr).withStyle(ChatFormatting.AQUA));

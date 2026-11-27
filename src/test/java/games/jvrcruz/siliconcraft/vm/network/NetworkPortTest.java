@@ -13,6 +13,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
@@ -617,7 +618,9 @@ class NetworkPortTest {
         var assembled = Assembler.assemble(compiled.assembly());
         assertTrue(assembled.success(), assembled.errors().toString());
         assertTrue(assembled.requiredInstructions().containsAll(Set.of("CALL", "NREADY", "NUTF8", "NSTATUS", "NRESULT")));
-        assertTrue(assembled.bytecode().contains("CALL A"));
+        assertTrue(compiled.assembly().contains("CALL A"));
+        assertTrue(Arrays.stream(games.jvrcruz.siliconcraft.vm.BinaryBytecode.decodeScbc(assembled.bytecode()).code())
+                .anyMatch(word -> games.jvrcruz.siliconcraft.vm.BinaryBytecode.extractOpcode(word) == games.jvrcruz.siliconcraft.vm.BinaryBytecode.OP_CALL));
         assertFalse(assembled.requiredInstructions().contains("NHTTP3"));
         var cpu = new VirtualCpu();
         cpu.configure(assembled.requiredInstructions(), 65536, assembled.bytecode(), false, 0);

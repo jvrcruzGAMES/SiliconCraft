@@ -58,7 +58,8 @@ OPTIONS:
     -n, --name <NAME>       Override program display name embedded in the .sc package
     -t, --target <TARGET>   Force target mode: auto (default), n2, or asm
         --emit-asm <FILE>   Write intermediate un-assembled N2 assembly to <FILE>
-        --emit-bytecode <F> Write resolved bytecode lines to <FILE>
+        --emit-bytecode <F> Write raw 64-bit SCBC binary bytecode (.o) to <F>
+        --no-metadata       Omit the optional binary metadata section from .sc
         --check             Compile and validate without writing .sc output
     -q, --quiet             Suppress status output on success
 ```
@@ -134,23 +135,20 @@ cmake -S . -B build
 cmake --build build
 ```
 
-## `.sc` Output Format & In-Game Upload
+## `.sc` Binary Format & In-Game Upload
 
-`.sc` files are UTF-8 JSON packages with the following schema:
+`.sc` files use the little-endian sectioned binary **`SCPK` v3** container with up to three binary sections (two mandatory, one optional):
 
-```json
-{
-  "format": "siliconcraft-sc",
-  "version": 1,
-  "name": "my_program.sc",
-  "target": "n2",
-  "arch": "N2",
-  "requiredInstructions": ["ADD", "CALL", "HLT", "MOV", "OUT"],
-  "bytecode": ["..."]
-}
-```
+1. **`manifest` (`0x0001`, mandatory, must be first section at offset `0`)**:
+   - 12-byte header (`"SCPK"`, `version = 3` (`u16`), `flags` (`u16`, bit `0x0001` set when `metadata` is present), `section_count` (`u16`: `2` or `3`), `reserved` (`u16`)) followed by `section_count` × 12-byte section descriptors `(id: u16, flags: u16, offset: u32, size: u32)` pointing to every section in the binary.
+2. **`metadata` (`0x0002`, optional, omitted with `--no-metadata`)**:
+   - Binary metadata header (`meta_version = 1` (`u16`), `meta_flags` (`u16`), `instr_count` (`u32`)), length-prefixed UTF-8 `name`, `target` (`"n2"` / `"asm"`), and `arch` (`"N2"` / `"ASM"`), plus deduplicated `required_instructions` opcode IDs (`u16[]`). When omitted, `ScProjectFile` / `scc info` derive required opcode IDs directly from `program`.
+3. **`program` (`0x0003`, mandatory)**:
+   - Executable **`SCBC` v1** binary image: magic `"SCBC"` (4B), version `1` (`u16`), 64-bit (`u64`) fixed-width machine instruction words (opcode `[63..56]`, format `[55..52]`, flags `[51..48]`, operands `[47..0]`), `.rodata` string table, `.ext` extended operand table (for 3+ operand or 32-bit multi-immediate instructions), and `.data` static RAM segments (`ORG` / `DB` / `DW` / `DL` / `INCBIN`).
 
-In Minecraft, place a **Project Manager** block, click **+ Add .sc** to upload your `.sc` package (chunked upload handles large programs automatically), then insert an **EEPROM / Flash / NVMe** into a **Programmer** block to write it onto hardware.
+Inspect any `.sc` binary and its section directory from your terminal with `scc info build/my_program.sc`, or emit a raw `SCBC` binary object file (`.o`) directly with `--emit-bytecode out.o`.
+
+In Minecraft, place a **Project Manager** block, click **+ Add .sc** to upload your `.sc` package (chunked upload handles large programs automatically), then insert a **ROM Chip** or **Storage Drive** (Flash / NVMe) into a **Programmer** block to write it onto hardware.
 
 ## Running Compiler Tests
 

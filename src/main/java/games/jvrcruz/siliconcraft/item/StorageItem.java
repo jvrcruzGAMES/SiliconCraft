@@ -30,13 +30,14 @@ public class StorageItem extends Item {
         String capStr = (cap >= 1024) ? (cap / 1024) + " MB" : cap + " KB";
         tooltip.add(Component.translatable("tooltip.siliconcraft.storage.capacity", capStr).withStyle(ChatFormatting.YELLOW));
         games.jvrcruz.siliconcraft.data.RomData romData = stack.get(ModDataComponents.ROM_DATA.get());
-        if (romData != null && !romData.lines().isEmpty()) {
-            tooltip.add(Component.translatable("tooltip.siliconcraft.rom.lines", romData.lines().size()).withStyle(ChatFormatting.LIGHT_PURPLE));
-            int show = Math.min(romData.lines().size(), 3);
-            for (int i = 0; i < show; i++) {
-                tooltip.add(Component.literal("  " + (i + 1) + ": " + romData.lines().get(i)).withStyle(ChatFormatting.DARK_GRAY));
+        if (romData != null && romData.bytecode().length > 0) {
+            int instrCount = romData.getInstructionCount();
+            tooltip.add(Component.translatable("tooltip.siliconcraft.rom.lines", instrCount).withStyle(ChatFormatting.LIGHT_PURPLE));
+            List<String> preview = games.jvrcruz.siliconcraft.vm.BinaryBytecode.previewInstructions(romData.bytecode(), 3);
+            for (int i = 0; i < preview.size(); i++) {
+                tooltip.add(Component.literal("  " + (i + 1) + ": " + preview.get(i)).withStyle(ChatFormatting.DARK_GRAY));
             }
-            if (romData.lines().size() > 3) {
+            if (instrCount > 3) {
                 tooltip.add(Component.literal("  ...").withStyle(ChatFormatting.DARK_GRAY));
             }
         }

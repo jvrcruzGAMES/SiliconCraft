@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class VirtualGpuTest {
 
-    private static VirtualCpu configuredCpu(List<String> program, int ramInts, int gpuRamModules) {
+    private static VirtualCpu configuredCpu(byte[] program, int ramInts, int gpuRamModules) {
         VirtualCpu cpu = new VirtualCpu();
         cpu.configure(InstructionValidator.ALL_INSTRUCTIONS_SET, ramInts, program, false, 0);
         if (gpuRamModules >= 0) {

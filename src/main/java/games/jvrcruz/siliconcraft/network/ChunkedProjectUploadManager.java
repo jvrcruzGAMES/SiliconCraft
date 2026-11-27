@@ -87,7 +87,7 @@ public final class ChunkedProjectUploadManager {
         savedData.addProgram(entry);
         ModMessages.syncProgramsToAll(savedData.getPrograms());
         player.displayClientMessage(
-                Component.literal("Added .sc project: " + entry.name() + " (" + entry.lines().size() + " instructions)")
+                Component.literal("Added .sc project: " + entry.name() + " (" + entry.getInstructionCount() + " instructions, " + entry.bytecode().length + " bytes)")
                         .withStyle(ChatFormatting.GREEN),
                 false
         );

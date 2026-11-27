@@ -1,5 +1,7 @@
 package games.jvrcruz.siliconcraft.data;
 
+import games.jvrcruz.siliconcraft.compiler.Assembler;
+import games.jvrcruz.siliconcraft.vm.BinaryBytecode;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -27,42 +29,45 @@ public class ProgramSavedData extends SavedData {
 
     private void initDefaultPrograms() {
         if (programs.isEmpty()) {
+            Assembler.AssemblerResult counter = Assembler.assemble(List.of(
+                    "; Countdown demo",
+                    "MOV A, 5",
+                    "loop:",
+                    "OUT A",
+                    "DEC A",
+                    "JNZ loop",
+                    "OUT \"Liftoff!\"",
+                    "HLT"
+            ));
             programs.add(new ProgramEntry(
                     "demo_counter",
                     "counter.sc",
                     "Any",
-                    List.of(
-                            "; Countdown demo",
-                            "MOV A, 5",
-                            "loop:",
-                            "OUT A",
-                            "DEC A",
-                            "JNZ loop",
-                            "OUT \"Liftoff!\"",
-                            "HLT"
-                    ),
-                    List.of("MOV", "OUT", "DEC", "JNZ", "HLT")
+                    counter.bytecode(),
+                    List.copyOf(counter.requiredInstructions())
+            ));
+
+            Assembler.AssemblerResult fibonacci = Assembler.assemble(List.of(
+                    "; Fibonacci sequence",
+                    "MOV A, 0",
+                    "MOV B, 1",
+                    "MOV C, 6",
+                    "loop:",
+                    "OUT A",
+                    "MOV [0], A",
+                    "ADD [0], B",
+                    "MOV A, B",
+                    "MOV B, [0]",
+                    "DEC C",
+                    "JNZ loop",
+                    "HLT"
             ));
             programs.add(new ProgramEntry(
                     "demo_fibonacci",
                     "fibonacci.sc",
                     "Any",
-                    List.of(
-                            "; Fibonacci sequence",
-                            "MOV A, 0",
-                            "MOV B, 1",
-                            "MOV C, 6",
-                            "loop:",
-                            "OUT A",
-                            "MOV [0], A",
-                            "ADD [0], B",
-                            "MOV A, B",
-                            "MOV B, [0]",
-                            "DEC C",
-                            "JNZ loop",
-                            "HLT"
-                    ),
-                    List.of("MOV", "OUT", "ADD", "DEC", "JNZ", "HLT")
+                    fibonacci.bytecode(),
+                    List.copyOf(fibonacci.requiredInstructions())
             ));
         }
     }
@@ -113,7 +118,7 @@ public class ProgramSavedData extends SavedData {
                 target.id(),
                 candidate,
                 target.archName(),
-                target.lines(),
+                target.bytecode(),
                 target.requiredInstructions()
         ));
         setDirty();
@@ -149,10 +154,16 @@ public class ProgramSavedData extends SavedData {
                 String name = pTag.getString("Name");
                 String archName = pTag.getString("ArchName");
 
-                List<String> lines = new ArrayList<>();
-                ListTag linesTag = pTag.getList("Lines", Tag.TAG_STRING);
-                for (int j = 0; j < linesTag.size(); j++) {
-                    lines.add(linesTag.getString(j));
+                byte[] bytecode;
+                if (pTag.contains("Bytecode", Tag.TAG_BYTE_ARRAY)) {
+                    bytecode = pTag.getByteArray("Bytecode");
+                } else {
+                    List<String> lines = new ArrayList<>();
+                    ListTag linesTag = pTag.getList("Lines", Tag.TAG_STRING);
+                    for (int j = 0; j < linesTag.size(); j++) {
+                        lines.add(linesTag.getString(j));
+                    }
+                    bytecode = lines.isEmpty() ? new byte[0] : Assembler.assemble(lines).bytecode();
                 }
 
                 List<String> req = new ArrayList<>();
@@ -160,8 +171,11 @@ public class ProgramSavedData extends SavedData {
                 for (int j = 0; j < reqTag.size(); j++) {
                     req.add(reqTag.getString(j));
                 }
+                if (req.isEmpty() && bytecode.length > 0) {
+                    req.addAll(BinaryBytecode.getRequiredInstructions(bytecode));
+                }
 
-                data.programs.add(new ProgramEntry(id, name, archName, lines, req));
+                data.programs.add(new ProgramEntry(id, name, archName, bytecode, req));
             }
         }
         if (!data.defaultsInitialized && data.programs.isEmpty()) {
@@ -180,10 +194,7 @@ public class ProgramSavedData extends SavedData {
             pTag.putString("Id", p.id());
             pTag.putString("Name", p.name());
             pTag.putString("ArchName", p.archName());
-
-            ListTag linesTag = new ListTag();
-            for (String l : p.lines()) linesTag.add(StringTag.valueOf(l));
-            pTag.put("Lines", linesTag);
+            pTag.putByteArray("Bytecode", p.bytecode());
 
             ListTag reqTag = new ListTag();
             for (String r : p.requiredInstructions()) reqTag.add(StringTag.valueOf(r));
