@@ -1,0 +1,20 @@
+-- ============================================
+-- Program: 02_globals_and_locals.n2 (N2 Standard)
+-- Description: Demonstrates global and scoped local variable binding
+-- ============================================
+
+import <std>
+
+global = "global contents"
+global counter = 100
+
+func test_scope()
+    local scoped = "local contents"
+    print(global)
+    print(scoped)
+    print(counter)
+end
+
+func main()
+    test_scope()
+end

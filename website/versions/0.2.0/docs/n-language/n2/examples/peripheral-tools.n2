@@ -1,0 +1,25 @@
+import <DeviceKit>
+import <std>
+
+func finish_request()
+    while peripheral_status() == PERIPHERAL_PENDING do
+        sleep(1)
+    end
+    local status = peripheral_status()
+    peripheral_result()
+    return status
+end
+
+func main()
+    if peripheral_wrap(PERIPHERAL_NORTH) == 1 then
+        if finish_request() == PERIPHERAL_OK then
+            if note_block_set(PERIPHERAL_NORTH, 12) == 1 then
+                finish_request()
+            end
+        end
+    end
+
+    if speaker_tone(PERIPHERAL_EAST, 440, 150) == 1 then
+        finish_request()
+    end
+end

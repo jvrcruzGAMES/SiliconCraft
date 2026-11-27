@@ -1,6 +1,6 @@
 # SiliconCraft documentation
 
-This directory is the working manual. The [documentation website](http://sc.jvrcruz.games/) keeps a separate manual for each published mod version, starting with **0.1.1**. Each version starts at `http://sc.jvrcruz.games/X.X.X/`, for example [0.1.2](http://sc.jvrcruz.games/0.1.2/). Select the version installed in your world before following its guides.
+This directory is the working manual. The [documentation website](http://sc.jvrcruz.games/) keeps a separate manual for each published mod version, starting with **0.1.1**. Each version starts at `http://sc.jvrcruz.games/X.X.X/`, for example [0.2.0](http://sc.jvrcruz.games/0.2.0/). Select the version installed in your world before following its guides.
 
 Follow the chapters in order to build a computer, then choose Assembly or N2 to program it. N1 is deprecated and documented for existing programs.
 
@@ -10,6 +10,10 @@ Follow the chapters in order to build a computer, then choose Assembly or N2 to 
 | **2. [Assembly](assembly/README.md)** | Syntax, instruction reference, projects, peripheral methods, networking, and runnable examples. |
 | **3. [N1 — deprecated](n-language/n1/README.md)** | N standard 1 syntax, hardware APIs, inline Assembly, and legacy examples. |
 | **4. [N2](n-language/n2/README.md)** | N standard 2 syntax, libraries, projects, DeviceKit peripherals, networking, and examples. |
+
+## Version 0.2.0
+
+A dedicated **Graphics Card (`VirtualGpu`)** component brings hardware-accelerated double-buffered rasterization, VRAM sprite storage/blitting (`GPU*` instructions), and automatic `<Glass>` acceleration to SoCs and Personal Computers (maximum 1 GPU per machine). Toggle the **Architecture Writer** between **CPU** and **GPU** modes to draft a reusable **GPU Architecture Writeup**, then fabricate your GPU at the **GPU Assembler** with **Silicon Powder**, **Redstone Dust**, and up to 8 optional RAM modules for VRAM. Programs and users can switch between `AUTO`, `CPU`, and `GPU` graphics handlers at runtime via the PC GUI (`GFX:...`) or `GFXSEL`/`GFXSTAT`.
 
 ## Version 0.1.2
 

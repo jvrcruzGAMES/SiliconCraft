@@ -28,10 +28,10 @@ public class AssemblyWriterMenu extends AbstractContainerMenu {
         this.blockEntity = blockEntity;
         this.levelAccess = ContainerLevelAccess.create(blockEntity.getLevel(), blockEntity.getBlockPos());
 
-        // Slot 0: Architecture Writeup input slot
+        // Slot 0: CPU Architecture Writeup input slot
         this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 0, 27, 35,
-                stack -> stack.is(ModItems.ARCHITECTURE_WRITEUP.get()),
-                Component.literal("Architecture Writeup (Blueprint)")));
+                games.jvrcruz.siliconcraft.item.ArchitectureWriteupItem::isCpuWriteup,
+                Component.literal("CPU Architecture Writeup (Blueprint)")));
 
         // Player Inventory
         for (int row = 0; row < 3; ++row) {
@@ -68,7 +68,7 @@ public class AssemblyWriterMenu extends AbstractContainerMenu {
                 }
             } else {
                 // Moving from player to machine
-                if (slotStack.is(ModItems.ARCHITECTURE_WRITEUP.get())) {
+                if (games.jvrcruz.siliconcraft.item.ArchitectureWriteupItem.isCpuWriteup(slotStack)) {
                     if (!this.moveItemStackTo(slotStack, 0, 1, false)) {
                         return ItemStack.EMPTY;
                     }

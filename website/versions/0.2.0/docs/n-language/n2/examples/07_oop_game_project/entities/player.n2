@@ -1,0 +1,24 @@
+-- ============================================
+-- File: entities/player.n2 (N2 Module)
+-- Description: Game entity class using Vector2
+-- ============================================
+
+import <std>
+import "utils/vector.n2"
+
+class GamePlayer {
+    func init(name, startX, startY)
+        this.name = name
+        this.pos = Vector2(startX, startY)
+    end
+
+    func move(dx, dy)
+        local delta = Vector2(dx, dy)
+        this.pos.add(delta)
+    end
+
+    func display()
+        print(this.name)
+        this.pos.print_coords()
+    end
+}

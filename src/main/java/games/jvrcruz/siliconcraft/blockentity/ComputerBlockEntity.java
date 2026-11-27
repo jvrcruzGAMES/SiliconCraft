@@ -80,10 +80,12 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
     private long peripheralSession;
     private volatile long lastGameTime = 0L;
 
-    // Inventory: 6 slots (0-1: NVMe storage drives max 1 each; 2-5: RAM modules max 1 each)
+    // Inventory: 11 slots (0-1: storage drives max 1 each; 2-9: RAM modules max 1 each; 10: GPU max 1)
     public static final int STORAGE_SLOTS = 2;
     public static final int RAM_SLOTS = 8;
-    public static final int HARDWARE_SLOTS = STORAGE_SLOTS + RAM_SLOTS;
+    public static final int GPU_SLOTS = 1;
+    public static final int GPU_SLOT = STORAGE_SLOTS + RAM_SLOTS;
+    public static final int HARDWARE_SLOTS = STORAGE_SLOTS + RAM_SLOTS + GPU_SLOTS;
     private final ItemStackHandler itemHandler = new ItemStackHandler(HARDWARE_SLOTS) {
         @Override
         public int getSlotLimit(int slot) {
@@ -94,8 +96,10 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         public boolean isItemValid(int slot, ItemStack stack) {
             if (slot == 0 || slot == 1) {
                 return stack.is(ModItems.STORAGE.get());
-            } else if (slot >= STORAGE_SLOTS && slot < HARDWARE_SLOTS) {
+            } else if (slot >= STORAGE_SLOTS && slot < GPU_SLOT) {
                 return stack.is(ModItems.RAM.get());
+            } else if (slot == GPU_SLOT) {
+                return stack.is(ModItems.GPU.get()) && !hasSocGpu();
             }
             return false;
         }
@@ -110,21 +114,9 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         }
     };
 
-    // Container data for syncing CPU registers:
-    // 0: state (0=OFF, 1=RUNNING, 2=PAUSED, 3=HALTED, 4=ERROR)
-    // 1: pc
-    // 2: regA
-    // 3: regB
-    // 4: regC
-    // 5: regD
-    // 6: flagZ (0/1)
-    // 7: flagS (0/1)
-    // 8: cycles
-    // 9: hasSoc (0/1)
-    // 10: totalRam (effective)
-    // 11: hasNvme (effective 0/1)
-    // 12: totalStorage (effective)
-    // 13: socRam (base bundled in SoC)
+    // Container data for syncing CPU registers and hardware status:
+    // 0..13: existing CPU/RAM/Storage fields
+    // 14: hasGpu (0/1), 15: gpuVramKb, 16: graphicsHandler ordinal (0=AUTO,1=CPU,2=GPU), 17: isUsingGpu (0/1)
     protected final ContainerData dataAccess = new ContainerData() {
         @Override
         public int get(int index) {
@@ -143,6 +135,10 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
                 case 11 -> hasEffectiveNvme() ? 1 : 0;
                 case 12 -> getEffectiveStorageCapacity();
                 case 13 -> socData != null ? socData.ramCapacity() : 0;
+                case 14 -> hasEffectiveGpu() ? 1 : 0;
+                case 15 -> getEffectiveGpuData().vramCapacity() / 1024;
+                case 16 -> cpu.getGraphicsHandler().ordinal();
+                case 17 -> cpu.isUsingGpu() ? 1 : 0;
                 default -> 0;
             };
         }
@@ -154,7 +150,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
 
         @Override
         public int getCount() {
-            return 14;
+            return 18;
         }
     };
 
@@ -180,9 +176,38 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         return dataAccess;
     }
 
+    public boolean hasSocGpu() {
+        return socData != null && socData.gpu() != null && socData.gpu().isPresent();
+    }
+
+    public games.jvrcruz.siliconcraft.data.GpuData getEffectiveGpuData() {
+        if (hasSocGpu()) {
+            return socData.gpu();
+        }
+        ItemStack gpuStack = itemHandler.getStackInSlot(GPU_SLOT);
+        if (!gpuStack.isEmpty() && gpuStack.is(ModItems.GPU.get())) {
+            return gpuStack.getOrDefault(ModDataComponents.GPU_DATA.get(), games.jvrcruz.siliconcraft.data.GpuData.DEFAULT);
+        }
+        return games.jvrcruz.siliconcraft.data.GpuData.EMPTY;
+    }
+
+    public boolean hasEffectiveGpu() {
+        return getEffectiveGpuData().isPresent();
+    }
+
+    public void cycleGraphicsHandler() {
+        synchronized (cpu.getExecutionLock()) {
+            cpu.cycleGraphicsHandler();
+        }
+        setChanged();
+        if (level != null && !level.isClientSide) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+        }
+    }
+
     public int getEffectiveRamCapacity() {
         int ram = (socData != null ? socData.ramCapacity() : 0);
-        for (int i = STORAGE_SLOTS; i < HARDWARE_SLOTS; i++) {
+        for (int i = STORAGE_SLOTS; i < GPU_SLOT; i++) {
             ItemStack stack = itemHandler.getStackInSlot(i);
             if (!stack.isEmpty() && stack.is(ModItems.RAM.get())) {
                 RamData rd = stack.get(ModDataComponents.RAM_DATA.get());
@@ -219,6 +244,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
     public void recalculateHardwareCapabilities() {
         synchronized (cpu.getExecutionLock()) {
             cpu.updateHardware(getEffectiveRamCapacity(), hasEffectiveNvme(), getEffectiveStorageCapacity());
+            cpu.configureGpu(getEffectiveGpuData());
             if (!(level instanceof ServerLevel serverLevel)) return;
 
             int onboardKb = socData == null ? 0 : StorageData.upgradedCapacity(socData.storageCapacity());
@@ -538,7 +564,7 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         if (level == null || level.isClientSide || !(level instanceof ServerLevel serverLevel)) return;
 
         // Sync Framebuffer if dirty to any players looking at this screen
-        if (cpu.isFbDirty()) {
+        if (cpu.isAnyFbDirty()) {
             List<ServerPlayer> viewers = serverLevel.players().stream()
                     .filter(player -> player.containerMenu instanceof ComputerMenu menu && menu.getBlockEntity() == this)
                     .toList();
@@ -582,8 +608,8 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         int[] pixels;
         synchronized (cpu.getExecutionLock()) {
             mode = cpu.getDisplayMode();
-            pixels = mode == 1 ? cpu.getFramebuffer().clone() : new int[0];
-            cpu.setFbDirty(false);
+            pixels = mode == 1 ? cpu.getActiveFramebuffer().clone() : new int[0];
+            cpu.clearAllFbDirty();
         }
         return SyncFramebufferPacket.frame(pos, mode, pixels);
     }
@@ -757,30 +783,78 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         }
     }
 
+    private static CompoundTag serializeSocTag(SocData data) {
+        CompoundTag socTag = new CompoundTag();
+        ListTag instTag = new ListTag();
+        for (String s : data.instructions()) instTag.add(StringTag.valueOf(s));
+        socTag.put("Instructions", instTag);
+        socTag.putInt("RamCapacity", data.ramCapacity());
+        ListTag biosTag = new ListTag();
+        for (String s : data.bios()) biosTag.add(StringTag.valueOf(s));
+        socTag.put("Bios", biosTag);
+        socTag.putBoolean("HasNvme", data.hasNvme());
+        socTag.putInt("StorageCapacity", data.storageCapacity());
+        if (data.gpu() != null && data.gpu().isPresent()) {
+            CompoundTag gpuTag = new CompoundTag();
+            gpuTag.putBoolean("Present", true);
+            gpuTag.putString("ArchName", data.gpu().archName());
+            gpuTag.putInt("VramCapacity", data.gpu().vramCapacity());
+            gpuTag.putInt("ComputeUnits", data.gpu().computeUnits());
+            ListTag featTag = new ListTag();
+            for (String f : data.gpu().features()) featTag.add(StringTag.valueOf(f));
+            gpuTag.put("Features", featTag);
+            socTag.put("Gpu", gpuTag);
+        }
+        return socTag;
+    }
+
+    private static SocData deserializeSocTag(CompoundTag socTag) {
+        List<String> instructions = new ArrayList<>();
+        ListTag instTag = socTag.getList("Instructions", Tag.TAG_STRING);
+        for (int i = 0; i < instTag.size(); i++) instructions.add(instTag.getString(i));
+
+        int ramCap = socTag.getInt("RamCapacity");
+        List<String> bios = new ArrayList<>();
+        ListTag biosTag = socTag.getList("Bios", Tag.TAG_STRING);
+        for (int i = 0; i < biosTag.size(); i++) bios.add(biosTag.getString(i));
+
+        boolean hasNvme = socTag.getBoolean("HasNvme");
+        int storageCap = socTag.getInt("StorageCapacity");
+
+        games.jvrcruz.siliconcraft.data.GpuData gpuData = games.jvrcruz.siliconcraft.data.GpuData.EMPTY;
+        if (socTag.contains("Gpu", Tag.TAG_COMPOUND)) {
+            CompoundTag gpuTag = socTag.getCompound("Gpu");
+            if (gpuTag.getBoolean("Present")) {
+                List<String> features = new ArrayList<>();
+                ListTag featTag = gpuTag.getList("Features", Tag.TAG_STRING);
+                for (int i = 0; i < featTag.size(); i++) features.add(featTag.getString(i));
+                gpuData = new games.jvrcruz.siliconcraft.data.GpuData(
+                        true,
+                        gpuTag.getString("ArchName"),
+                        gpuTag.getInt("VramCapacity"),
+                        gpuTag.getInt("ComputeUnits"),
+                        features
+                );
+            }
+        }
+        return new SocData(instructions, ramCap, bios, hasNvme, storageCap, gpuData);
+    }
+
     @Override
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
         synchronized (cpu.getExecutionLock()) {
             tag.put("Inventory", itemHandler.serializeNBT(registries));
             tag.putInt("DisplayMode", cpu.getDisplayMode());
+            tag.putInt("GraphicsHandler", cpu.getGraphicsHandler().ordinal());
 
-            byte[] compressedFb = FramebufferCodec.compress(cpu.getFramebuffer());
+            byte[] compressedFb = FramebufferCodec.compress(cpu.getActiveFramebuffer());
             if (compressedFb != null && compressedFb.length > 0) {
                 tag.putByteArray("FramebufferCompressed", compressedFb);
             }
 
             if (socData != null && !socData.instructions().isEmpty()) {
-                CompoundTag socTag = new CompoundTag();
-                ListTag instTag = new ListTag();
-                for (String s : socData.instructions()) instTag.add(StringTag.valueOf(s));
-                socTag.put("Instructions", instTag);
-                socTag.putInt("RamCapacity", socData.ramCapacity());
-                ListTag biosTag = new ListTag();
-                for (String s : socData.bios()) biosTag.add(StringTag.valueOf(s));
-                socTag.put("Bios", biosTag);
-                socTag.putBoolean("HasNvme", socData.hasNvme());
-                socTag.putInt("StorageCapacity", socData.storageCapacity());
-                tag.put("SocData", socTag);
+                tag.put("SocData", serializeSocTag(socData));
             }
 
             ListTag terminalTag = new ListTag();
@@ -823,24 +897,19 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
             }
 
             if (tag.contains("SocData")) {
-                CompoundTag socTag = tag.getCompound("SocData");
-                List<String> instructions = new ArrayList<>();
-                ListTag instTag = socTag.getList("Instructions", Tag.TAG_STRING);
-                for (int i = 0; i < instTag.size(); i++) instructions.add(instTag.getString(i));
-
-                int ramCap = socTag.getInt("RamCapacity");
-                List<String> bios = new ArrayList<>();
-                ListTag biosTag = socTag.getList("Bios", Tag.TAG_STRING);
-                for (int i = 0; i < biosTag.size(); i++) bios.add(biosTag.getString(i));
-
-                boolean hasNvme = socTag.getBoolean("HasNvme");
-                int storageCap = socTag.getInt("StorageCapacity");
-
-                this.socData = new SocData(instructions, ramCap, bios, hasNvme, storageCap);
-                this.cpu.setSupportedInstructions(instructions);
+                this.socData = deserializeSocTag(tag.getCompound("SocData"));
+                this.cpu.setSupportedInstructions(this.socData.instructions());
             } else {
                 this.socData = SocData.EMPTY;
                 this.cpu.setSupportedInstructions(Collections.emptyList());
+            }
+
+            if (tag.contains("GraphicsHandler")) {
+                int ord = tag.getInt("GraphicsHandler");
+                VirtualCpu.GraphicsHandler[] handlers = VirtualCpu.GraphicsHandler.values();
+                if (ord >= 0 && ord < handlers.length) {
+                    cpu.setGraphicsHandler(handlers[ord]);
+                }
             }
 
             recalculateHardwareCapabilities();
@@ -876,9 +945,20 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
             if (tag.contains("FramebufferCompressed", Tag.TAG_BYTE_ARRAY)) {
                 int[] fb = FramebufferCodec.decompress(tag.getByteArray("FramebufferCompressed"));
                 FramebufferCodec.restore(fb, cpu.getFramebuffer());
+                if (cpu.getGpu().isInstalled()) {
+                    FramebufferCodec.restore(fb, cpu.getGpu().getFrontBuffer());
+                    FramebufferCodec.restore(fb, cpu.getGpu().getBackBuffer());
+                    cpu.getGpu().setFbDirty(true);
+                }
                 cpu.setFbDirty(true);
             } else if (tag.contains("Framebuffer", Tag.TAG_INT_ARRAY)) {
-                FramebufferCodec.restore(tag.getIntArray("Framebuffer"), cpu.getFramebuffer());
+                int[] fb = tag.getIntArray("Framebuffer");
+                FramebufferCodec.restore(fb, cpu.getFramebuffer());
+                if (cpu.getGpu().isInstalled()) {
+                    FramebufferCodec.restore(fb, cpu.getGpu().getFrontBuffer());
+                    FramebufferCodec.restore(fb, cpu.getGpu().getBackBuffer());
+                    cpu.getGpu().setFbDirty(true);
+                }
                 cpu.setFbDirty(true);
             }
 
@@ -898,21 +978,12 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
         CompoundTag tag = new CompoundTag();
         tag.put("Inventory", itemHandler.serializeNBT(registries));
         tag.putInt("DisplayMode", cpu.getDisplayMode());
+        tag.putInt("GraphicsHandler", cpu.getGraphicsHandler().ordinal());
         tag.putInt("CpuState", cpu.getState().ordinal());
         tag.putString("ErrorMessage", cpu.getErrorMessage() != null ? cpu.getErrorMessage() : "");
 
         if (socData != null && !socData.instructions().isEmpty()) {
-            CompoundTag socTag = new CompoundTag();
-            ListTag instTag = new ListTag();
-            for (String s : socData.instructions()) instTag.add(StringTag.valueOf(s));
-            socTag.put("Instructions", instTag);
-            socTag.putInt("RamCapacity", socData.ramCapacity());
-            ListTag biosTag = new ListTag();
-            for (String s : socData.bios()) biosTag.add(StringTag.valueOf(s));
-            socTag.put("Bios", biosTag);
-            socTag.putBoolean("HasNvme", socData.hasNvme());
-            socTag.putInt("StorageCapacity", socData.storageCapacity());
-            tag.put("SocData", socTag);
+            tag.put("SocData", serializeSocTag(socData));
         }
 
         ListTag terminalTag = new ListTag();
@@ -944,22 +1015,16 @@ public class ComputerBlockEntity extends BlockEntity implements MenuProvider, Co
             loadInventory(tag.getCompound("Inventory"), lookupProvider);
         }
         if (tag.contains("SocData")) {
-            CompoundTag socTag = tag.getCompound("SocData");
-            List<String> instructions = new ArrayList<>();
-            ListTag instTag = socTag.getList("Instructions", Tag.TAG_STRING);
-            for (int i = 0; i < instTag.size(); i++) instructions.add(instTag.getString(i));
-
-            int ramCap = socTag.getInt("RamCapacity");
-            List<String> bios = new ArrayList<>();
-            ListTag biosTag = socTag.getList("Bios", Tag.TAG_STRING);
-            for (int i = 0; i < biosTag.size(); i++) bios.add(biosTag.getString(i));
-
-            boolean hasNvme = socTag.getBoolean("HasNvme");
-            int storageCap = socTag.getInt("StorageCapacity");
-
-            this.socData = new SocData(instructions, ramCap, bios, hasNvme, storageCap);
+            this.socData = deserializeSocTag(tag.getCompound("SocData"));
         } else {
             this.socData = SocData.EMPTY;
+        }
+        if (tag.contains("GraphicsHandler")) {
+            int ord = tag.getInt("GraphicsHandler");
+            VirtualCpu.GraphicsHandler[] handlers = VirtualCpu.GraphicsHandler.values();
+            if (ord >= 0 && ord < handlers.length) {
+                cpu.setGraphicsHandler(handlers[ord]);
+            }
         }
         recalculateHardwareCapabilities();
 

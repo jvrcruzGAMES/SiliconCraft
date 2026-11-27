@@ -2,9 +2,9 @@ package games.jvrcruz.siliconcraft.client.screen;
 
 import games.jvrcruz.siliconcraft.Siliconcraft;
 import games.jvrcruz.siliconcraft.blockentity.ChipForgeBlockEntity;
+import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
 import games.jvrcruz.siliconcraft.menu.ArchitectureWriterMenu;
 import games.jvrcruz.siliconcraft.network.ArchitectureWriterPacket;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -21,10 +21,12 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
     private static final ResourceLocation TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Siliconcraft.MODID, "textures/gui/architecture_writer.png");
 
-    private final List<String> allInstructions = ChipForgeBlockEntity.ALL_INSTRUCTIONS;
-    private final List<String> selectedInstructions = new ArrayList<>(List.of("NOP", "MOV", "HLT", "OUT", "OUTC"));
+    private final List<String> selectedCpuInstructions = new ArrayList<>(List.of("NOP", "MOV", "HLT", "OUT", "OUTC"));
+    private final List<String> selectedGpuInstructions = new ArrayList<>(InstructionValidator.GPU_INSTRUCTIONS);
 
+    private boolean gpuMode = false;
     private EditBox nameInput;
+    private Button modeButton;
     private Button selectButton;
 
     // List bounds inside GUI
@@ -42,10 +44,24 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
         super(menu, playerInventory, title);
     }
 
+    private List<String> getAllInstructions() {
+        return gpuMode ? InstructionValidator.GPU_INSTRUCTIONS : ChipForgeBlockEntity.ALL_INSTRUCTIONS;
+    }
+
+    private List<String> getSelectedInstructions() {
+        return gpuMode ? selectedGpuInstructions : selectedCpuInstructions;
+    }
+
+    private void updateModeButton() {
+        if (modeButton != null) {
+            modeButton.setMessage(Component.literal(gpuMode ? "Mode: GPU" : "Mode: CPU"));
+        }
+    }
+
     private void updateSelectButton() {
         if (selectButton != null) {
-            boolean allSelected = selectedInstructions.size() == allInstructions.size();
-            selectButton.setMessage(Component.literal(allSelected ? "Select None" : "Select All"));
+            boolean allSelected = getSelectedInstructions().size() == getAllInstructions().size();
+            selectButton.setMessage(Component.literal(allSelected ? "No Ops" : "All Ops"));
         }
     }
 
@@ -57,41 +73,63 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
         // Name input box
         nameInput = new EditBox(this.font, this.leftPos + 58, this.topPos + 17, 108, 12, Component.literal("Arch Name"));
         nameInput.setMaxLength(20);
-        nameInput.setValue("RISC-1");
+        nameInput.setValue(gpuMode ? "GPU-1" : "RISC-1");
         this.addRenderableWidget(nameInput);
 
-        // Select All / None button
-        boolean allSelected = selectedInstructions.size() == allInstructions.size();
-        selectButton = Button.builder(
-                Component.literal(allSelected ? "Select None" : "Select All"),
+        // CPU / GPU Mode toggle button
+        modeButton = Button.builder(
+                Component.literal(gpuMode ? "Mode: GPU" : "Mode: CPU"),
                 b -> {
-                    if (selectedInstructions.size() == allInstructions.size()) {
-                        selectedInstructions.clear();
+                    String currentName = nameInput.getValue().trim();
+                    gpuMode = !gpuMode;
+                    if (gpuMode && currentName.equals("RISC-1")) {
+                        nameInput.setValue("GPU-1");
+                    } else if (!gpuMode && currentName.equals("GPU-1")) {
+                        nameInput.setValue("RISC-1");
+                    }
+                    scrollAmount = 0.0f;
+                    updateModeButton();
+                    updateSelectButton();
+                }
+        ).bounds(this.leftPos + 7, this.topPos + 67, 54, 14).build();
+        this.addRenderableWidget(modeButton);
+
+        // Select All / None button
+        boolean allSelected = getSelectedInstructions().size() == getAllInstructions().size();
+        selectButton = Button.builder(
+                Component.literal(allSelected ? "No Ops" : "All Ops"),
+                b -> {
+                    List<String> selected = getSelectedInstructions();
+                    List<String> all = getAllInstructions();
+                    if (selected.size() == all.size()) {
+                        selected.clear();
                     } else {
-                        selectedInstructions.clear();
-                        selectedInstructions.addAll(allInstructions);
+                        selected.clear();
+                        selected.addAll(all);
                     }
                     updateSelectButton();
                 }
-        ).bounds(this.leftPos + 8, this.topPos + 67, 60, 14).build();
+        ).bounds(this.leftPos + 63, this.topPos + 67, 46, 14).build();
         this.addRenderableWidget(selectButton);
 
         // Write button
-        this.addRenderableWidget(Button.builder(Component.literal("Write Architecture"), b -> {
+        this.addRenderableWidget(Button.builder(Component.literal("Write Arch"), b -> {
             String name = nameInput.getValue().trim();
-            if (name.isEmpty()) name = "Custom-Arch";
-            if (!selectedInstructions.isEmpty()) {
+            if (name.isEmpty()) name = gpuMode ? "Custom-GPU" : "Custom-Arch";
+            List<String> selected = getSelectedInstructions();
+            if (!selected.isEmpty()) {
                 PacketDistributor.sendToServer(new ArchitectureWriterPacket(
                         menu.getBlockEntity().getBlockPos(),
                         name,
-                        new ArrayList<>(selectedInstructions)
+                        new ArrayList<>(selected),
+                        gpuMode
                 ));
             }
-        }).bounds(this.leftPos + 70, this.topPos + 67, 98, 14).build());
+        }).bounds(this.leftPos + 111, this.topPos + 67, 58, 14).build());
     }
 
     private int getMaxScroll() {
-        int totalHeight = allInstructions.size() * ITEM_HEIGHT;
+        int totalHeight = getAllInstructions().size() * ITEM_HEIGHT;
         return Math.max(0, totalHeight - (LIST_HEIGHT - 2));
     }
 
@@ -118,7 +156,7 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 1 && selectButton != null && selectButton.isMouseOver(mouseX, mouseY)) {
-            selectedInstructions.clear();
+            getSelectedInstructions().clear();
             updateSelectButton();
             return true;
         }
@@ -137,12 +175,14 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
             // Clicked inside instruction list entries
             int relativeY = (int) (mouseY - absY + scrollAmount);
             int clickedIndex = relativeY / ITEM_HEIGHT;
-            if (clickedIndex >= 0 && clickedIndex < allInstructions.size()) {
-                String opcode = allInstructions.get(clickedIndex);
-                if (selectedInstructions.contains(opcode)) {
-                    selectedInstructions.remove(opcode);
+            List<String> all = getAllInstructions();
+            List<String> selected = getSelectedInstructions();
+            if (clickedIndex >= 0 && clickedIndex < all.size()) {
+                String opcode = all.get(clickedIndex);
+                if (selected.contains(opcode)) {
+                    selected.remove(opcode);
                 } else {
-                    selectedInstructions.add(opcode);
+                    selected.add(opcode);
                 }
                 updateSelectButton();
                 return true;
@@ -187,12 +227,14 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
 
         guiGraphics.enableScissor(listLeft, listTop, listRight, listBottom);
 
-        for (int i = 0; i < allInstructions.size(); i++) {
-            String opcode = allInstructions.get(i);
+        List<String> all = getAllInstructions();
+        List<String> selected = getSelectedInstructions();
+        for (int i = 0; i < all.size(); i++) {
+            String opcode = all.get(i);
             int itemY = (int) (listTop + (i * ITEM_HEIGHT) - scrollAmount);
 
             if (itemY + ITEM_HEIGHT >= listTop && itemY <= listBottom) {
-                boolean isSelected = selectedInstructions.contains(opcode);
+                boolean isSelected = selected.contains(opcode);
                 boolean isHovered = mouseX >= listLeft && mouseX < listRight && mouseY >= itemY && mouseY < itemY + ITEM_HEIGHT;
 
                 if (isHovered) {
@@ -200,7 +242,7 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
                 }
 
                 String checkbox = isSelected ? "[X] " : "[ ] ";
-                int textColor = isSelected ? 0x00E676 : 0xAAAAAA;
+                int textColor = isSelected ? (gpuMode ? 0x00E5FF : 0x00E676) : 0xAAAAAA;
                 guiGraphics.drawString(this.font, checkbox + opcode, listLeft + 2, itemY + 1, textColor, false);
             }
         }
@@ -211,7 +253,7 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
         int maxScroll = getMaxScroll();
         if (maxScroll > 0) {
             int trackHeight = LIST_HEIGHT - 2;
-            int thumbHeight = Math.max(6, (LIST_HEIGHT * trackHeight) / (allInstructions.size() * ITEM_HEIGHT));
+            int thumbHeight = Math.max(6, (LIST_HEIGHT * trackHeight) / (all.size() * ITEM_HEIGHT));
             int thumbY = listTop + 1 + (int) ((scrollAmount / (float) maxScroll) * (trackHeight - thumbHeight));
             int thumbX = this.leftPos + LIST_X + LIST_WIDTH - SCROLLBAR_WIDTH + 1;
 
@@ -222,7 +264,7 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
     @Override
     protected void renderLabels(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         guiGraphics.drawString(this.font, this.title, 8, 6, 0x404040, false);
-        guiGraphics.drawString(this.font, "Arch:", 30, 8, 0x555555, false);
+        guiGraphics.drawString(this.font, gpuMode ? "GPU" : "CPU", 148, 6, gpuMode ? 0x007799 : 0x227733, false);
     }
 
     @Override
@@ -232,7 +274,9 @@ public class ArchitectureWriterScreen extends BaseMachineScreen<ArchitectureWrit
         this.renderTooltip(guiGraphics, mouseX, mouseY);
         renderSlotEmptyTooltip(guiGraphics, mouseX, mouseY);
 
-        if (selectButton != null && selectButton.isMouseOver(mouseX, mouseY)) {
+        if (modeButton != null && modeButton.isMouseOver(mouseX, mouseY)) {
+            guiGraphics.renderTooltip(this.font, Component.literal("Toggle between CPU and GPU Architecture Writeup mode"), mouseX, mouseY);
+        } else if (selectButton != null && selectButton.isMouseOver(mouseX, mouseY)) {
             guiGraphics.renderTooltip(this.font, Component.literal("Toggle all/none instructions (Right-click: Select None)"), mouseX, mouseY);
         }
     }

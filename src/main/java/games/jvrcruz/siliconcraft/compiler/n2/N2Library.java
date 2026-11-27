@@ -86,6 +86,37 @@ public class N2Library {
         addFunc(glass, "fb_height", 0, "Glass");
         addFunc(glass, "height", 0, "Glass");
 
+        // Graphics processor selection & GPU telemetry / acceleration
+        addFunc(glass, "gfx_set_handler", 1, "Glass");
+        addFunc(glass, "use_auto_gfx", 0, "Glass");
+        addFunc(glass, "use_cpu", 0, "Glass");
+        addFunc(glass, "use_gpu", 0, "Glass");
+        addFunc(glass, "has_gpu", 0, "Glass");
+        addFunc(glass, "gpu_available", 0, "Glass");
+        addFunc(glass, "gfx_handler", 0, "Glass");
+        addFunc(glass, "is_using_gpu", 0, "Glass");
+        addFunc(glass, "gfx_mode", 0, "Glass");
+        addFunc(glass, "gpu_vram", 0, "Glass");
+        addFunc(glass, "gpu_vram_kb", 0, "Glass");
+
+        addFunc(glass, "gpu_clear", 1, "Glass");
+        addFunc(glass, "gpu_rect", 5, "Glass");
+        addFunc(glass, "gpu_line", 5, "Glass");
+        addFunc(glass, "draw_circle", 4, "Glass");
+        addFunc(glass, "gpu_circle", 4, "Glass");
+        addFunc(glass, "fill_circle", 4, "Glass");
+        addFunc(glass, "gpu_fill_circle", 4, "Glass");
+        addFunc(glass, "fill_triangle", 7, "Glass");
+        addFunc(glass, "gpu_triangle", 7, "Glass");
+        addFunc(glass, "vram_upload", 3, "Glass");
+        addFunc(glass, "gpu_blit", 5, "Glass");
+        addFunc(glass, "gpu_swap", 0, "Glass");
+        addFunc(glass, "gpu_sync", 0, "Glass");
+
+        addConst(glass, "GFX_AUTO", 0, "Glass");
+        addConst(glass, "GFX_CPU", 1, "Glass");
+        addConst(glass, "GFX_GPU", 2, "Glass");
+
         addConst(glass, "COLOR_BLACK", 0xFF000000, "Glass");
         addConst(glass, "COLOR_WHITE", 0xFFFFFFFF, "Glass");
         addConst(glass, "COLOR_RED", 0xFFFF0000, "Glass");

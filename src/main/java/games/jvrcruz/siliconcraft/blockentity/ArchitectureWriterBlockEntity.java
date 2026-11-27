@@ -55,6 +55,10 @@ public class ArchitectureWriterBlockEntity extends BlockEntity implements MenuPr
     }
 
     public boolean writeArchitecture(String archName, List<String> instructions) {
+        return writeArchitecture(archName, instructions, false);
+    }
+
+    public boolean writeArchitecture(String archName, List<String> instructions, boolean gpu) {
         if (instructions == null || instructions.isEmpty()) {
             return false;
         }
@@ -69,10 +73,14 @@ public class ArchitectureWriterBlockEntity extends BlockEntity implements MenuPr
             return false;
         }
 
-        String validName = (archName == null || archName.trim().isEmpty()) ? "Custom-Arch" : archName.trim();
+        String defaultName = gpu ? "Custom-GPU" : "Custom-Arch";
+        String validName = (archName == null || archName.trim().isEmpty()) ? defaultName : archName.trim();
+        List<String> allowedPool = gpu
+                ? games.jvrcruz.siliconcraft.compiler.InstructionValidator.GPU_INSTRUCTIONS
+                : ChipForgeBlockEntity.ALL_INSTRUCTIONS;
         List<String> validInstructions = new ArrayList<>();
         for (String instr : instructions) {
-            if (ChipForgeBlockEntity.ALL_INSTRUCTIONS.contains(instr) && !validInstructions.contains(instr)) {
+            if (allowedPool.contains(instr) && !validInstructions.contains(instr)) {
                 validInstructions.add(instr);
             }
         }
@@ -84,7 +92,7 @@ public class ArchitectureWriterBlockEntity extends BlockEntity implements MenuPr
         inputStack.shrink(1);
 
         ItemStack writeup = new ItemStack(ModItems.ARCHITECTURE_WRITEUP.get());
-        writeup.set(ModDataComponents.ARCHITECTURE_DATA.get(), new ArchitectureData(validName, validInstructions));
+        writeup.set(ModDataComponents.ARCHITECTURE_DATA.get(), new ArchitectureData(validName, validInstructions, gpu));
 
         if (outputStack.isEmpty()) {
             itemHandler.setStackInSlot(1, writeup);

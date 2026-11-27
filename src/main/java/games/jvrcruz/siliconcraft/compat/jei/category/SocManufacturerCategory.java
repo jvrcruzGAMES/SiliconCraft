@@ -94,6 +94,13 @@ public class SocManufacturerCategory implements IRecipeCategory<SocManufacturerJ
                     .setStandardSlotBackground();
         }
 
+        // Optional GPU
+        if (!recipe.gpu().isEmpty()) {
+            builder.addSlot(RecipeIngredientRole.INPUT, 64, 6)
+                    .addItemStack(recipe.gpu())
+                    .setStandardSlotBackground();
+        }
+
         // Output SoC
         builder.addSlot(RecipeIngredientRole.OUTPUT, 118, 16)
                 .addItemStack(recipe.output())

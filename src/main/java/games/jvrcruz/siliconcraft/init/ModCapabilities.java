@@ -27,6 +27,10 @@ public class ModCapabilities {
         event.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, ModBlockEntities.MEMORY_FORGE.get(), (be, side) -> be.getEnergyStorage());
         event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.MEMORY_FORGE.get(), (be, side) -> be.getItemHandler());
 
+        // GPU Assembler
+        event.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, ModBlockEntities.GPU_ASSEMBLER.get(), (be, side) -> be.getEnergyStorage());
+        event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.GPU_ASSEMBLER.get(), (be, side) -> be.getItemHandler());
+
         // Programmer
         event.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, ModBlockEntities.PROGRAMMER.get(), (be, side) -> be.getEnergyStorage());
         event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.PROGRAMMER.get(), (be, side) -> be.getItemHandler());

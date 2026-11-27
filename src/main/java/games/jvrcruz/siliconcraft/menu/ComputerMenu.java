@@ -25,7 +25,7 @@ public class ComputerMenu extends AbstractContainerMenu {
     private final ContainerData data;
 
     public ComputerMenu(int containerId, Inventory playerInventory, RegistryFriendlyByteBuf buf) {
-        this(containerId, playerInventory, (ComputerBlockEntity) playerInventory.player.level().getBlockEntity(buf.readBlockPos()), new SimpleContainerData(14));
+        this(containerId, playerInventory, (ComputerBlockEntity) playerInventory.player.level().getBlockEntity(buf.readBlockPos()), new SimpleContainerData(18));
     }
 
     public ComputerMenu(int containerId, Inventory playerInventory, ComputerBlockEntity blockEntity, ContainerData data) {
@@ -34,7 +34,7 @@ public class ComputerMenu extends AbstractContainerMenu {
         this.levelAccess = ContainerLevelAccess.create(blockEntity.getLevel(), blockEntity.getBlockPos());
         this.data = data;
 
-        // Storage slots 0–1 and RAM slots 2–9.
+        // Storage slots 0–1, RAM slots 2–9, GPU slot 10.
         this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 0, 226, 176,
                 stack -> stack.is(ModItems.STORAGE.get()),
                 Component.literal("Storage Slot 1 (Flash / NVMe)")));
@@ -47,6 +47,10 @@ public class ComputerMenu extends AbstractContainerMenu {
                     ramSlotX(i), ramSlotY(i), stack -> stack.is(ModItems.RAM.get()),
                     Component.literal("RAM Slot " + (i + 1) + " (1 Module Max)")));
         }
+
+        this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), ComputerBlockEntity.GPU_SLOT, 226, 234,
+                stack -> stack.is(ModItems.GPU.get()) && !blockEntity.hasSocGpu(),
+                Component.literal("GPU Expansion Slot (1 Max)")));
 
         // Player Inventory (3 rows x 9 columns)
         for (int row = 0; row < 3; ++row) {
@@ -87,6 +91,10 @@ public class ComputerMenu extends AbstractContainerMenu {
     public boolean hasNvme() { return data.get(11) != 0; }
     public int getTotalStorage() { return data.get(12); }
     public int getSocRam() { return data.get(13); }
+    public boolean hasGpu() { return data.get(14) != 0; }
+    public int getGpuVramKb() { return data.get(15); }
+    public int getGraphicsHandler() { return data.get(16); }
+    public boolean isUsingGpu() { return data.get(17) != 0; }
 
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
@@ -109,7 +117,9 @@ public class ComputerMenu extends AbstractContainerMenu {
                 if (slotStack.is(ModItems.STORAGE.get())) {
                     if (!this.moveItemStackTo(slotStack, 0, 2, false)) return ItemStack.EMPTY;
                 } else if (slotStack.is(ModItems.RAM.get())) {
-                    if (!this.moveItemStackTo(slotStack, ComputerBlockEntity.STORAGE_SLOTS, hardwareEnd, false)) return ItemStack.EMPTY;
+                    if (!this.moveItemStackTo(slotStack, ComputerBlockEntity.STORAGE_SLOTS, ComputerBlockEntity.GPU_SLOT, false)) return ItemStack.EMPTY;
+                } else if (slotStack.is(ModItems.GPU.get())) {
+                    if (!this.moveItemStackTo(slotStack, ComputerBlockEntity.GPU_SLOT, hardwareEnd, false)) return ItemStack.EMPTY;
                 } else if (index < hotbarStart) {
                     if (!this.moveItemStackTo(slotStack, hotbarStart, inventoryEnd, false)) return ItemStack.EMPTY;
                 } else {

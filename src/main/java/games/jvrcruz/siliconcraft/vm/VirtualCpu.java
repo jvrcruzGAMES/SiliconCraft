@@ -1,8 +1,8 @@
 package games.jvrcruz.siliconcraft.vm;
 
 import games.jvrcruz.siliconcraft.vm.network.NetworkPort;
-
 import games.jvrcruz.siliconcraft.compiler.InstructionValidator;
+import games.jvrcruz.siliconcraft.data.GpuData;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -70,11 +70,19 @@ public class VirtualCpu {
     private int selectedDrive = 0;
     private BiConsumer<Integer, byte[]> driveWriteListener;
 
+    public enum GraphicsHandler {
+        AUTO,
+        CPU,
+        GPU
+    }
+
     public static final int FB_WIDTH = 960;
     public static final int FB_HEIGHT = 540;
     private volatile int displayMode = 0; // 0 = text mode, 1 = framebuffer mode
     private final int[] framebuffer = new int[FB_WIDTH * FB_HEIGHT];
     private volatile boolean fbDirty = false;
+    private final VirtualGpu gpu = new VirtualGpu();
+    private volatile GraphicsHandler graphicsHandler = GraphicsHandler.AUTO;
 
     // Bare-bones audio buffer (8000 Hz, 8-bit unsigned PCM samples)
     private byte[] audioQueue = new byte[65536];
@@ -237,6 +245,17 @@ public class VirtualCpu {
     private static final int OP_NUTF8 = 97;
     private static final int OP_NRESPONDT = 98;
     private static final int OP_INAXIS = 101;
+    private static final int OP_GFXSEL = 102;
+    private static final int OP_GFXSTAT = 103;
+    private static final int OP_GPUCLR = 104;
+    private static final int OP_GPURECT = 105;
+    private static final int OP_GPULINE = 106;
+    private static final int OP_GPUCIRC = 107;
+    private static final int OP_GPUTRI = 108;
+    private static final int OP_GPUVRAM = 109;
+    private static final int OP_GPUBLIT = 110;
+    private static final int OP_GPUSWAP = 111;
+    private static final int OP_GPUSYNC = 112;
     private static final int OP_PLEN = 99;
     private static final int OP_PRESULTS = 100;
 
@@ -320,6 +339,17 @@ public class VirtualCpu {
         OPCODE_MAP.put("FBSWAP", OP_FBSWAP);
         OPCODE_MAP.put("FBWIDTH", OP_FBWIDTH);
         OPCODE_MAP.put("FBHEIGHT", OP_FBHEIGHT);
+        OPCODE_MAP.put("GFXSEL", OP_GFXSEL);
+        OPCODE_MAP.put("GFXSTAT", OP_GFXSTAT);
+        OPCODE_MAP.put("GPUCLR", OP_GPUCLR);
+        OPCODE_MAP.put("GPURECT", OP_GPURECT);
+        OPCODE_MAP.put("GPULINE", OP_GPULINE);
+        OPCODE_MAP.put("GPUCIRC", OP_GPUCIRC);
+        OPCODE_MAP.put("GPUTRI", OP_GPUTRI);
+        OPCODE_MAP.put("GPUVRAM", OP_GPUVRAM);
+        OPCODE_MAP.put("GPUBLIT", OP_GPUBLIT);
+        OPCODE_MAP.put("GPUSWAP", OP_GPUSWAP);
+        OPCODE_MAP.put("GPUSYNC", OP_GPUSYNC);
         OPCODE_MAP.put("APUSH", OP_APUSH);
         OPCODE_MAP.put("ABUFW", OP_ABUFW);
         OPCODE_MAP.put("ACLR", OP_ACLR);
@@ -804,6 +834,7 @@ public class VirtualCpu {
         loadStaticData();
         this.displayMode = 0;
         Arrays.fill(this.framebuffer, 0xFF051009);
+        this.gpu.reset();
         this.fbDirty = true;
         this.audioHead = 0;
         this.audioTail = 0;
@@ -825,6 +856,9 @@ public class VirtualCpu {
         this.inInterruptHandler = false;
         if (state != State.OFF) {
             this.state = State.RUNNING;
+            if (this.gpu.isInstalled()) {
+                this.gpu.powerOn();
+            }
         }
         queueResetInterrupt();
     }
@@ -837,6 +871,9 @@ public class VirtualCpu {
         synchronized (executionLock) {
             reset();
             this.state = State.RUNNING;
+            if (this.gpu.isInstalled()) {
+                this.gpu.powerOn();
+            }
         }
     }
 
@@ -844,6 +881,7 @@ public class VirtualCpu {
         synchronized (executionLock) {
             flushLineBuffer();
             this.state = State.OFF;
+            this.gpu.powerOff();
             clearPadStates();
             networkPort.reset();
             peripheralBus.reset();
@@ -877,6 +915,9 @@ public class VirtualCpu {
                 return;
             }
             executeNextInstruction();
+            if (gpu.isInstalled()) {
+                gpu.tick(gpu.getBatchBudget());
+            }
         }
     }
 
@@ -890,6 +931,9 @@ public class VirtualCpu {
                 checkAndDispatchInterrupt();
                 if (sleepTicksRemaining > 0) {
                     sleepTicksRemaining--;
+                    if (gpu.isInstalled()) {
+                        gpu.tick(gpu.getBatchBudget());
+                    }
                     return;
                 }
             }
@@ -907,6 +951,9 @@ public class VirtualCpu {
                 if (sleepTicksRemaining > 0) {
                     break;
                 }
+            }
+            if (gpu.isInstalled()) {
+                gpu.tick(gpu.getBatchBudget());
             }
         }
     }
@@ -1225,10 +1272,25 @@ public class VirtualCpu {
                 case OP_FBLIT -> execFbLit(ci.rawArgs);
                 case OP_FBSWAP -> {
                     displayMode = 1;
+                    gpu.setDisplayMode(1);
+                    if (isUsingGpu()) {
+                        gpu.submitSwap();
+                    }
                     fbDirty = true;
                 }
                 case OP_FBWIDTH -> setDestination(ci.rawArgs.trim(), FB_WIDTH);
                 case OP_FBHEIGHT -> setDestination(ci.rawArgs.trim(), FB_HEIGHT);
+                case OP_GFXSEL -> execGfxSel(ci.rawArgs);
+                case OP_GFXSTAT -> execGfxStat(ci.rawArgs);
+                case OP_GPUCLR -> execGpuClr(ci.rawArgs);
+                case OP_GPURECT -> execGpuRect(ci.rawArgs);
+                case OP_GPULINE -> execGpuLine(ci.rawArgs);
+                case OP_GPUCIRC -> execGpuCirc(ci.rawArgs);
+                case OP_GPUTRI -> execGpuTri(ci.rawArgs);
+                case OP_GPUVRAM -> execGpuVram(ci.rawArgs);
+                case OP_GPUBLIT -> execGpuBlit(ci.rawArgs);
+                case OP_GPUSWAP -> execGpuSwap();
+                case OP_GPUSYNC -> execGpuSync();
                 case OP_APUSH -> execAPush(ci.rawArgs);
                 case OP_ABUFW -> execABufw(ci.rawArgs);
                 case OP_ACLR -> execAClr();
@@ -2178,7 +2240,9 @@ public class VirtualCpu {
 
     // --- Framebuffer Instructions ---
     private void execFbMode(String args) {
-        displayMode = resolveValue(args.trim());
+        int mode = resolveValue(args.trim());
+        displayMode = mode;
+        gpu.setDisplayMode(mode);
         fbDirty = true;
     }
 
@@ -2188,6 +2252,10 @@ public class VirtualCpu {
         int x = resolveValue(parts[0].trim());
         int y = resolveValue(parts[1].trim());
         int color = resolveValue(parts[2].trim());
+        if (isUsingGpu()) {
+            gpu.submitSetPixel(x, y, color);
+            return;
+        }
         if ((color & 0xFF000000) == 0) color |= 0xFF000000;
         if (x >= 0 && x < FB_WIDTH && y >= 0 && y < FB_HEIGHT) {
             framebuffer[y * FB_WIDTH + x] = color;
@@ -2202,7 +2270,9 @@ public class VirtualCpu {
         int x = resolveValue(parts[1].trim());
         int y = resolveValue(parts[2].trim());
         int color = 0;
-        if (x >= 0 && x < FB_WIDTH && y >= 0 && y < FB_HEIGHT) {
+        if (isUsingGpu()) {
+            color = gpu.getBackPixel(x, y);
+        } else if (x >= 0 && x < FB_WIDTH && y >= 0 && y < FB_HEIGHT) {
             color = framebuffer[y * FB_WIDTH + x];
         }
         setDestination(dest, color);
@@ -2210,6 +2280,10 @@ public class VirtualCpu {
 
     private void execFbClr(String args) {
         int color = resolveValue(args.trim());
+        if (isUsingGpu()) {
+            gpu.submitClear(color);
+            return;
+        }
         if ((color & 0xFF000000) == 0) color |= 0xFF000000;
         Arrays.fill(framebuffer, color);
         fbDirty = true;
@@ -2223,6 +2297,10 @@ public class VirtualCpu {
         int rw = resolveValue(parts[2].trim());
         int rh = resolveValue(parts[3].trim());
         int color = resolveValue(parts[4].trim());
+        if (isUsingGpu()) {
+            gpu.submitFillRect(rx, ry, rw, rh, color);
+            return;
+        }
         if ((color & 0xFF000000) == 0) color |= 0xFF000000;
 
         int xStart = Math.max(0, rx);
@@ -2247,6 +2325,10 @@ public class VirtualCpu {
         int x1 = resolveValue(parts[2].trim());
         int y1 = resolveValue(parts[3].trim());
         int color = resolveValue(parts[4].trim());
+        if (isUsingGpu()) {
+            gpu.submitDrawLine(x0, y0, x1, y1, color);
+            return;
+        }
         if ((color & 0xFF000000) == 0) color |= 0xFF000000;
 
         long dx = Math.abs((long) x1 - x0);
@@ -2286,6 +2368,10 @@ public class VirtualCpu {
         int ramSrc = resolveValue(parts[2].trim());
         int bw = resolveValue(parts[3].trim());
         int bh = resolveValue(parts[4].trim());
+        if (isUsingGpu()) {
+            gpu.submitBlitFromRam(dx, dy, ram, ramSrc, bw, bh, false);
+            return;
+        }
 
         for (int py = 0; py < bh; py++) {
             int targetY = dy + py;
@@ -2302,6 +2388,153 @@ public class VirtualCpu {
             }
         }
         fbDirty = true;
+    }
+
+    // --- GPU & Graphics Handler Instructions ---
+    private void requireGpuInstalled() {
+        if (!gpu.isInstalled()) {
+            throw new IllegalStateException("GPU hardware instruction requires an installed GPU");
+        }
+    }
+
+    private void requireGpuFeature(String feature) {
+        requireGpuInstalled();
+        if (!gpu.supportsFeature(feature)) {
+            throw new IllegalStateException("GPU feature not supported by hardware: " + feature);
+        }
+    }
+
+    private void execGfxSel(String args) {
+        int mode = resolveValue(args.trim());
+        GraphicsHandler target = switch (mode) {
+            case 1 -> GraphicsHandler.CPU;
+            case 2 -> GraphicsHandler.GPU;
+            default -> GraphicsHandler.AUTO;
+        };
+        setGraphicsHandler(target);
+        flagZ = !isUsingGpu();
+        flagS = false;
+    }
+
+    private void execGfxStat(String args) {
+        String[] parts = splitArgs(args, 0);
+        if (parts.length < 1 || parts.length > 2) {
+            throw new IllegalArgumentException("GFXSTAT requires dest [, query]");
+        }
+        int query = parts.length == 2 ? resolveValue(parts[1].trim()) : 0;
+        int result = switch (query) {
+            case 0 -> gpu.isInstalled() ? 1 : 0;
+            case 1 -> isUsingGpu() ? 1 : 0;
+            case 2 -> graphicsHandler.ordinal();
+            case 3 -> gpu.getVramCapacityBytes();
+            case 4 -> gpu.getVramCapacityBytes() / 1024;
+            case 5 -> (int) gpu.getCommandsExecuted();
+            case 6 -> gpu.getComputeUnits();
+            case 7 -> gpu.isBusy() ? 1 : 0;
+            case 8 -> gpu.getFramesPresented();
+            default -> 0;
+        };
+        setDestination(parts[0].trim(), result);
+        flagZ = (result == 0);
+        flagS = (result < 0);
+    }
+
+    private void execGpuClr(String args) {
+        requireGpuFeature("GPUCLR");
+        int color = resolveValue(args.trim());
+        gpu.submitClear(color);
+    }
+
+    private void execGpuRect(String args) {
+        requireGpuFeature("GPURECT");
+        String[] parts = splitArgs(args, 5);
+        if (parts.length != 5) throw new IllegalArgumentException("GPURECT requires x, y, w, h, color");
+        gpu.submitFillRect(
+                resolveValue(parts[0].trim()),
+                resolveValue(parts[1].trim()),
+                resolveValue(parts[2].trim()),
+                resolveValue(parts[3].trim()),
+                resolveValue(parts[4].trim())
+        );
+    }
+
+    private void execGpuLine(String args) {
+        requireGpuFeature("GPULINE");
+        String[] parts = splitArgs(args, 5);
+        if (parts.length != 5) throw new IllegalArgumentException("GPULINE requires x1, y1, x2, y2, color");
+        gpu.submitDrawLine(
+                resolveValue(parts[0].trim()),
+                resolveValue(parts[1].trim()),
+                resolveValue(parts[2].trim()),
+                resolveValue(parts[3].trim()),
+                resolveValue(parts[4].trim())
+        );
+    }
+
+    private void execGpuCirc(String args) {
+        requireGpuFeature("GPUCIRC");
+        String[] parts = splitArgs(args, 0);
+        if (parts.length < 4 || parts.length > 5) {
+            throw new IllegalArgumentException("GPUCIRC requires cx, cy, r, color [, filled]");
+        }
+        int cx = resolveValue(parts[0].trim());
+        int cy = resolveValue(parts[1].trim());
+        int r = resolveValue(parts[2].trim());
+        int color = resolveValue(parts[3].trim());
+        boolean filled = parts.length < 5 || resolveValue(parts[4].trim()) != 0;
+        gpu.submitDrawCircle(cx, cy, r, color, filled);
+    }
+
+    private void execGpuTri(String args) {
+        requireGpuFeature("GPUTRI");
+        int addr = resolveValue(args.trim());
+        verifyRamBuffer(addr, 7);
+        gpu.submitFillTriangle(
+                ram[addr],
+                ram[addr + 1],
+                ram[addr + 2],
+                ram[addr + 3],
+                ram[addr + 4],
+                ram[addr + 5],
+                ram[addr + 6]
+        );
+    }
+
+    private void execGpuVram(String args) {
+        requireGpuFeature("GPUVRAM");
+        String[] parts = splitArgs(args, 3);
+        if (parts.length != 3) throw new IllegalArgumentException("GPUVRAM requires vram_offset, ram_src, count");
+        int vramOffset = resolveValue(parts[0].trim());
+        int ramSrc = resolveValue(parts[1].trim());
+        int count = resolveValue(parts[2].trim());
+        gpu.uploadVram(vramOffset, ram, ramSrc, count);
+    }
+
+    private void execGpuBlit(String args) {
+        requireGpuFeature("GPUBLIT");
+        String[] parts = splitArgs(args, 5);
+        if (parts.length != 5) throw new IllegalArgumentException("GPUBLIT requires x, y, vram_offset, w, h");
+        gpu.submitBlitFromVram(
+                resolveValue(parts[0].trim()),
+                resolveValue(parts[1].trim()),
+                resolveValue(parts[2].trim()),
+                resolveValue(parts[3].trim()),
+                resolveValue(parts[4].trim()),
+                true
+        );
+    }
+
+    private void execGpuSwap() {
+        requireGpuFeature("GPUSWAP");
+        displayMode = 1;
+        gpu.setDisplayMode(1);
+        gpu.submitSwap();
+        fbDirty = true;
+    }
+
+    private void execGpuSync() {
+        requireGpuFeature("GPUSYNC");
+        gpu.flush();
     }
 
     // --- Audio Instructions ---
@@ -2400,7 +2633,85 @@ public class VirtualCpu {
     public boolean isFbDirty() { return fbDirty; }
     public void setFbDirty(boolean dirty) { this.fbDirty = dirty; }
     public int getDisplayMode() { return displayMode; }
-    public void setDisplayMode(int mode) { this.displayMode = mode; }
+    public void setDisplayMode(int mode) {
+        this.displayMode = mode;
+        this.gpu.setDisplayMode(mode);
+    }
+
+    public VirtualGpu getGpu() { return gpu; }
+
+    public void configureGpu(GpuData gpuData) {
+        if (gpu.isSameConfig(gpuData)) {
+            if (state == State.RUNNING && gpu.isInstalled() && gpu.getState() == VirtualGpu.State.OFF) {
+                gpu.powerOn();
+            } else if (!gpu.isInstalled() && gpu.getState() != VirtualGpu.State.OFF) {
+                gpu.powerOff();
+            }
+            return;
+        }
+        gpu.configure(gpuData);
+        if (state == State.RUNNING && gpu.isInstalled()) {
+            gpu.powerOn();
+        } else if (!gpu.isInstalled()) {
+            gpu.powerOff();
+        }
+        fbDirty = true;
+    }
+
+    public void configureGpu(boolean present, String archName, int vramBytes, int computeUnits) {
+        if (gpu.isSameConfigHardware(present, archName, vramBytes, computeUnits)) {
+            if (state == State.RUNNING && gpu.isInstalled() && gpu.getState() == VirtualGpu.State.OFF) {
+                gpu.powerOn();
+            }
+            return;
+        }
+        gpu.configureHardware(present, archName, vramBytes, computeUnits);
+        if (state == State.RUNNING && gpu.isInstalled()) {
+            gpu.powerOn();
+        } else if (!gpu.isInstalled()) {
+            gpu.powerOff();
+        }
+        fbDirty = true;
+    }
+
+    public GraphicsHandler getGraphicsHandler() { return graphicsHandler; }
+
+    public void setGraphicsHandler(GraphicsHandler handler) {
+        this.graphicsHandler = (handler == null) ? GraphicsHandler.AUTO : handler;
+        this.fbDirty = true;
+        this.gpu.setFbDirty(true);
+    }
+
+    public void cycleGraphicsHandler() {
+        GraphicsHandler next = switch (graphicsHandler) {
+            case AUTO -> GraphicsHandler.CPU;
+            case CPU -> gpu.isInstalled() ? GraphicsHandler.GPU : GraphicsHandler.AUTO;
+            case GPU -> GraphicsHandler.AUTO;
+        };
+        setGraphicsHandler(next);
+    }
+
+    public boolean isUsingGpu() {
+        if (!gpu.isInstalled()) return false;
+        return graphicsHandler == GraphicsHandler.AUTO || graphicsHandler == GraphicsHandler.GPU;
+    }
+
+    public int[] getActiveFramebuffer() {
+        if (isUsingGpu()) {
+            gpu.flush();
+            return gpu.getFrontBuffer();
+        }
+        return framebuffer;
+    }
+
+    public boolean isAnyFbDirty() {
+        return fbDirty || (isUsingGpu() && gpu.isFbDirty());
+    }
+
+    public void clearAllFbDirty() {
+        fbDirty = false;
+        gpu.setFbDirty(false);
+    }
 
     private void execOut(String args) {
         args = args.trim();

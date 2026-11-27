@@ -15,6 +15,7 @@ public class N2CodeGenerator {
 
     private int labelCounter = 0;
     private int stringCounter = 0;
+    private boolean needsGpuTriScratch = false;
     private final Map<String, String> stringPool = new HashMap<>();
 
     // Scope and symbol resolution
@@ -128,6 +129,11 @@ public class N2CodeGenerator {
         emit("_tmp_c: DB 0");
         emit("_tmp_d: DB 0");
         emit("_pcall_val: DB 0");
+        if (needsGpuTriScratch) {
+            for (int g = 0; g < 7; g++) {
+                emit("_tmp_g" + g + ": DB 0");
+            }
+        }
 
         for (String g : globalVars) {
             emit("g_" + g + ": DB 0");
@@ -993,6 +999,16 @@ public class N2CodeGenerator {
             errors.add("Line " + line + ":" + col + ": " + name + " expects " + symbol.arity() + " arguments");
             return;
         }
+        if (symbol.library().equals("Glass") && switch (name) {
+            case "gfx_set_handler", "use_auto_gfx", "use_cpu", "use_gpu", "has_gpu", "gpu_available",
+                 "gfx_handler", "is_using_gpu", "gfx_mode", "gpu_vram", "gpu_vram_kb",
+                 "gpu_rect", "gpu_line", "draw_circle", "gpu_circle", "fill_circle", "gpu_fill_circle",
+                 "fill_triangle", "gpu_triangle", "vram_upload", "gpu_blit", "gpu_swap", "gpu_sync" -> true;
+            default -> false;
+        } && args.size() != symbol.arity()) {
+            errors.add("Line " + line + ":" + col + ": " + name + " expects " + symbol.arity() + " arguments");
+            return;
+        }
         var httpHelper = N2NetworkRuntime.APIS.get(name);
         if (httpHelper != null) {
             generateHttpHelper(name, httpHelper, args, line, col);
@@ -1299,6 +1315,111 @@ public class N2CodeGenerator {
                     emit("FBLIT A, [_tmp_a], [_tmp_b], [_tmp_c], [_tmp_d]", "FBLIT");
                 }
             }
+            case "gfx_set_handler" -> {
+                if (!args.isEmpty()) {
+                    generateExpression(args.get(0));
+                    emit("GFXSEL A", "GFXSEL");
+                }
+            }
+            case "use_auto_gfx" -> emit("GFXSEL 0", "GFXSEL");
+            case "use_cpu" -> emit("GFXSEL 1", "GFXSEL");
+            case "use_gpu" -> emit("GFXSEL 2", "GFXSEL");
+            case "has_gpu", "gpu_available" -> emit("GFXSTAT A, 0", "GFXSTAT");
+            case "gfx_handler", "is_using_gpu" -> emit("GFXSTAT A, 1", "GFXSTAT");
+            case "gfx_mode" -> emit("GFXSTAT A, 2", "GFXSTAT");
+            case "gpu_vram" -> emit("GFXSTAT A, 3", "GFXSTAT");
+            case "gpu_vram_kb" -> emit("GFXSTAT A, 4", "GFXSTAT");
+            case "gpu_clear" -> {
+                if (!args.isEmpty()) {
+                    generateExpression(args.get(0));
+                    emit("GPUCLR A", "GPUCLR");
+                } else {
+                    emit("GPUCLR 0", "GPUCLR");
+                }
+            }
+            case "gpu_rect" -> {
+                if (args.size() >= 5) {
+                    for (int i = 0; i < 5; i++) {
+                        generateExpression(args.get(i));
+                        emit("PUSH A", "PUSH");
+                    }
+                    emit("POP [_tmp_d]", "POP");
+                    emit("POP [_tmp_c]", "POP");
+                    emit("POP [_tmp_b]", "POP");
+                    emit("POP [_tmp_a]", "POP");
+                    emit("POP A", "POP");
+                    emit("GPURECT A, [_tmp_a], [_tmp_b], [_tmp_c], [_tmp_d]", "GPURECT");
+                }
+            }
+            case "gpu_line" -> {
+                if (args.size() >= 5) {
+                    for (int i = 0; i < 5; i++) {
+                        generateExpression(args.get(i));
+                        emit("PUSH A", "PUSH");
+                    }
+                    emit("POP [_tmp_d]", "POP");
+                    emit("POP [_tmp_c]", "POP");
+                    emit("POP [_tmp_b]", "POP");
+                    emit("POP [_tmp_a]", "POP");
+                    emit("POP A", "POP");
+                    emit("GPULINE A, [_tmp_a], [_tmp_b], [_tmp_c], [_tmp_d]", "GPULINE");
+                }
+            }
+            case "draw_circle", "gpu_circle", "fill_circle", "gpu_fill_circle" -> {
+                if (args.size() >= 4) {
+                    int filled = (name.equals("fill_circle") || name.equals("gpu_fill_circle")) ? 1 : 0;
+                    for (int i = 0; i < 4; i++) {
+                        generateExpression(args.get(i));
+                        emit("PUSH A", "PUSH");
+                    }
+                    emit("POP [_tmp_c]", "POP");
+                    emit("POP [_tmp_b]", "POP");
+                    emit("POP [_tmp_a]", "POP");
+                    emit("POP A", "POP");
+                    emit("GPUCIRC A, [_tmp_a], [_tmp_b], [_tmp_c], " + filled, "GPUCIRC");
+                }
+            }
+            case "fill_triangle", "gpu_triangle" -> {
+                if (args.size() >= 7) {
+                    needsGpuTriScratch = true;
+                    for (int i = 0; i < 7; i++) {
+                        generateExpression(args.get(i));
+                        emit("PUSH A", "PUSH");
+                    }
+                    for (int i = 6; i >= 0; i--) {
+                        emit("POP [_tmp_g" + i + "]", "POP");
+                    }
+                    emit("GPUTRI _tmp_g0", "GPUTRI");
+                }
+            }
+            case "vram_upload" -> {
+                if (args.size() >= 3) {
+                    for (int i = 0; i < 3; i++) {
+                        generateExpression(args.get(i));
+                        emit("PUSH A", "PUSH");
+                    }
+                    emit("POP [_tmp_b]", "POP");
+                    emit("POP [_tmp_a]", "POP");
+                    emit("POP A", "POP");
+                    emit("GPUVRAM A, [_tmp_a], [_tmp_b]", "GPUVRAM");
+                }
+            }
+            case "gpu_blit" -> {
+                if (args.size() >= 5) {
+                    for (int i = 0; i < 5; i++) {
+                        generateExpression(args.get(i));
+                        emit("PUSH A", "PUSH");
+                    }
+                    emit("POP [_tmp_d]", "POP");
+                    emit("POP [_tmp_c]", "POP");
+                    emit("POP [_tmp_b]", "POP");
+                    emit("POP [_tmp_a]", "POP");
+                    emit("POP A", "POP");
+                    emit("GPUBLIT A, [_tmp_a], [_tmp_b], [_tmp_c], [_tmp_d]", "GPUBLIT");
+                }
+            }
+            case "gpu_swap" -> emit("GPUSWAP", "GPUSWAP");
+            case "gpu_sync" -> emit("GPUSYNC", "GPUSYNC");
             case "tone", "play_tone" -> {
                 if (args.size() >= 2) {
                     generateExpression(args.get(0));

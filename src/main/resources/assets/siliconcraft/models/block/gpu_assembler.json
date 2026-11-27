@@ -1,0 +1,9 @@
+{
+  "parent": "minecraft:block/orientable_with_bottom",
+  "textures": {
+    "top": "siliconcraft:block/gpu_assembler_top",
+    "bottom": "siliconcraft:block/chip_forge_bottom",
+    "front": "siliconcraft:block/gpu_assembler_front",
+    "side": "siliconcraft:block/gpu_assembler_side"
+  }
+}

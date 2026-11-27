@@ -1,0 +1,18 @@
+// ============================================
+// Program: 03_multiply.n (N1 Standard)
+// Description: Multiplies two numbers via repeated addition
+// ============================================
+
+println "Multiplication Routine"
+
+var a = 12        // Multiplicand
+var b = 7         // Multiplier
+var result = 0    // Result accumulator
+
+while b > 0 {
+    result += a
+    b--
+}
+
+println "Result (12 * 7):"
+println result

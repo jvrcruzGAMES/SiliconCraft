@@ -8,8 +8,20 @@ import net.minecraft.network.codec.StreamCodec;
 
 import java.util.List;
 
-public record SocData(List<String> instructions, int ramCapacity, List<String> bios, boolean hasNvme, int storageCapacity) {
-    public static final SocData EMPTY = new SocData(List.of(), 0, List.of(), false, 0);
+public record SocData(List<String> instructions, int ramCapacity, List<String> bios, boolean hasNvme, int storageCapacity, GpuData gpu) {
+    public static final SocData EMPTY = new SocData(List.of(), 0, List.of(), false, 0, GpuData.EMPTY);
+
+    public SocData(List<String> instructions, int ramCapacity, List<String> bios, boolean hasNvme, int storageCapacity) {
+        this(instructions, ramCapacity, bios, hasNvme, storageCapacity, GpuData.EMPTY);
+    }
+
+    public SocData {
+        gpu = gpu == null ? GpuData.EMPTY : gpu;
+    }
+
+    public boolean hasGpu() {
+        return gpu != null && gpu.isPresent();
+    }
 
     public static final Codec<SocData> CODEC = RecordCodecBuilder.create(instance ->
         instance.group(
@@ -17,7 +29,8 @@ public record SocData(List<String> instructions, int ramCapacity, List<String> b
             Codec.INT.optionalFieldOf("ramCapacity", 256).forGetter(SocData::ramCapacity),
             Codec.STRING.listOf().optionalFieldOf("bios", List.of()).forGetter(SocData::bios),
             Codec.BOOL.optionalFieldOf("hasNvme", false).forGetter(SocData::hasNvme),
-            Codec.INT.optionalFieldOf("storageCapacity", 0).forGetter(SocData::storageCapacity)
+            Codec.INT.optionalFieldOf("storageCapacity", 0).forGetter(SocData::storageCapacity),
+            GpuData.CODEC.optionalFieldOf("gpu", GpuData.EMPTY).forGetter(SocData::gpu)
         ).apply(instance, SocData::new)
     );
 
@@ -32,6 +45,8 @@ public record SocData(List<String> instructions, int ramCapacity, List<String> b
         SocData::hasNvme,
         ByteBufCodecs.VAR_INT,
         SocData::storageCapacity,
+        GpuData.STREAM_CODEC,
+        SocData::gpu,
         SocData::new
     );
 }

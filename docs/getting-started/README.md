@@ -30,27 +30,28 @@ When your computer is ready, continue with [Assembly](../assembly/README.md), [N
 
 ---
 
-## 2. Architecture Writer (Designing CPU Architecture)
+## 2. Architecture Writer (Designing CPU & GPU Architectures)
 
-Before forging a microchip, you design its Instruction Set Architecture (ISA) at the **Architecture Writer** drafting desk.
+Before forging a CPU microchip or assembling a GPU, you design its supported instruction or graphics-operation blueprint at the **Architecture Writer** drafting desk.
 
 1. Craft and place an **Architecture Writer** block.
 2. Open its interface.
-3. Enter your custom **Architecture Name** (e.g. `RISC-1`, `Alpha-8`, `JVRC-CPU`).
-4. Select which instructions your architecture will support from the scrollable opcode list with checkmarks (e.g. `NOP`, `MOV`, `ADD`, `SUB`, `INC`, `DEC`, `CMP`, `JMP`, `JZ`, `JNZ`, `OUT`, `OUTH`, `HLT`, `FBSET`, `APUSH`, etc.).
-5. Insert a piece of **Paper** (or a blank writeup) into the top-left input slot.
-6. Click **Write Architecture**.
-7. Retrieve your newly drafted **Architecture Writeup** item! Hovering over it displays the architecture name and all supported instructions.
+3. Click **`Mode: CPU` / `Mode: GPU`** to choose whether you are drafting a **CPU Architecture Writeup** (for the Chip Forge and code/project compilers) or a **GPU Architecture Writeup** (for the GPU Assembler).
+4. Enter your custom **Architecture Name** (e.g. `RISC-1`, `GPU-1`).
+5. Select which instructions (`NOP`, `MOV`, `ADD`, `OUT`, `HLT`, etc. in CPU mode) or graphics operations (`FBCLR`, `GPUCLR`, `GPURECT`, `GPUCIRC`, `GPUTRI`, `GPUVRAM`, `GPUBLIT`, `GPUSWAP`, etc. in GPU mode) your design will support from the scrollable list.
+6. Insert a piece of **Paper** (or a blank writeup) into the top-left input slot.
+7. Click **Write Arch**.
+8. Retrieve your newly drafted **Architecture Writeup** item! Hovering over it displays its mode (`CPU` or `GPU`), architecture name, and supported operation count.
 
 ---
 
 ## 3. Chip Forge (Fabricating the CPU)
 
-The **Chip Forge** manufactures custom microchips according to an Architecture Writeup blueprint.
+The **Chip Forge** manufactures custom CPU microchips according to a **CPU Architecture Writeup** blueprint.
 
 1. Open the Chip Forge GUI.
 2. Insert **Silicon Powder** (top-left) and **Redstone Dust** (top-mid). Add fuel or connect FE.
-3. Place your **Architecture Writeup** into the blueprint slot (bottom-mid, below Redstone).
+3. Place your **CPU Architecture Writeup** into the blueprint slot (bottom-mid, below Redstone).
 4. The right side of the screen displays your architecture name and instructions.
 5. Click **Forge**.
 6. Retrieve the forged **Chip**.
@@ -72,7 +73,21 @@ The **Memory Forge** manufactures system memory modules:
 
 ---
 
-## 5. Writing, Compiling & Flashing Programs
+## 5. GPU Assembler (Dedicated Graphics Processor)
+
+The **GPU Assembler** fabricates a dedicated **GPU** expansion card from a reusable **GPU Architecture Writeup**, **Silicon Powder**, **Redstone Dust**, and optional RAM modules:
+
+1. Draft a **GPU Architecture Writeup** at the **Architecture Writer** in **`Mode: GPU`**.
+2. Open the **GPU Assembler** GUI.
+3. Insert **Silicon Powder** (top-left) and **Redstone Dust** (top-right of the 2×2 input grid), and place your **GPU Architecture Writeup** in the blueprint slot (bottom-right of the 2×2 grid). Material requirements scale with the number of selected GPU operations (`min(12, 1 + ops / 4)` Silicon Powder and `min(16, 1 + ops / 3)` Redstone Dust).
+4. Insert **0 to 8 RAM modules** into the VRAM slots. Each RAM module adds **2048 KB (2 MB)** of dedicated GPU VRAM (up to **16 MB**) and scales GPU compute throughput.
+5. Connect **Forge Energy (FE)** or insert furnace fuel into the fuel slot (bottom-left of the 2×2 grid). Required energy (`200 + opCount * 60 + ramCount * 250` FE) and assembly time (`40 + opCount * 8 + ramCount * 20` ticks) scale with the GPU architecture size and installed RAM modules.
+6. Click **Assemble** and retrieve your **GPU** from the output slot.
+   > **Note**: Just like in the Chip Forge, the **GPU Architecture Writeup is NEVER consumed** during assembly and can be reused indefinitely.
+
+---
+
+## 6. Writing, Compiling & Flashing Programs
 
 SiliconCraft separates program writing and compilation from physical ROM/Storage burning, ensuring your CPU hardware matches your software instructions before spending resources.
 
@@ -115,7 +130,7 @@ The **Programmer** writes your programs to physical chips and drives:
 
 ---
 
-## 6. SoC Manufacturer (System-on-Chip)
+## 7. SoC Manufacturer (System-on-Chip)
 
 The **SoC Manufacturer** integrates your components into a unified processor package:
 
@@ -125,12 +140,13 @@ The **SoC Manufacturer** integrates your components into a unified processor pac
 - **ROM (BIOS)**: Your flashed ROM chip
 - **RAM Slot (Optional)**: Accepts up to **4 RAM modules** at once! The machine consumes all placed modules (1 to 4), scaling the SoC's internal RAM capacity accordingly.
 - **Storage Slot (Optional)**: Accepts a Flash Storage drive to integrate built-in storage directly onto the SoC.
+- **GPU Slot (Optional)**: Accepts **1 GPU** card to integrate an onboard graphics processor directly onto the SoC.
 
 Click **Assemble SoC** to generate your integrated **SoC**.
 
 ---
 
-## 7. Personal Computer Setup & Hardware Expansion
+## 8. Personal Computer Setup & Hardware Expansion
 
 1. Place a **Computer Case** block in the world.
 2. Right-click the Computer Case holding your **SoC** item.
@@ -143,11 +159,16 @@ Opening the Personal Computer interface provides dedicated hardware expansion sl
   - Both **Flash** and **NVMe** drives provide an expansive **2048 MB** (2,147,483,648 bytes / 2 GiB) capacity per drive!
   - Each drive is treated independently (indexed as drive `0` and drive `1`).
   - Storage drives retain their binary content in item NBT when extracted and moved!
+- **1 GPU Expansion Slot**: Insert **1 GPU** card to add hardware-accelerated graphics to the computer.
+  - **1 GPU Limit**: Only **1 GPU** is allowed per SoC or computer. If the installed SoC already has an onboard GPU, the PC's GPU expansion slot is locked so a second GPU cannot be inserted.
 
-### Framebuffer Graphics (Direct Screen Canvas)
-The Personal Computer includes a dedicated **$960 \times 540$ CRT Framebuffer**:
-- Programs can draw direct pixels, lines, rectangles, or flip entire color buffers (`FBSET`, `FBLINE`, `FBRECT`, `FBSWAP`, or in N: `fb.set()`, `fb.rect()`, etc.).
-- Rendering executes directly on the computer screen canvas without Minecraft GUI engine overhead.
+### Framebuffer Graphics & GPU Acceleration
+The Personal Computer includes a dedicated **$960 \times 540$ CRT Framebuffer** (`VirtualGpu` when a GPU is installed, or the CPU software framebuffer otherwise):
+- **Graphics Handler Selector (`GFX:AUTO` / `GFX:CPU` / `GFX:GPU`)**: Click the `GFX:...` button in the PC GUI (or use `GFXSEL` / `<Glass>` helpers in software) to choose whether framebuffer drawing runs on the CPU or the dedicated `VirtualGpu`.
+  - **`AUTO` (Default)**: Automatically routes framebuffer graphics and `<Glass>` calls through `VirtualGpu` when a GPU is installed, falling back to the CPU software framebuffer when no GPU is present.
+  - **`CPU`**: Forces standard `FB*` rendering onto the CPU's software framebuffer even when a GPU is installed.
+  - **`GPU`**: Targets `VirtualGpu` explicitly (available when a GPU is installed).
+- **GPU Hardware Acceleration**: When using a GPU, `VirtualGpu` executes queued drawing commands (`GPUCLR`, `GPURECT`, `GPULINE`, `GPUCIRC`, `GPUTRI`, `GPUVRAM`, `GPUBLIT`, `GPUSWAP`, `GPUSYNC`) on a separate double-buffered graphics processor with dedicated VRAM.
 
 ### Audio Buffer & Speaker Routing Rules
 - The computer features an 8000 Hz, 8-bit unsigned PCM audio synthesis buffer (`APUSH`, `ATONE`, `APLAY`, `ACLR`, `ASTAT`).
@@ -159,6 +180,7 @@ The Personal Computer includes a dedicated **$960 \times 540$ CRT Framebuffer**:
 - **Power Button**: Boots the CPU on background worker threads. The terminal outputs BIOS information, clock cycles, and any strings printed with `OUT`.
 - **Reset Button**: Resets registers, flags, audio, and restarts PC from line `0`.
 - **Step Button**: Executes a single clock cycle / instruction for interactive debugging.
+- **GFX Handler Button**: Cycles graphics output handling between `GFX:AUTO`, `GFX:CPU`, and `GFX:GPU`.
 - **Keystroke Isolation**: Buttons automatically lose selection when your cursor moves away. This prevents accidental UI button activation when typing interactive terminal keystrokes into your running program!
 - **CPU Registers & Flags**: Live displays for `PC`, `A`, `B`, `C`, `D`, `Z` (Zero Flag), and `S` (Sign Flag).
 
@@ -169,7 +191,19 @@ To upgrade or retrieve your SoC:
 
 ---
 
-## 8. Crafting Recipes Reference
+## 9. Crafting Recipes Reference
+
+### GPU Assembler
+```
+ICI
+RFR
+ISI
+```
+- **I**: Iron Ingot
+- **C**: Copper Ingot
+- **R**: Redstone Dust
+- **F**: Blast Furnace
+- **S**: Silicon Powder
 
 ### Project Compiler
 ```
@@ -194,7 +228,7 @@ ABA
 
 ---
 
-## 9. Interactive Input, Interrupts & Exceptions
+## 10. Interactive Input, Interrupts & Exceptions
 
 ### Interactive CRT Display
 When you open the **Personal Computer** interface:
@@ -219,7 +253,7 @@ If an exception is **unhandled**, the CPU enters the `ERROR` state and prints:
 
 ---
 
-## 10. Jade HUD Integration
+## 11. Jade HUD Integration
 
 SiliconCraft includes native support for the **Jade** (Just Enough Details) on-screen HUD mod, providing real-time in-world telemetry when looking at blocks:
 
@@ -227,12 +261,12 @@ SiliconCraft includes native support for the **Jade** (Just Enough Details) on-s
   - Live CPU State (`[OFF]`, `[RUNNING]`, `[PAUSED]`, `[HALTED]`, `[ERROR]`).
   - Active error messages if faulted.
   - Installed SoC details (opcode count, ROM program).
-  - Effective RAM capacity and Storage drives installed.
+  - Effective RAM capacity, GPU presence/VRAM/handler mode, and Storage drives installed.
   - Cycle counter and Display mode (Text vs Framebuffer Direct Pixel).
 - **Forges & Machines**:
   - Real-time Forge Energy (`FE`) storage and capacity.
   - Solid fuel burn ticks remaining.
-  - Interactive progress bars and percentage completion when forging chips, memory, or synthesizing SoCs.
+  - Interactive progress bars and percentage completion when forging chips, memory, assembling GPUs, or synthesizing SoCs.
   - Active blueprints, target memory modes, and compiler architecture writeups.
 - **Speaker**:
   - Displays whether the speaker is connected to an adjacent Personal Computer along with the computer's coordinates.

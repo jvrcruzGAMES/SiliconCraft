@@ -74,7 +74,7 @@ public class ChipForgeBlockEntity extends BaseMachineBlockEntity {
             case 0 -> net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity.isFuel(stack);
             case 1 -> stack.is(ModItems.SILICON_POWDER.get());
             case 2 -> stack.is(Items.REDSTONE);
-            case 3 -> stack.is(ModItems.ARCHITECTURE_WRITEUP.get());
+            case 3 -> games.jvrcruz.siliconcraft.item.ArchitectureWriteupItem.isCpuWriteup(stack);
             default -> false;
         };
     }
@@ -87,7 +87,7 @@ public class ChipForgeBlockEntity extends BaseMachineBlockEntity {
         ItemStack writeup = itemHandler.getStackInSlot(3);
         if (!writeup.isEmpty() && writeup.is(ModItems.ARCHITECTURE_WRITEUP.get())) {
             ArchitectureData data = writeup.get(ModDataComponents.ARCHITECTURE_DATA.get());
-            if (data != null && !data.instructions().isEmpty()) {
+            if (data != null && !data.gpu() && !data.instructions().isEmpty()) {
                 return data;
             }
         }

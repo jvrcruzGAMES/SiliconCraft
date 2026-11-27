@@ -1,0 +1,22 @@
+import <Network>
+import <std>
+
+func main()
+    if network_http(NET_GET, "https://example.org/", 0, 0) == 1 then
+        while network_status() == NET_PENDING do
+            sleep(1)
+        end
+        local status = network_status()
+        local count = network_length()
+        if count > 4096 then
+            count = 4096
+        end
+        local http_code = network_result(8192, count)
+        if status == NET_OK then
+            println(http_code)
+            println(count)
+        else
+            println(status)
+        end
+    end
+end

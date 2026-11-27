@@ -60,6 +60,18 @@ public class MachineBlockProvider implements IBlockComponentProvider, IServerDat
             data.putInt("Progress", socMan.getDataAccess().get(0));
             data.putInt("MaxProgress", socMan.getDataAccess().get(1));
             data.putBoolean("IsWorking", socMan.getDataAccess().get(6) != 0);
+        } else if (be instanceof GpuAssemblerBlockEntity gpuAssembler) {
+            data.putString("MachineType", "gpu_assembler");
+            data.putInt("Progress", gpuAssembler.getDataAccess().get(0));
+            data.putInt("MaxProgress", gpuAssembler.getDataAccess().get(1));
+            data.putBoolean("IsWorking", gpuAssembler.getDataAccess().get(6) != 0);
+            data.putInt("RamCount", gpuAssembler.getInstalledRamCount());
+            data.putInt("TargetVramKb", gpuAssembler.getTotalVramBytes() / 1024);
+            ArchitectureData arch = gpuAssembler.getInstalledArchitecture();
+            if (arch != null) {
+                data.putString("ArchName", arch.name());
+                data.putInt("ArchOps", arch.instructions().size());
+            }
         } else if (be instanceof ProjectCompilerBlockEntity projectCompiler) {
             data.putString("MachineType", "project_compiler");
             ArchitectureData arch = projectCompiler.getInstalledArchitecture();
@@ -145,6 +157,20 @@ public class MachineBlockProvider implements IBlockComponentProvider, IServerDat
                             .append(Component.literal(type).withStyle(ChatFormatting.AQUA)));
                     if (isWorking) {
                         tooltip.add(Component.literal("Forging " + type + "...").withStyle(ChatFormatting.YELLOW));
+                    }
+                }
+                case "gpu_assembler" -> {
+                    if (data.contains("ArchName")) {
+                        tooltip.add(Component.literal("Blueprint: ").withStyle(ChatFormatting.GRAY)
+                                .append(Component.literal(data.getString("ArchName")).withStyle(ChatFormatting.AQUA))
+                                .append(Component.literal(" (" + data.getInt("ArchOps") + " GPU ops)").withStyle(ChatFormatting.DARK_AQUA)));
+                    }
+                    int ramCount = data.getInt("RamCount");
+                    int vramKb = data.getInt("TargetVramKb");
+                    tooltip.add(Component.literal("Target VRAM: ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal(vramKb + " KB (" + ramCount + "/8 RAM)").withStyle(ChatFormatting.AQUA)));
+                    if (isWorking) {
+                        tooltip.add(Component.literal("Assembling GPU...").withStyle(ChatFormatting.YELLOW));
                     }
                 }
                 case "soc_manufacturer" -> {

@@ -62,6 +62,9 @@ public class SocManufacturerMenu extends AbstractContainerMenu {
                 Component.literal("Storage Drive (Optional Flash Storage Only)")));
         this.addSlot(new OutputSlot(blockEntity.getItemHandler(), 8, 143, 33,
                 Component.literal("Completed SoC Output")));
+        this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 9, 87, 23,
+                stack -> stack.is(ModItems.GPU.get()),
+                Component.literal("GPU (Optional, Max 1)")));
 
         // Player Inventory
         for (int row = 0; row < 3; ++row) {
@@ -94,8 +97,8 @@ public class SocManufacturerMenu extends AbstractContainerMenu {
             ItemStack slotStack = slot.getItem();
             itemstack = slotStack.copy();
 
-            if (index < 9) {
-                if (!this.moveItemStackTo(slotStack, 9, 45, true)) {
+            if (index < 10) {
+                if (!this.moveItemStackTo(slotStack, 10, 46, true)) {
                     return ItemStack.EMPTY;
                 }
             } else {
@@ -115,6 +118,8 @@ public class SocManufacturerMenu extends AbstractContainerMenu {
                     if (!this.moveItemStackTo(slotStack, 6, 7, false)) return ItemStack.EMPTY;
                 } else if (slotStack.is(ModItems.STORAGE.get()) && SocManufacturerBlockEntity.isFlashStorage(slotStack)) {
                     if (!this.moveItemStackTo(slotStack, 7, 8, false)) return ItemStack.EMPTY;
+                } else if (slotStack.is(ModItems.GPU.get())) {
+                    if (!this.moveItemStackTo(slotStack, 9, 10, false)) return ItemStack.EMPTY;
                 } else {
                     return ItemStack.EMPTY;
                 }

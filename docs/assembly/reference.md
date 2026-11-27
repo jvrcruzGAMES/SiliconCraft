@@ -119,9 +119,11 @@ The CPU provides four 32-bit integer registers:
 
 ---
 
-### 6. Framebuffer Graphics
+### 6. Framebuffer Graphics & GPU Acceleration
 
-The CRT display features a $960 \times 540$ (16:9 aspect ratio) direct pixel renderer canvas:
+The CRT display features a $960 \times 540$ (16:9 aspect ratio) double-buffered 32-bit ARGB canvas. By default (`AUTO` handler), standard `FB*` instructions automatically run on the dedicated `VirtualGpu` when a GPU is installed on the SoC or PC, and fall back to the CPU's software framebuffer otherwise. You can also switch handlers manually from the PC GUI (`GFX:AUTO` / `GFX:CPU` / `GFX:GPU`) or with `GFXSEL`.
+
+#### Standard Framebuffer Instructions
 
 | Opcode | Syntax | Description |
 |---|---|---|
@@ -129,12 +131,44 @@ The CRT display features a $960 \times 540$ (16:9 aspect ratio) direct pixel ren
 | **`FBHEIGHT`** | `FBHEIGHT dest` | Stores screen height in pixels (540) into `dest`. |
 | **`FBSET`** | `FBSET x, y, color` | Sets pixel at `(x, y)` to 32-bit ARGB `color`. |
 | **`FBGET`** | `FBGET dest, x, y` | Reads 32-bit ARGB pixel color at `(x, y)` into `dest`. |
-| **`FBLINE`** | `FBLINE x0, y0, x1, y1, color` | Draws line using Bresenham's algorithm. |
-| **`FBRECT`** | `FBRECT x, y, w, h, color` | Draws filled rectangle. |
-| **`FBCLR`** | `FBCLR color` | Fills entire screen with `color`. |
-| **`FBSWAP`** | `FBSWAP` | Flips / refreshes back buffer to display canvas. |
-| **`FBMODE`** | `FBMODE mode` | Sets display rendering mode (0 = text, 1 = graphics). |
-| **`FBLIT`** | `FBLIT x, y, w, h, ramAddr` | Blits pixel block from RAM array into screen. |
+| **`FBLINE`** | `FBLINE x0, y0, x1, y1, color` | Draws a line between `(x0, y0)` and `(x1, y1)`. |
+| **`FBRECT`** | `FBRECT x, y, w, h, color` | Draws a filled rectangle. |
+| **`FBCLR`** | `FBCLR color` | Fills the entire back buffer with `color`. |
+| **`FBSWAP`** | `FBSWAP` | Flips / presents the back buffer to the CRT canvas. |
+| **`FBMODE`** | `FBMODE mode` | Sets display rendering mode (`0` = text, `1` = graphics). |
+| **`FBLIT`** | `FBLIT x, y, ramAddr, w, h` | Blits a pixel block from RAM into the back buffer. |
+
+#### Graphics Handler & Dedicated GPU Instructions (0.2.0)
+
+`GFXSEL` and `GFXSTAT` work on any machine; the `GPU*` acceleration instructions target the dedicated `VirtualGpu` directly and raise a runtime fault if no GPU is installed or if the GPU's **GPU Architecture Writeup** omitted that operation.
+
+| Opcode | Syntax | Description |
+|---|---|---|
+| **`GFXSEL`** | `GFXSEL mode` | Sets active graphics handler (`0` = `AUTO`, `1` = `CPU`, `2` = `GPU`). |
+| **`GFXSTAT`** | `GFXSTAT dest [, query]` | Queries GPU and handler telemetry (default `query = 0`, see table below). |
+| **`GPUCLR`** | `GPUCLR color` | Queues a GPU back-buffer clear. |
+| **`GPURECT`** | `GPURECT x, y, w, h, color` | Queues a hardware filled rectangle. |
+| **`GPULINE`** | `GPULINE x0, y0, x1, y1, color` | Queues a hardware line draw. |
+| **`GPUCIRC`** | `GPUCIRC cx, cy, r, color [, filled]` | Queues a hardware circle (`filled`: `0` outline, `1` solid; defaults to `1`). |
+| **`GPUTRI`** | `GPUTRI ramPtr` | Queues a filled triangle from 7 consecutive RAM ints `[x0, y0, x1, y1, x2, y2, color]`. |
+| **`GPUVRAM`** | `GPUVRAM vramOffset, ramSrc, count` | Uploads `count` 32-bit ARGB pixels from CPU RAM `ramSrc` into GPU VRAM at `vramOffset`. |
+| **`GPUBLIT`** | `GPUBLIT x, y, vramOffset, w, h` | Queues an alpha-blended sprite blit from GPU VRAM at `vramOffset` to `(x, y)`. |
+| **`GPUSWAP`** | `GPUSWAP` | Flushes the GPU queue and swaps front/back buffers (switches CRT to graphics mode `1`). |
+| **`GPUSYNC`** | `GPUSYNC` | Blocks until all queued commands on `VirtualGpu` finish executing. |
+
+#### `GFXSTAT` Query IDs
+
+| Query ID | Result Stored in `dest` |
+|---|---|
+| `0` | `1` if a GPU is installed, otherwise `0`. |
+| `1` | `1` if `VirtualGpu` is currently handling `FB*` output, otherwise `0`. |
+| `2` | Active handler setting (`0` = `AUTO`, `1` = `CPU`, `2` = `GPU`). |
+| `3` | Installed GPU VRAM capacity in bytes (`0` if no GPU). |
+| `4` | Installed GPU VRAM capacity in KB (`0` if no GPU). |
+| `5` | Total GPU commands executed. |
+| `6` | GPU compute units count. |
+| `7` | `1` if GPU command queue is non-empty, otherwise `0`. |
+| `8` | Total GPU frames presented via swap. |
 
 ---
 

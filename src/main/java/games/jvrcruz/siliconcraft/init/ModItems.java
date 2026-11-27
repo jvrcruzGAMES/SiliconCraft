@@ -29,6 +29,9 @@ public class ModItems {
     public static final DeferredItem<SocItem> SOC = ITEMS.register("soc",
             () -> new SocItem(new Item.Properties().stacksTo(16)));
 
+    public static final DeferredItem<GpuItem> GPU = ITEMS.register("gpu",
+            () -> new GpuItem(new Item.Properties().stacksTo(1)));
+
     public static final DeferredItem<ArchitectureWriteupItem> ARCHITECTURE_WRITEUP = ITEMS.register("architecture_writeup",
             () -> new ArchitectureWriteupItem(new Item.Properties().stacksTo(16)));
 
@@ -37,6 +40,7 @@ public class ModItems {
     public static final DeferredItem<BlockItem> DEEPSLATE_SILICON_ORE_ITEM = ITEMS.registerSimpleBlockItem("deepslate_silicon_ore", ModBlocks.DEEPSLATE_SILICON_ORE);
     public static final DeferredItem<BlockItem> CHIP_FORGE_ITEM = ITEMS.registerSimpleBlockItem("chip_forge", ModBlocks.CHIP_FORGE);
     public static final DeferredItem<BlockItem> MEMORY_FORGE_ITEM = ITEMS.registerSimpleBlockItem("memory_forge", ModBlocks.MEMORY_FORGE);
+    public static final DeferredItem<BlockItem> GPU_ASSEMBLER_ITEM = ITEMS.registerSimpleBlockItem("gpu_assembler", ModBlocks.GPU_ASSEMBLER);
     public static final DeferredItem<BlockItem> PROGRAMMER_ITEM = ITEMS.registerSimpleBlockItem("programmer", ModBlocks.PROGRAMMER);
     public static final DeferredItem<BlockItem> SOC_MANUFACTURER_ITEM = ITEMS.registerSimpleBlockItem("soc_manufacturer", ModBlocks.SOC_MANUFACTURER);
     public static final DeferredItem<BlockItem> COMPUTER_CASE_ITEM = ITEMS.registerSimpleBlockItem("computer_case", ModBlocks.COMPUTER_CASE);

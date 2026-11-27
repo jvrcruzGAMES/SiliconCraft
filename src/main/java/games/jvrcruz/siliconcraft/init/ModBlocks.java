@@ -40,6 +40,13 @@ public class ModBlocks {
                     .strength(3.5F, 4.0F)
                     .sound(SoundType.METAL)));
 
+    public static final DeferredBlock<GpuAssemblerBlock> GPU_ASSEMBLER = BLOCKS.register("gpu_assembler",
+            () -> new GpuAssemblerBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.METAL)
+                    .requiresCorrectToolForDrops()
+                    .strength(3.5F, 4.0F)
+                    .sound(SoundType.METAL)));
+
     public static final DeferredBlock<ProgrammerBlock> PROGRAMMER = BLOCKS.register("programmer",
             () -> new ProgrammerBlock(BlockBehaviour.Properties.of()
                     .mapColor(MapColor.METAL)

@@ -10,7 +10,7 @@ import net.minecraft.resources.ResourceLocation;
 
 import java.util.List;
 
-public record ArchitectureWriterPacket(BlockPos pos, String archName, List<String> instructions) implements CustomPacketPayload {
+public record ArchitectureWriterPacket(BlockPos pos, String archName, List<String> instructions, boolean gpu) implements CustomPacketPayload {
     public static final CustomPacketPayload.Type<ArchitectureWriterPacket> TYPE =
             new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(Siliconcraft.MODID, "architecture_writer"));
 
@@ -18,6 +18,7 @@ public record ArchitectureWriterPacket(BlockPos pos, String archName, List<Strin
             BlockPos.STREAM_CODEC, ArchitectureWriterPacket::pos,
             ByteBufCodecs.STRING_UTF8, ArchitectureWriterPacket::archName,
             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list()), ArchitectureWriterPacket::instructions,
+            ByteBufCodecs.BOOL, ArchitectureWriterPacket::gpu,
             ArchitectureWriterPacket::new
     );
 

@@ -26,6 +26,9 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
             "siliconcraft", "textures/gui/computer.png");
     private boolean displayInitialized;
     private int lastCpuState = -1;
+    private int lastGfxHandler = -1;
+    private boolean lastHasGpu = false;
+    private Button gfxButton;
     private final ComputerDisplayRenderer displayRenderer = new ComputerDisplayRenderer();
 
     public ComputerScreen(ComputerMenu menu, Inventory playerInventory, Component title) {
@@ -43,8 +46,12 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
     @Override
     protected void containerTick() {
         super.containerTick();
-        if (menu.getCpuState() != lastCpuState) {
+        if (menu.getCpuState() != lastCpuState
+                || menu.getGraphicsHandler() != lastGfxHandler
+                || menu.hasGpu() != lastHasGpu) {
             lastCpuState = menu.getCpuState();
+            lastGfxHandler = menu.getGraphicsHandler();
+            lastHasGpu = menu.hasGpu();
             rebuildButtons();
         }
         if (menu.getCpuState() == VirtualCpu.State.RUNNING.ordinal()) {
@@ -54,6 +61,13 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
             heldKeyCodes.clear();
             releasePadState();
         }
+    }
+
+    private String gfxButtonLabel() {
+        int handler = menu.getGraphicsHandler();
+        if (handler == VirtualCpu.GraphicsHandler.CPU.ordinal()) return "GFX:CPU";
+        if (handler == VirtualCpu.GraphicsHandler.GPU.ordinal()) return "GFX:GPU";
+        return "GFX:AUTO";
     }
 
     private void rebuildButtons() {
@@ -68,19 +82,25 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
                     PacketDistributor.sendToServer(new ComputerActionPacket(menu.getBlockEntity().getBlockPos(), 0));
                     b.setMessage(Component.literal(!isRunning ? "⏻ OFF" : "⏻ ON"));
                 }
-        ).bounds(this.leftPos + 8, this.topPos + 145, 48, 16).build());
+        ).bounds(this.leftPos + 8, this.topPos + 145, 42, 16).build());
 
         // Reset button
         this.addRenderableWidget(Button.builder(
                 Component.literal("↺ RST"),
                 b -> PacketDistributor.sendToServer(new ComputerActionPacket(menu.getBlockEntity().getBlockPos(), 1))
-        ).bounds(this.leftPos + 58, this.topPos + 145, 36, 16).build());
+        ).bounds(this.leftPos + 52, this.topPos + 145, 34, 16).build());
 
         // Step button
         this.addRenderableWidget(Button.builder(
                 Component.literal("⏯ STEP"),
                 b -> PacketDistributor.sendToServer(new ComputerActionPacket(menu.getBlockEntity().getBlockPos(), 2))
-        ).bounds(this.leftPos + 96, this.topPos + 145, 38, 16).build());
+        ).bounds(this.leftPos + 88, this.topPos + 145, 36, 16).build());
+
+        // Graphics Handler Selector button (AUTO / CPU / GPU)
+        this.gfxButton = this.addRenderableWidget(Button.builder(
+                Component.literal(gfxButtonLabel()),
+                b -> PacketDistributor.sendToServer(new ComputerActionPacket(menu.getBlockEntity().getBlockPos(), 3))
+        ).bounds(this.leftPos + 191, this.topPos + 145, 48, 16).build());
     }
 
     @Override
@@ -149,15 +169,15 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
             }
         }
 
-        // Row 1: CPU State (next to buttons, clearly separated from status LED)
+        // Row 1: CPU State (between Step and GFX button)
         String stateStr = switch (state) {
-            case 1 -> "RUNNING";
-            case 2 -> "PAUSED";
-            case 3 -> "HALTED";
-            case 4 -> "ERROR";
+            case 1 -> "RUN";
+            case 2 -> "PAUSE";
+            case 3 -> "HALT";
+            case 4 -> "ERR";
             default -> "OFF";
         };
-        guiGraphics.drawString(this.font, "CPU: " + stateStr, 140, 149, 0xDDDDDD, false);
+        guiGraphics.drawString(this.font, "CPU:" + stateStr, 128, 149, 0xDDDDDD, false);
 
         // Row 2: Runtime RAM & Storage capacities (above inventory, capped to avoid ever touching RAM column)
         int totalRam = menu.getTotalRam();
@@ -178,9 +198,10 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
         }
         guiGraphics.drawString(this.font, statusText, 10, 165, 0x88CCFF, false);
 
-        // Dedicated slot column header labels (at x=188 and x=220, completely free of any text collision)
+        // Dedicated slot column header labels
         guiGraphics.drawString(this.font, "RAM", 186, 165, 0x88CC88, false);
         guiGraphics.drawString(this.font, "Drive", 222, 165, 0x88CCFF, false);
+        guiGraphics.drawString(this.font, "GPU", 225, 223, menu.hasGpu() ? 0x00E676 : 0xFFCC66, false);
     }
 
     private double lastMouseX;
@@ -198,9 +219,33 @@ public class ComputerScreen extends AbstractContainerScreen<ComputerMenu> {
 
         // Empty slot tooltip
         if (this.hoveredSlot != null && !this.hoveredSlot.hasItem() && this.menu.getCarried().isEmpty()) {
-            if (this.hoveredSlot instanceof FilteredSlot fs) {
+            if (this.hoveredSlot.getContainerSlot() == games.jvrcruz.siliconcraft.blockentity.ComputerBlockEntity.GPU_SLOT
+                    && this.menu.getBlockEntity().hasSocGpu()) {
+                guiGraphics.renderTooltip(this.font,
+                        Component.literal("Onboard SoC GPU Installed (Max 1 GPU per Computer)"), mouseX, mouseY);
+            } else if (this.hoveredSlot instanceof FilteredSlot fs) {
                 guiGraphics.renderTooltip(this.font, fs.getEmptyTooltip(), mouseX, mouseY);
             }
+        }
+
+        // GFX selector tooltip
+        if (gfxButton != null && gfxButton.isMouseOver(mouseX, mouseY)) {
+            String modeName = switch (menu.getGraphicsHandler()) {
+                case 1 -> "CPU (Software Renderer)";
+                case 2 -> "GPU (Hardware Accelerated)";
+                default -> "AUTO (Prefer GPU if installed)";
+            };
+            String activeName = menu.isUsingGpu() ? "VirtualGPU" : "CPU Software Framebuffer";
+            String gpuInfo = menu.hasGpu()
+                    ? (menu.getBlockEntity().hasSocGpu() ? "Onboard SoC GPU" : "Expansion GPU")
+                        + " (" + games.jvrcruz.siliconcraft.data.GpuData.formatVram(menu.getGpuVramKb() * 1024) + " VRAM)"
+                    : "None installed";
+            guiGraphics.renderComponentTooltip(this.font, List.of(
+                    Component.literal("Graphics Handler: " + modeName).withStyle(net.minecraft.ChatFormatting.GOLD),
+                    Component.literal("Active Processor: " + activeName).withStyle(menu.isUsingGpu() ? net.minecraft.ChatFormatting.GREEN : net.minecraft.ChatFormatting.AQUA),
+                    Component.literal("Installed GPU: " + gpuInfo).withStyle(net.minecraft.ChatFormatting.GRAY),
+                    Component.literal("Click to switch graphics processor").withStyle(net.minecraft.ChatFormatting.DARK_GRAY)
+            ), mouseX, mouseY);
         }
     }
 

@@ -46,19 +46,37 @@ The merged standard library providing console text output, system timers, and co
 - `abs(n)`, `min(a, b)`, `max(a, b)`, `clamp(val, min, max)`.
 - **Constants**: `PI` (3), `E` (2).
 
-#### 3. `<Glass>` (High-Resolution Framebuffer Display Canvas)
-Hardware graphics library controlling the CRT double-buffered ARGB canvas:
+#### 3. `<Glass>` (High-Resolution Framebuffer Display Canvas & GPU Acceleration)
+Hardware graphics library controlling the $960 \times 540$ double-buffered 32-bit ARGB CRT canvas. When a GPU is installed on the SoC or PC, `<Glass>` automatically uses `VirtualGpu` in `GFX_AUTO` mode (the default) and falls back cleanly to the CPU software framebuffer when no GPU is present:
 
-- `set_mode(mode)` / `fb_mode(mode)`: Sets display mode (`0` = Text Console, `1` = 32-bit ARGB Framebuffer).
-- `clear_screen(color)` / `fb_clear(color)`: Clears the framebuffer canvas with the specified color.
-- `set_pixel(x, y, color)` / `fb_pixel(x, y, color)`: Sets the color of the pixel at `(x, y)`.
-- `get_pixel(x, y)` / `fb_get(x, y)`: Reads the color of the pixel at `(x, y)`.
-- `draw_rect(x, y, w, h, color)` / `fb_rect(...)`: Draws a filled rectangle.
-- `draw_line(x1, y1, x2, y2, color)` / `fb_line(...)`: Draws a line between two points.
-- `blit(x, y, ram_src, w, h)` / `fb_blit(...)`: Blits an image from RAM to the screen.
-- `swap()` / `flip()` / `fb_swap()`: Swaps front and back buffers to display the rendered frame.
-- `width()` / `fb_width()`: Returns canvas width (960).
-- `height()` / `fb_height()`: Returns canvas height (540).
+- **Standard Canvas & Primitives** (automatically routed to GPU when active):
+  - `set_mode(mode)` / `fb_mode(mode)`: Sets display mode (`0` = Text Console, `1` = 32-bit ARGB Framebuffer).
+  - `clear_screen(color)` / `fb_clear(color)`: Clears the back buffer with the specified color.
+  - `set_pixel(x, y, color)` / `fb_pixel(x, y, color)`: Sets the color of the pixel at `(x, y)`.
+  - `get_pixel(x, y)` / `fb_get(x, y)`: Reads the color of the pixel at `(x, y)`.
+  - `draw_rect(x, y, w, h, color)` / `fb_rect(...)`: Draws a filled rectangle.
+  - `draw_line(x1, y1, x2, y2, color)` / `fb_line(...)`: Draws a line between two points.
+  - `blit(x, y, ram_src, w, h)` / `fb_blit(...)`: Blits an image from RAM to the screen (when passing an N2 list `[...]`, element data begins at `list + 2`).
+  - `swap()` / `flip()` / `fb_swap()`: Swaps front and back buffers to display the rendered frame.
+  - `width()` / `fb_width()`: Returns canvas width (960).
+  - `height()` / `fb_height()`: Returns canvas height (540).
+- **Graphics Processor Selection & Telemetry (0.2.0)**:
+  - `gfx_set_handler(mode)`: Sets the active graphics processor (`GFX_AUTO`, `GFX_CPU`, or `GFX_GPU`).
+  - `use_auto_gfx()`, `use_cpu()`, `use_gpu()`: Convenience shortcuts to select `GFX_AUTO`, `GFX_CPU`, or `GFX_GPU`.
+  - `has_gpu()` / `gpu_available()`: Returns `1` if a GPU is installed on the SoC/PC, `0` otherwise.
+  - `gfx_handler()` / `is_using_gpu()`: Returns `1` if `VirtualGpu` is currently handling graphics output, `0` otherwise.
+  - `gfx_mode()`: Returns the configured handler constant (`0` = `GFX_AUTO`, `1` = `GFX_CPU`, `2` = `GFX_GPU`).
+  - `gpu_vram()` / `gpu_vram_kb()`: Returns installed GPU VRAM capacity in bytes (`gpu_vram()`) or kilobytes (`gpu_vram_kb()`).
+  - **Handler Constants**: `GFX_AUTO` (0), `GFX_CPU` (1), `GFX_GPU` (2).
+- **GPU-Accelerated Primitives & VRAM Blitting (0.2.0)** *(require an installed GPU; fault if called without one)*:
+  - `draw_circle(cx, cy, r, color)` / `gpu_circle(...)`: Draws an outlined circle on `VirtualGpu`.
+  - `fill_circle(cx, cy, r, color)` / `gpu_fill_circle(...)`: Draws a filled circle on `VirtualGpu`.
+  - `fill_triangle(x0, y0, x1, y1, x2, y2, color)` / `gpu_triangle(...)`: Draws a filled triangle on `VirtualGpu`.
+  - `gpu_clear(color)`, `gpu_rect(x, y, w, h, color)`, `gpu_line(x0, y0, x1, y1, color)`: Queues clear, rectangle, and line commands directly on `VirtualGpu`.
+  - `vram_upload(vram_offset, ram_src, count)`: Uploads `count` 32-bit ARGB pixels from CPU RAM `ram_src` into GPU VRAM (for an N2 list `sprite = [...]`, pass `sprite + 2`).
+  - `gpu_blit(x, y, vram_offset, w, h)`: Blits a sprite from GPU VRAM to `(x, y)` with alpha blending (`COLOR_TRANSPARENT` pixels are skipped).
+  - `gpu_swap()`: Flushes queued GPU commands and swaps front/back buffers on `VirtualGpu`.
+  - `gpu_sync()`: Synchronizes the CPU until all queued GPU commands complete.
 - **Color Constants**: `COLOR_BLACK`, `COLOR_WHITE`, `COLOR_RED`, `COLOR_GREEN`, `COLOR_BLUE`, `COLOR_YELLOW`, `COLOR_CYAN`, `COLOR_MAGENTA`, `COLOR_TRANSPARENT`.
 
 #### 4. `<AudioKit>` (Hardware Sound Synthesis & PCM Audio)

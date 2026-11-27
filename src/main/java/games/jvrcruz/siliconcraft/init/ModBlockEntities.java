@@ -19,6 +19,10 @@ public class ModBlockEntities {
             BLOCK_ENTITIES.register("memory_forge", () ->
                     BlockEntityType.Builder.of(MemoryForgeBlockEntity::new, ModBlocks.MEMORY_FORGE.get()).build(null));
 
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<GpuAssemblerBlockEntity>> GPU_ASSEMBLER =
+            BLOCK_ENTITIES.register("gpu_assembler", () ->
+                    BlockEntityType.Builder.of(GpuAssemblerBlockEntity::new, ModBlocks.GPU_ASSEMBLER.get()).build(null));
+
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ProgrammerBlockEntity>> PROGRAMMER =
             BLOCK_ENTITIES.register("programmer", () ->
                     BlockEntityType.Builder.of(ProgrammerBlockEntity::new, ModBlocks.PROGRAMMER.get()).build(null));

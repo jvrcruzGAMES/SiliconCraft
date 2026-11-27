@@ -1,0 +1,32 @@
+-- ============================================
+-- Program: 03_classes_oop.n2 (N2 Standard)
+-- Description: Object-oriented programming with classes and methods
+-- ============================================
+
+import <std>
+
+class Player {
+    func init(name, health)
+        this.name = name
+        this.health = health
+        print("Player initiated")
+    end
+
+    func take_damage(amount)
+        this.health = this.health - amount
+        if this.health < 0 then
+            this.health = 0
+        end
+    end
+
+    func status()
+        print(this.name)
+        print(this.health)
+    end
+}
+
+func main()
+    local p = Player("Steve", 100)
+    p.take_damage(35)
+    p.status()
+end

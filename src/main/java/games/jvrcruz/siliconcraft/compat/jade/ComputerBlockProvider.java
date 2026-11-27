@@ -38,6 +38,15 @@ public class ComputerBlockProvider implements IBlockComponentProvider, IServerDa
             data.putInt("Drives", computer.getCpu().getStorageDriveCount());
             data.putInt("DisplayMode", computer.getCpu().getDisplayMode());
             data.putBoolean("HasNvme", computer.hasEffectiveNvme());
+            var gpuData = computer.getEffectiveGpuData();
+            data.putBoolean("HasGpu", gpuData.isPresent());
+            if (gpuData.isPresent()) {
+                data.putInt("GpuVram", gpuData.vramCapacity());
+                data.putString("GpuArch", gpuData.archName());
+                data.putBoolean("SocGpu", computer.hasSocGpu());
+            }
+            data.putInt("GfxHandler", computer.getCpu().getGraphicsHandler().ordinal());
+            data.putBoolean("UsingGpu", computer.getCpu().isUsingGpu());
             if (computer.getCpu().getState() == VirtualCpu.State.ERROR) {
                 data.putString("ErrorMessage", computer.getCpu().getErrorMessage());
             }
@@ -86,6 +95,15 @@ public class ComputerBlockProvider implements IBlockComponentProvider, IServerDa
         tooltip.add(Component.literal("RAM: ").withStyle(ChatFormatting.GRAY)
                 .append(Component.literal(ramStr).withStyle(ChatFormatting.WHITE)));
 
+        if (data.getBoolean("HasGpu")) {
+            int vram = data.getInt("GpuVram");
+            String arch = data.getString("GpuArch");
+            String origin = data.getBoolean("SocGpu") ? "Onboard" : "PCIe";
+            tooltip.add(Component.literal("GPU (" + origin + "): ").withStyle(ChatFormatting.GRAY)
+                    .append(Component.literal((arch.isEmpty() ? "GPU" : arch) + " (" + games.jvrcruz.siliconcraft.data.GpuData.formatVram(vram) + " VRAM)")
+                            .withStyle(ChatFormatting.GREEN)));
+        }
+
         if (storage > 0 || drives > 0) {
             String storageType = hasNvme ? "NVMe" : "Flash";
             String storageStr = storage >= 1024 ? (storage / 1024) + " MB" : storage + " KB";
@@ -98,8 +116,10 @@ public class ComputerBlockProvider implements IBlockComponentProvider, IServerDa
                     .append(Component.literal(String.format("%,d", data.getInt("Cycles"))).withStyle(ChatFormatting.WHITE)));
 
             int displayMode = data.getInt("DisplayMode");
+            boolean usingGpu = data.getBoolean("UsingGpu");
+            String gfxLabel = usingGpu ? "VirtualGPU Accelerated" : "CPU Software";
             tooltip.add(Component.literal("Display: ").withStyle(ChatFormatting.GRAY)
-                    .append(Component.literal(displayMode == 1 ? "Framebuffer Direct Pixel" : "Text Terminal").withStyle(ChatFormatting.AQUA)));
+                    .append(Component.literal((displayMode == 1 ? "Framebuffer" : "Terminal") + " [" + gfxLabel + "]").withStyle(ChatFormatting.AQUA)));
         }
     }
 }

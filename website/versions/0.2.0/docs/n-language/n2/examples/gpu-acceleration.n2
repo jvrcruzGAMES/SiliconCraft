@@ -1,0 +1,38 @@
+-- ============================================
+-- Program: gpu-acceleration.n2
+-- Description: Auto-selects VirtualGpu via <Glass>, queries VRAM,
+--              renders GPU primitives and alpha-blended VRAM sprites
+-- ============================================
+
+import <std>
+import <Glass>
+
+func main()
+    set_mode(1)
+    clear_screen(0xFF101824)
+
+    if has_gpu() == 1 then
+        println("VirtualGpu active! VRAM (KB):")
+        println(gpu_vram_kb())
+
+        -- <Glass> automatically routes standard calls to VirtualGpu in AUTO mode
+        draw_rect(40, 40, 240, 120, COLOR_BLUE)
+
+        -- GPU-accelerated geometry
+        fill_circle(480, 270, 80, COLOR_GREEN)
+        draw_circle(480, 270, 86, COLOR_WHITE)
+        fill_triangle(700, 120, 840, 320, 580, 320, COLOR_YELLOW)
+
+        -- Upload 2x2 sprite from N2 list (element data starts at sprite + 2)
+        local sprite = [COLOR_CYAN, COLOR_TRANSPARENT, COLOR_TRANSPARENT, COLOR_MAGENTA]
+        vram_upload(0, sprite + 2, 4)
+        gpu_blit(479, 269, 0, 2, 2)
+
+        gpu_swap()
+        gpu_sync()
+    else
+        println("No GPU found; using CPU software framebuffer.")
+        draw_rect(40, 40, 240, 120, COLOR_RED)
+        swap()
+    end
+end

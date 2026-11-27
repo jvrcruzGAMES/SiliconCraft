@@ -46,8 +46,8 @@ public class ChipForgeMenu extends AbstractContainerMenu {
                 stack -> stack.is(Items.REDSTONE),
                 Component.literal("Redstone Dust")));
         this.addSlot(new FilteredSlot(blockEntity.getItemHandler(), 3, 49, 50,
-                stack -> stack.is(ModItems.ARCHITECTURE_WRITEUP.get()),
-                Component.literal("Architecture Writeup (Blueprint)")));
+                games.jvrcruz.siliconcraft.item.ArchitectureWriteupItem::isCpuWriteup,
+                Component.literal("CPU Architecture Writeup (Blueprint)")));
         this.addSlot(new OutputSlot(blockEntity.getItemHandler(), 4, 71, 35,
                 Component.literal("Forged Silicon Chip Output")));
 
@@ -128,7 +128,7 @@ public class ChipForgeMenu extends AbstractContainerMenu {
                     if (!this.moveItemStackTo(slotStack, 2, 3, false)) {
                         return ItemStack.EMPTY;
                     }
-                } else if (slotStack.is(ModItems.ARCHITECTURE_WRITEUP.get())) {
+                } else if (games.jvrcruz.siliconcraft.item.ArchitectureWriteupItem.isCpuWriteup(slotStack)) {
                     if (!this.moveItemStackTo(slotStack, 3, 4, false)) {
                         return ItemStack.EMPTY;
                     }

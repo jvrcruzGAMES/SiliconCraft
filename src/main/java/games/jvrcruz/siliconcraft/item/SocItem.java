@@ -35,6 +35,11 @@ public class SocItem extends Item {
             } else {
                 tooltip.add(Component.translatable("tooltip.siliconcraft.soc.no_storage").withStyle(ChatFormatting.DARK_GRAY));
             }
+            if (data.gpu() != null && data.gpu().isPresent()) {
+                tooltip.add(Component.translatable("tooltip.siliconcraft.soc.gpu",
+                        games.jvrcruz.siliconcraft.data.GpuData.formatVram(data.gpu().vramCapacity()),
+                        data.gpu().computeUnits()).withStyle(ChatFormatting.LIGHT_PURPLE));
+            }
         }
         super.appendHoverText(stack, context, tooltip, flag);
     }

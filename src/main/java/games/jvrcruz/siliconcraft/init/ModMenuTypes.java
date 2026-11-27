@@ -18,6 +18,9 @@ public class ModMenuTypes {
     public static final DeferredHolder<MenuType<?>, MenuType<MemoryForgeMenu>> MEMORY_FORGE_MENU =
             MENUS.register("memory_forge_menu", () -> IMenuTypeExtension.create(MemoryForgeMenu::new));
 
+    public static final DeferredHolder<MenuType<?>, MenuType<GpuAssemblerMenu>> GPU_ASSEMBLER_MENU =
+            MENUS.register("gpu_assembler_menu", () -> IMenuTypeExtension.create(GpuAssemblerMenu::new));
+
     public static final DeferredHolder<MenuType<?>, MenuType<ProgrammerMenu>> PROGRAMMER_MENU =
             MENUS.register("programmer_menu", () -> IMenuTypeExtension.create(ProgrammerMenu::new));
 

@@ -45,7 +45,7 @@ public class ProjectCompilerBlockEntity extends BlockEntity implements MenuProvi
 
         @Override
         public boolean isItemValid(int slot, ItemStack stack) {
-            return stack.is(ModItems.ARCHITECTURE_WRITEUP.get());
+            return games.jvrcruz.siliconcraft.item.ArchitectureWriteupItem.isCpuWriteup(stack);
         }
 
         @Override
@@ -66,7 +66,7 @@ public class ProjectCompilerBlockEntity extends BlockEntity implements MenuProvi
         ItemStack stack = itemHandler.getStackInSlot(0);
         if (!stack.isEmpty() && stack.is(ModItems.ARCHITECTURE_WRITEUP.get())) {
             ArchitectureData data = stack.get(ModDataComponents.ARCHITECTURE_DATA.get());
-            if (data != null && !data.instructions().isEmpty()) {
+            if (data != null && !data.gpu() && !data.instructions().isEmpty()) {
                 return data;
             }
         }

@@ -1,0 +1,22 @@
+// ============================================
+// Program: 04_pointers_and_hex.n (N1 Standard)
+// Description: Demonstrates pointers, peek/poke, and hex output
+// ============================================
+
+println "--- Pointer & Hex Demo ---"
+
+var data = 0xABCD
+var ptr = &data
+
+print "Address: "
+println_hex ptr
+
+print "Value via pointer: "
+println_hex *ptr
+
+// Direct poke and peek
+poke(0x100, 0x55AA)
+var val = peek(0x100)
+
+print "Value from peek(0x100): "
+println_hex val

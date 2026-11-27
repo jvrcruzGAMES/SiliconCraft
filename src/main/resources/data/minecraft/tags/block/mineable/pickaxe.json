@@ -5,6 +5,7 @@
     "siliconcraft:deepslate_silicon_ore",
     "siliconcraft:chip_forge",
     "siliconcraft:memory_forge",
+    "siliconcraft:gpu_assembler",
     "siliconcraft:programmer",
     "siliconcraft:soc_manufacturer",
     "siliconcraft:computer_case",

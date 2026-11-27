@@ -24,6 +24,7 @@ public class ModCreativeTabs {
                         output.accept(ModItems.RAM.get());
                         output.accept(ModItems.ROM.get());
                         output.accept(ModItems.STORAGE.get());
+                        output.accept(ModItems.GPU.get());
                         output.accept(ModItems.SOC.get());
 
                         // Blocks
@@ -35,6 +36,7 @@ public class ModCreativeTabs {
                         output.accept(ModItems.PROJECT_COMPILER_ITEM.get());
                         output.accept(ModItems.CHIP_FORGE_ITEM.get());
                         output.accept(ModItems.MEMORY_FORGE_ITEM.get());
+                        output.accept(ModItems.GPU_ASSEMBLER_ITEM.get());
                         output.accept(ModItems.PROGRAMMER_ITEM.get());
                         output.accept(ModItems.SOC_MANUFACTURER_ITEM.get());
                         output.accept(ModItems.COMPUTER_CASE_ITEM.get());

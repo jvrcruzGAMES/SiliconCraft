@@ -24,6 +24,7 @@ public class ModMessages {
         registrar.playToServer(ChipForgePacket.TYPE, ChipForgePacket.STREAM_CODEC, ModMessages::handleChipForge);
         registrar.playToServer(ArchitectureWriterPacket.TYPE, ArchitectureWriterPacket.STREAM_CODEC, ModMessages::handleArchitectureWriter);
         registrar.playToServer(MemoryForgePacket.TYPE, MemoryForgePacket.STREAM_CODEC, ModMessages::handleMemoryForge);
+        registrar.playToServer(GpuAssemblerPacket.TYPE, GpuAssemblerPacket.STREAM_CODEC, ModMessages::handleGpuAssembler);
         registrar.playToServer(ProgrammerPacket.TYPE, ProgrammerPacket.STREAM_CODEC, ModMessages::handleProgrammer);
         registrar.playToServer(SocManufacturerPacket.TYPE, SocManufacturerPacket.STREAM_CODEC, ModMessages::handleSocManufacturer);
         registrar.playToServer(ComputerActionPacket.TYPE, ComputerActionPacket.STREAM_CODEC, ModMessages::handleComputerAction);
@@ -51,7 +52,7 @@ public class ModMessages {
             if (player != null && player.level().isLoaded(packet.pos())) {
                 BlockEntity be = player.level().getBlockEntity(packet.pos());
                 if (be instanceof ArchitectureWriterBlockEntity writerBe) {
-                    writerBe.writeArchitecture(packet.archName(), packet.instructions());
+                    writerBe.writeArchitecture(packet.archName(), packet.instructions(), packet.gpu());
                 }
             }
         });
@@ -153,6 +154,20 @@ public class ModMessages {
         });
     }
 
+    private static void handleGpuAssembler(GpuAssemblerPacket packet, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            Player player = context.player();
+            if (player != null && player.level().isLoaded(packet.pos())) {
+                BlockEntity be = player.level().getBlockEntity(packet.pos());
+                if (be instanceof GpuAssemblerBlockEntity gpuBe) {
+                    if (packet.startAssemble()) {
+                        gpuBe.startAssembling();
+                    }
+                }
+            }
+        });
+    }
+
     private static void handleProgrammer(ProgrammerPacket packet, IPayloadContext context) {
         context.enqueueWork(() -> {
             Player player = context.player();
@@ -189,6 +204,8 @@ public class ModMessages {
                         compBe.resetCpu();
                     } else if (packet.action() == 2) {
                         compBe.stepCpu();
+                    } else if (packet.action() == 3) {
+                        compBe.cycleGraphicsHandler();
                     }
                 }
             }

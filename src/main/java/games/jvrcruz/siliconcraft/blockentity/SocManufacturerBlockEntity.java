@@ -59,7 +59,7 @@ public class SocManufacturerBlockEntity extends BaseMachineBlockEntity {
     };
 
     public SocManufacturerBlockEntity(BlockPos pos, BlockState blockState) {
-        super(ModBlockEntities.SOC_MANUFACTURER.get(), pos, blockState, 9, 30000);
+        super(ModBlockEntities.SOC_MANUFACTURER.get(), pos, blockState, 10, 30000);
     }
 
     public static boolean isFlashStorage(ItemStack stack) {
@@ -79,6 +79,7 @@ public class SocManufacturerBlockEntity extends BaseMachineBlockEntity {
             case 5 -> stack.is(ModItems.CHIP.get());
             case 6 -> stack.is(ModItems.RAM.get());
             case 7 -> isFlashStorage(stack);
+            case 9 -> stack.is(ModItems.GPU.get());
             default -> false;
         };
     }
@@ -96,6 +97,7 @@ public class SocManufacturerBlockEntity extends BaseMachineBlockEntity {
         ItemStack ram = itemHandler.getStackInSlot(6);
         ItemStack storage = itemHandler.getStackInSlot(7);
         ItemStack output = itemHandler.getStackInSlot(8);
+        ItemStack gpu = itemHandler.getStackInSlot(9);
 
         if (wood.isEmpty() || !wood.is(ItemTags.WOODEN_SLABS)) return false;
         if (silicon.isEmpty() || !silicon.is(ModItems.SILICON_POWDER.get()) || silicon.getCount() < 2) return false;
@@ -104,6 +106,7 @@ public class SocManufacturerBlockEntity extends BaseMachineBlockEntity {
         if (chip.isEmpty() || !chip.is(ModItems.CHIP.get())) return false;
         if (!ram.isEmpty() && !ram.is(ModItems.RAM.get())) return false;
         if (!storage.isEmpty() && !isFlashStorage(storage)) return false;
+        if (!gpu.isEmpty() && !gpu.is(ModItems.GPU.get())) return false;
 
         if (energyStorage.getEnergyStored() < 1000) return false;
 
@@ -144,6 +147,7 @@ public class SocManufacturerBlockEntity extends BaseMachineBlockEntity {
                 ItemStack chipStack = itemHandler.getStackInSlot(5);
                 ItemStack ramStack = itemHandler.getStackInSlot(6);
                 ItemStack storageStack = itemHandler.getStackInSlot(7);
+                ItemStack gpuStack = itemHandler.getStackInSlot(9);
 
                 RomData romData = romStack.getOrDefault(ModDataComponents.ROM_DATA.get(), RomData.EMPTY);
                 ChipData chipData = chipStack.getOrDefault(ModDataComponents.CHIP_DATA.get(), ChipData.EMPTY);
@@ -163,6 +167,12 @@ public class SocManufacturerBlockEntity extends BaseMachineBlockEntity {
                     storageStack.shrink(1);
                 }
 
+                GpuData gpuData = GpuData.EMPTY;
+                if (!gpuStack.isEmpty() && gpuStack.is(ModItems.GPU.get())) {
+                    gpuData = gpuStack.getOrDefault(ModDataComponents.GPU_DATA.get(), GpuData.DEFAULT);
+                    gpuStack.shrink(1);
+                }
+
                 romStack.shrink(1);
                 chipStack.shrink(1);
 
@@ -172,7 +182,8 @@ public class SocManufacturerBlockEntity extends BaseMachineBlockEntity {
                         totalRam,
                         romData.lines(),
                         false,
-                        storageCap
+                        storageCap,
+                        gpuData
                 ));
 
                 ItemStack out = itemHandler.getStackInSlot(8);

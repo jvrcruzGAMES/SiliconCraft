@@ -16,6 +16,8 @@ public class InstructionValidator {
             "SSIZE", "SREAD", "SWRITE", "SBLKR", "SBLKW", "SCOUNT", "SSEL", "SDRV", "SEXEC",
             // Framebuffer / Graphics
             "FBMODE", "FBSET", "FBGET", "FBCLR", "FBRECT", "FBLINE", "FBLIT", "FBSWAP", "FBWIDTH", "FBHEIGHT",
+            // GPU & Graphics Handler
+            "GFXSEL", "GFXSTAT", "GPUCLR", "GPURECT", "GPULINE", "GPUCIRC", "GPUTRI", "GPUVRAM", "GPUBLIT", "GPUSWAP", "GPUSYNC",
             // Audio Buffer & Sound
             "APUSH", "ABUFW", "ACLR", "ASTAT", "ATONE", "APLAY",
             // Adjacent peripherals
@@ -26,6 +28,12 @@ public class InstructionValidator {
             "IVEC", "IRET", "CLI", "STI", "INT", "TIMER", "VBLANK"
     );
     public static final Set<String> ALL_INSTRUCTIONS_SET = new HashSet<>(ALL_INSTRUCTIONS);
+
+    public static final List<String> GPU_INSTRUCTIONS = List.of(
+            "FBMODE", "FBSET", "FBGET", "FBCLR", "FBRECT", "FBLINE", "FBLIT", "FBSWAP", "FBWIDTH", "FBHEIGHT",
+            "GPUCLR", "GPURECT", "GPULINE", "GPUCIRC", "GPUTRI", "GPUVRAM", "GPUBLIT", "GPUSWAP", "GPUSYNC"
+    );
+    public static final Set<String> GPU_INSTRUCTIONS_SET = new HashSet<>(GPU_INSTRUCTIONS);
 
     // Static Assembler Directives (processed by assembler/loader, do not require CPU silicon opcodes)
     public static final Set<String> ASSEMBLER_DIRECTIVES = Set.of(

@@ -27,4 +27,7 @@ public class ModDataComponents {
 
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<ArchitectureData>> ARCHITECTURE_DATA =
             REGISTRY.registerComponentType("architecture_data", builder -> builder.persistent(ArchitectureData.CODEC).networkSynchronized(ArchitectureData.STREAM_CODEC));
+
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<GpuData>> GPU_DATA =
+            REGISTRY.registerComponentType("gpu_data", builder -> builder.persistent(GpuData.CODEC).networkSynchronized(GpuData.STREAM_CODEC));
 }
